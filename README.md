@@ -2,7 +2,7 @@
 `edu_edfi_airflow` provides Airflow hooks and operators for transferring data from an Ed-Fi ODS to a Snowflake data warehouse.
 
 This package is part of Enable Data Union (EDU).
-Please visit the [EDU docs site](https://docs.enabledataunion.org/) for more information.
+Please visit the [EDU docs site](https://enabledataunion.org/) for more information.
 
 
 
