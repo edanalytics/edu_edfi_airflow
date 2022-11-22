@@ -57,6 +57,10 @@ class EdFiResourceDAG:
         self.multiyear = multiyear
         self.full_refresh = full_refresh
 
+        # Force full-refreshes if `use_change_version is False`.
+        if self.use_change_version is False:
+            self.full_refresh = True
+
         self.dag = self.initialize_dag(**kwargs)
 
         # If change-versions operations are turned off, don't build the operator.
