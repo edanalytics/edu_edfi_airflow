@@ -64,6 +64,7 @@ edfi_resource_dags__default_args: &default_dag_args
 
 
 edfi_resource_dags:
+  # note that `YEAR` must match the `schoolYear` of the ODS, which will be a 4 digit integer representing the spring year, e.g. for '2022-2023' it would be 2023.
   TENANT1:
     YEAR1:
       pool: default_pool
