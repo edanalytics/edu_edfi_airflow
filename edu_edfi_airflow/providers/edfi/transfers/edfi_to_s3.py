@@ -153,16 +153,18 @@ class EdFiToS3Operator(BaseOperator):
         s3_hook = S3Hook(aws_conn_id=self.s3_conn_id)
         s3_bucket = s3_hook.get_connection(self.s3_conn_id).schema
 
-        s3_hook.load_file(
-            filename=tmp_file,
+        try:
+            s3_hook.load_file(
+                filename=tmp_file,
 
-            bucket_name=s3_bucket,
-            key=self.s3_destination_key,
+                bucket_name=s3_bucket,
+                key=self.s3_destination_key,
 
-            encrypt=True,
-            replace=True
-        )
-        self.delete_path(tmp_file)
+                encrypt=True,
+                replace=True
+            )
+        finally:
+            self.delete_path(tmp_file)
 
         return self.s3_destination_key
 
