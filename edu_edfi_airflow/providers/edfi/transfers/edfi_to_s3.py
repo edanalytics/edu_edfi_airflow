@@ -150,10 +150,10 @@ class EdFiToS3Operator(BaseOperator):
             raise AirflowSkipException
 
         ### Connect to S3 and push
-        s3_hook = S3Hook(aws_conn_id=self.s3_conn_id)
-        s3_bucket = s3_hook.get_connection(self.s3_conn_id).schema
-
         try:
+            s3_hook = S3Hook(aws_conn_id=self.s3_conn_id)
+            s3_bucket = s3_hook.get_connection(self.s3_conn_id).schema
+
             s3_hook.load_file(
                 filename=tmp_file,
 
