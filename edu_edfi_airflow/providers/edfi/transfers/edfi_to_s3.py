@@ -96,10 +96,10 @@ class EdFiToS3Operator(BaseOperator):
             min_change_version=self.min_change_version, max_change_version=self.max_change_version
         )
 
-        # Fail immediately if the endpoint is forbidden.
-        _response = resource_endpoint.ping()
-        if not _response.ok:
-            raise Exception(f"Unable to connect to `{self.resource}`! {_response.status_code}: {_response.reason}")
+        # # Fail immediately if the endpoint is forbidden.
+        # _response = resource_endpoint.ping()
+        # if not _response.ok:
+        #     raise Exception(f"Unable to connect to `{self.resource}`! {_response.status_code}: {_response.reason}")
 
         # Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
