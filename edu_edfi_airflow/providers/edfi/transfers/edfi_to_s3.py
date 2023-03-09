@@ -113,6 +113,7 @@ class EdFiToS3Operator(BaseOperator):
             paged_iter = resource_endpoint.get_pages(
                 page_size=self.page_size,
                 step_change_version=step_change_version, change_version_step_size=self.change_version_step_size,
+                reverse_paging=(not self.api_get_deletes),  # Reverse_paging is true for resources and false for deletes
                 retry_on_failure=True, max_retries=self.api_retries
             )
 
