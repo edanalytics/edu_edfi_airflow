@@ -92,7 +92,7 @@ class EdFiToS3Operator(BaseOperator):
 
         # Prepare the EdFiEndpoint for the resource.
         resource_endpoint = edfi_conn.resource(
-            self.resource, namespace=self.api_namespace, get_deletes=self.api_get_deletes,
+            self.resource, namespace=self.api_namespace, get_deletes=self.api_get_deletes, params=self.query_parameters,
             min_change_version=self.min_change_version, max_change_version=self.max_change_version
         )
 
