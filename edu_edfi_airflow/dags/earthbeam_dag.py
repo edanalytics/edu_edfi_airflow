@@ -20,16 +20,12 @@ class EarthbeamDAG:
     """
     def __init__(self,
         *,
-        run_type: str,
-        pool: str,
-
+        pool: str = 'default_pool',
         slack_conn_id: str = None,
 
         **kwargs
     ):
-        self.run_type = run_type
         self.pool = pool
-
         self.slack_conn_id = slack_conn_id
 
         self.dag = self.initialize_dag(**kwargs)
@@ -84,7 +80,7 @@ class EarthbeamDAG:
         :return:
         """
         return PythonOperator(
-            task_id=f"{self.run_type}_python_callable",
+            task_id="preprocess_python_callable",
             python_callable=python_callable,
             op_kwargs=kwargs or {},
             provide_context=True,
@@ -95,6 +91,7 @@ class EarthbeamDAG:
 
     def build_earthbeam_taskgroup(self,
         tenant_code : str,
+        api_year: str,
         tmp_dir: str,
         *,
         earthmover_kwargs: Optional[dict] = None,
@@ -111,6 +108,7 @@ class EarthbeamDAG:
                    -> (AWS S3)
 
         :param tenant_code:
+        :param api_year:
         :param tmp_dir:
         :param earthmover_kwargs:
         :param lightbeam:
@@ -122,13 +120,13 @@ class EarthbeamDAG:
         """
         # Label the type of run in the TaskGroup group-ID
         if lightbeam and s3_filepath:
-            group_id = f"earthmover_to_lightbeam_s3__{tenant_code}"
+            group_id = f"{tenant_code}_{api_year}__earthmover_to_lightbeam_s3"
         elif lightbeam:
-            group_id = f"earthmover_to_lightbeam__{tenant_code}"
+            group_id = f"{tenant_code}_{api_year}__earthmover_to_lightbeam"
         elif s3_filepath:
-            group_id = f"earthmover_to_s3__{tenant_code}"
+            group_id = f"{tenant_code}_{api_year}__earthmover_to_s3"
         else:
-            group_id = f"earthmover__{tenant_code}"
+            group_id = f"{tenant_code}_{api_year}__earthmover"
 
         # Define the task group, with optional final elements as needed
         with TaskGroup(
@@ -139,7 +137,7 @@ class EarthbeamDAG:
 
             ### EARTHMOVER OPERATOR (required)
             run_earthmover = EarthmoverOperator(
-                task_id=f"{self.run_type}_earthmover_{tenant_code}",
+                task_id=f"{tenant_code}_{api_year}_run_earthmover",
                 output_dir=tmp_dir,
                 **earthmover_kwargs,
                 pool=self.pool,
@@ -154,7 +152,7 @@ class EarthbeamDAG:
                     )
 
                 run_lightbeam = LightbeamOperator(
-                    task_id=f"{self.run_type}_lightbeam_{tenant_code}",
+                    task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
                     data_dir=tmp_dir,
                     edfi_conn_id=edfi_conn_id,
                     **lightbeam_kwargs,
@@ -171,7 +169,7 @@ class EarthbeamDAG:
                     )
 
                 push_to_s3 = PythonOperator(
-                    task_id=f"{self.run_type}_to_s3",
+                    task_id=f"{tenant_code}_{api_year}_upload_to_s3",
                     python_callable=local_filepath_to_s3,
                     op_kwargs={
                         'local_filepath': tmp_dir,
