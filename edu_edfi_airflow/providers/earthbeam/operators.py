@@ -13,9 +13,10 @@ class EarthmoverOperator(BashOperator):
     @apply_defaults
     def __init__(self,
         *,
-        config_file : Optional[str] = None,
-        selector    : Optional[Union[str, Iterable[str]]] = None,
-        params      : Optional[Union[str, dict]] = None,
+        output_dir : str,
+        config_file: Optional[str] = None,
+        selector   : Optional[Union[str, Iterable[str]]] = None,
+        params     : Optional[Union[str, dict]] = None,
 
         force          : bool = False,
         skip_hashing   : bool = False,
@@ -35,10 +36,18 @@ class EarthmoverOperator(BashOperator):
                 selector = ",".join(selector)
             arguments['--selector'] = selector
 
-        if params:  # JSON string or dictionary
-            if not isinstance(params, str):
-                params = json.dumps(params)
-            arguments['--params'] = params
+        # Parameters can be set manually, but output_dir must be defined
+        if params or output_dir:  # JSON string or dictionary
+
+            # Force to a dictionary to allow editing
+            params = params or {}
+            if isinstance(params, str):
+                params = json.loads(params)
+
+            # Add required `output_dir` parameter
+            params['OUTPUT_DIR'] = output_dir
+
+            arguments['--params'] = json.dumps(params)
 
         # Boolean arguments
         if force:
@@ -67,8 +76,9 @@ class LightbeamOperator(BashOperator):
     @apply_defaults
     def __init__(self,
         *,
-        command: str = 'send',
+        data_dir: str,
 
+        command: str = 'send',
         edfi_conn_id: Optional[str] = None,
 
         config_file: Optional[str] = None,
@@ -102,11 +112,15 @@ class LightbeamOperator(BashOperator):
             arguments['--selector'] = selector
 
         # Parameters can be set manually, or inferred from an Airflow connection
-        if params or edfi_conn_id:  # JSON string or dictionary
+        if params or edfi_conn_id or data_dir:  # JSON string or dictionary
 
-            params = params or {}  # Force to a dictionary to allow editing
-            if isinstance(params, str):  # Convert to dict before editing with ODS creds
+            # Force to a dictionary to allow editing
+            params = params or {}
+            if isinstance(params, str):
                 params = json.loads(params)
+
+            # Add required `data_dir` parameter
+            params['DATA_DIR'] = data_dir
 
             if edfi_conn_id:
                 edfi_conn = EdFiHook(edfi_conn_id).get_conn()
@@ -127,7 +141,7 @@ class LightbeamOperator(BashOperator):
                 if _api_mode:
                     params['MODE'] = _api_mode
 
-            arguments['--params'] = params
+            arguments['--params'] = json.dumps(params)
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):

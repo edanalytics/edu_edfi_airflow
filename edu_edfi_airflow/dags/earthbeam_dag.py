@@ -21,20 +21,14 @@ class EarthbeamDAG:
     def __init__(self,
         *,
         run_type: str,
-        api_year: int,
-
         pool: str,
-        tmp_dir: str,
 
         slack_conn_id: str = None,
 
         **kwargs
     ):
         self.run_type = run_type
-        self.api_year = api_year
-
         self.pool = pool
-        self.tmp_dir = tmp_dir
 
         self.slack_conn_id = slack_conn_id
 
@@ -74,6 +68,7 @@ class EarthbeamDAG:
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
+            **kwargs
         )
 
 
@@ -93,12 +88,14 @@ class EarthbeamDAG:
             python_callable=python_callable,
             op_kwargs=kwargs or {},
             provide_context=True,
+            pool=self.pool,
             dag=self.dag
         )
 
 
     def build_earthbeam_taskgroup(self,
         tenant_code : str,
+        tmp_dir: str,
         *,
         earthmover_kwargs: Optional[dict] = None,
 
@@ -114,6 +111,7 @@ class EarthbeamDAG:
                    -> (AWS S3)
 
         :param tenant_code:
+        :param tmp_dir:
         :param earthmover_kwargs:
         :param lightbeam:
         :param edfi_conn_id:
@@ -142,15 +140,25 @@ class EarthbeamDAG:
             ### EARTHMOVER OPERATOR (required)
             run_earthmover = EarthmoverOperator(
                 task_id=f"{self.run_type}_earthmover_{tenant_code}",
+                output_dir=tmp_dir,
                 **earthmover_kwargs,
+                pool=self.pool,
                 dag=self.dag
             )
 
             ### LIGHTBEAM OPERATOR (optional)
             if lightbeam:
+                if not edfi_conn_id:
+                    raise Exception(
+                        f"Lightbeam run specified, but argument `edfi_conn_id` is undefined."
+                    )
+
                 run_lightbeam = LightbeamOperator(
                     task_id=f"{self.run_type}_lightbeam_{tenant_code}",
+                    data_dir=tmp_dir,
+                    edfi_conn_id=edfi_conn_id,
                     **lightbeam_kwargs,
+                    pool=self.pool,
                     dag=self.dag
                 )
                 run_earthmover >> run_lightbeam
@@ -166,13 +174,14 @@ class EarthbeamDAG:
                     task_id=f"{self.run_type}_to_s3",
                     python_callable=local_filepath_to_s3,
                     op_kwargs={
-                        'local_filepath': '',
+                        'local_filepath': tmp_dir,
                         's3_destination_key': s3_filepath,
                         's3_conn_id': s3_conn_id,
-                        'remove_local_filepath': not lightbeam,  # Only remove local files if not pushed to ODS
+                        'remove_local_filepath': False,
                         # TODO: Include local-filepath cleanup in final logs operation.
                     },
                     provide_context=True,
+                    pool=self.pool,
                     dag=self.dag
                 )
                 run_earthmover >> push_to_s3
