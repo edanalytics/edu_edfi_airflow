@@ -14,6 +14,7 @@ def local_filepath_to_s3(
     :param local_filepath:
     :param s3_destination_key:
     :param s3_conn_id:
+    :param remove_local_filepath:
     :return:
     """
     try:
