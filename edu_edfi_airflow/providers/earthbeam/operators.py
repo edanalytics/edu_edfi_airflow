@@ -23,42 +23,54 @@ class EarthmoverOperator(BashOperator):
 
         **kwargs
     ):
+        self.output_dir = output_dir
+
         ### Building the Earthmover CLI command
-        arguments = {}
+        self.arguments = {}
 
         # Dynamic arguments
         if config_file:
-            arguments['--config-file'] = config_file
+            self.arguments['--config-file'] = config_file
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            arguments['--selector'] = selector
+            self.arguments['--selector'] = selector
 
         if params:  # JSON string or dictionary
             if not isinstance(params, str):
                 params = json.dumps(params)
-            arguments['--params'] = params
+            self.arguments['--params'] = params
 
         # Boolean arguments
         if force:
-            arguments['--force'] = ""
+            self.arguments['--force'] = ""
         if skip_hashing:
-            arguments['--skip-hashing'] = ""
+            self.arguments['--skip-hashing'] = ""
         if show_graph:
-            arguments['--show-graph'] = ""
+            self.arguments['--show-graph'] = ""
         if show_stacktrace:
-            arguments['--show-stacktrace'] = ""
+            self.arguments['--show-stacktrace'] = ""
 
         # Build out the final Earthmover command with any passed arguments
-        arguments_string = " ".join(f"{kk} {vv}" for kk, vv in arguments.items())
+        arguments_string = " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
         bash_command = f"earthmover run {arguments_string}"
 
         ### Environment variables
         # Pass required `output_dir` parameter as environment variables
-        env_vars = {'OUTPUT_DIR': output_dir}
+        env_vars = {'OUTPUT_DIR': self.output_dir}
 
         super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
+
+
+    def execute(self, context) -> str:
+        """
+
+        :param context:
+        :return:
+        """
+        super().execute(context)
+        return self.output_dir
 
 
 
@@ -88,6 +100,8 @@ class LightbeamOperator(BashOperator):
 
         **kwargs
     ):
+        self.data_dir = data_dir
+
         # Verify command argument is valid
         if command not in self.valid_commands:
             raise ValueError(
@@ -95,47 +109,47 @@ class LightbeamOperator(BashOperator):
             )
 
         ### Building the Lightbeam CLI command
-        arguments = {}
+        self.arguments = {}
 
         # Dynamic arguments
         if config_file:
-            arguments['--config-file'] = config_file
+            self.arguments['--config-file'] = config_file
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            arguments['--selector'] = selector
+            self.arguments['--selector'] = selector
 
         if params:  # JSON string or dictionary
             if not isinstance(params, str):
                 params = json.dumps(params)
-            arguments['--params'] = params
+            self.arguments['--params'] = params
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
                 resend_status_codes = ",".join(resend_status_codes)
-            arguments['--resend-status-codes'] = resend_status_codes
+            self.arguments['--resend-status-codes'] = resend_status_codes
 
         # Boolean arguments
         if wipe:
-            arguments['--wipe'] = ""
+            self.arguments['--wipe'] = ""
         if force:
-            arguments['--force'] = ""
+            self.arguments['--force'] = ""
 
         # Optional string arguments
         if older_than:
-            arguments['--older-than'] = older_than
+            self.arguments['--older-than'] = older_than
         if newer_than:
-            arguments['--newer-than'] = newer_than
+            self.arguments['--newer-than'] = newer_than
 
         # Build out the final Lightbeam command with any passed arguments
-        arguments_string = " ".join(f"{kk} {vv}" for kk, vv in arguments.items())
+        arguments_string = " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
         bash_command = f"lightbeam {command} {arguments_string}"
 
         ### Environment variables
         # Pass required `data_dir` and optional EdFi connection parameters as environment variables
         # (This obscures them from logging)
-        env_vars = {'DATA_DIR': data_dir}
+        env_vars = {'DATA_DIR': self.data_dir}
 
         if edfi_conn_id:
             edfi_conn = EdFiHook(edfi_conn_id).get_conn()
