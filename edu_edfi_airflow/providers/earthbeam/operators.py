@@ -50,12 +50,13 @@ class EarthmoverOperator(BashOperator):
         if show_stacktrace:
             arguments['--show-stacktrace'] = ""
 
-        # Pass required `output_dir` parameter as environment variables
-        env_vars = {'OUTPUT_DIR': output_dir}
-
         # Build out the final Earthmover command with any passed arguments
         arguments_string = " ".join(f"{kk} {vv}" for kk, vv in arguments.items())
         bash_command = f"earthmover run {arguments_string}"
+
+        ### Environment variables
+        # Pass required `output_dir` parameter as environment variables
+        env_vars = {'OUTPUT_DIR': output_dir}
 
         super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
 
