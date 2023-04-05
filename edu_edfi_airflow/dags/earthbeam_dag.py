@@ -1,3 +1,5 @@
+import os
+
 from functools import partial
 from typing import Callable, Optional
 
@@ -7,9 +9,9 @@ from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import slack_callbacks
 
-from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3
-
+from edu_edfi_airflow.dags.dag_util.airflow_util import xcom_pull_template as pull_xcom
+from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 
 
 class EarthbeamDAG:
@@ -18,12 +20,15 @@ class EarthbeamDAG:
 
     """
     def __init__(self,
+        run_type: str,
+
         *,
         pool: str = 'default_pool',
         slack_conn_id: str = None,
 
         **kwargs
     ):
+        self.run_type = run_type
         self.pool = pool
         self.slack_conn_id = slack_conn_id
 
@@ -79,7 +84,7 @@ class EarthbeamDAG:
         :return:
         """
         return PythonOperator(
-            task_id="preprocess_python_callable",
+            task_id=f"{self.run_type}__preprocess_python_callable",
             python_callable=python_callable,
             op_kwargs=kwargs or {},
             provide_context=True,
@@ -101,9 +106,13 @@ class EarthbeamDAG:
         :param kwargs:
         :return:
         """
+        output_dir = os.path.join(
+            tmp_dir, 'earthmover', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+        )
+
         return EarthmoverOperator(
             task_id=f"{tenant_code}_{api_year}_run_earthmover",
-            output_dir=tmp_dir,
+            output_dir=output_dir,
             **kwargs,
             pool=self.pool,
             dag=self.dag
@@ -113,7 +122,7 @@ class EarthbeamDAG:
     def build_lightbeam_operator(self,
         tenant_code : str,
         api_year    : str,
-        tmp_dir     : str,
+        data_dir    : str,
         edfi_conn_id: str,
         **kwargs
     ) -> LightbeamOperator:
@@ -121,14 +130,14 @@ class EarthbeamDAG:
 
         :param tenant_code:
         :param api_year:
-        :param tmp_dir:
+        :param data_dir:
         :param edfi_conn_id:
         :param kwargs:
         :return:
         """
         return LightbeamOperator(
             task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
-            data_dir=tmp_dir,
+            data_dir=data_dir,
             edfi_conn_id=edfi_conn_id,
             **kwargs,
             pool=self.pool,
@@ -139,7 +148,7 @@ class EarthbeamDAG:
     def build_s3_operator(self,
         tenant_code: str,
         api_year   : str,
-        tmp_dir    : str,
+        data_dir   : str,
         s3_conn_id : str,
         s3_filepath: str
     ) -> PythonOperator:
@@ -147,7 +156,7 @@ class EarthbeamDAG:
 
         :param tenant_code:
         :param api_year:
-        :param tmp_dir:
+        :param data_dir:
         :param s3_conn_id:
         :param s3_filepath:
         :return:
@@ -156,7 +165,7 @@ class EarthbeamDAG:
             task_id=f"{tenant_code}_{api_year}_upload_to_s3",
             python_callable=local_filepath_to_s3,
             op_kwargs={
-                'local_filepath': tmp_dir,
+                'local_filepath': data_dir,
                 's3_destination_key': s3_filepath,
                 's3_conn_id': s3_conn_id,
                 'remove_local_filepath': False,
@@ -201,7 +210,7 @@ class EarthbeamDAG:
             )
 
             write_to_s3 = self.build_s3_operator(
-                tenant_code, api_year, tmp_dir,
+                tenant_code, api_year, data_dir=pull_xcom(run_earthmover.task_id),
                 s3_conn_id=s3_conn_id, s3_filepath=s3_filepath
             )
 
@@ -243,7 +252,7 @@ class EarthbeamDAG:
             )
 
             run_lightbeam = self.build_lightbeam_operator(
-                tenant_code, api_year, tmp_dir,
+                tenant_code, api_year, data_dir=pull_xcom(run_earthmover.task_id),
                 edfi_conn_id=edfi_conn_id,
                 **lightbeam_kwargs
             )
@@ -290,13 +299,13 @@ class EarthbeamDAG:
             )
 
             run_lightbeam = self.build_lightbeam_operator(
-                tenant_code, api_year, tmp_dir,
+                tenant_code, api_year, data_dir=pull_xcom(run_earthmover.task_id),
                 edfi_conn_id=edfi_conn_id,
                 **lightbeam_kwargs
             )
 
             write_to_s3 = self.build_s3_operator(
-                tenant_code, api_year, tmp_dir,
+                tenant_code, api_year, data_dir=pull_xcom(run_earthmover.task_id),
                 s3_conn_id=s3_conn_id, s3_filepath=s3_filepath
             )
 
