@@ -6,7 +6,6 @@ from airflow.operators.python_operator import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import slack_callbacks
-from ea_airflow_util import EarthmoverOperator, LightbeamOperator
 
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3
