@@ -23,6 +23,7 @@ class EarthmoverOperator(BashOperator):
 
         **kwargs
     ):
+        ### Building the Earthmover CLI command
         arguments = {}
 
         # Dynamic arguments
@@ -34,18 +35,10 @@ class EarthmoverOperator(BashOperator):
                 selector = ",".join(selector)
             arguments['--selector'] = selector
 
-        # Parameters can be set manually, but output_dir must be defined
-        if params or output_dir:  # JSON string or dictionary
-
-            # Force to a dictionary to allow editing
-            params = params or {}
-            if isinstance(params, str):
-                params = json.loads(params)
-
-            # Add required `output_dir` parameter
-            params['OUTPUT_DIR'] = output_dir
-
-            arguments['--params'] = json.dumps(params)
+        if params:  # JSON string or dictionary
+            if not isinstance(params, str):
+                params = json.dumps(params)
+            arguments['--params'] = params
 
         # Boolean arguments
         if force:
@@ -57,11 +50,14 @@ class EarthmoverOperator(BashOperator):
         if show_stacktrace:
             arguments['--show-stacktrace'] = ""
 
+        # Pass required `output_dir` parameter as environment variables
+        env_vars = {'OUTPUT_DIR': output_dir}
+
         # Build out the final Earthmover command with any passed arguments
         arguments_string = " ".join(f"{kk} {vv}" for kk, vv in arguments.items())
         bash_command = f"earthmover run {arguments_string}"
 
-        super().__init__(bash_command=bash_command, **kwargs)
+        super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
 
 
 
@@ -97,6 +93,7 @@ class LightbeamOperator(BashOperator):
                 f"LightbeamOperator command type `{command}` is undefined!"
             )
 
+        ### Building the Lightbeam CLI command
         arguments = {}
 
         # Dynamic arguments
@@ -108,37 +105,10 @@ class LightbeamOperator(BashOperator):
                 selector = ",".join(selector)
             arguments['--selector'] = selector
 
-        # Parameters can be set manually, or inferred from an Airflow connection
-        if params or edfi_conn_id or data_dir:  # JSON string or dictionary
-
-            # Force to a dictionary to allow editing
-            params = params or {}
-            if isinstance(params, str):
-                params = json.loads(params)
-
-            # Add required `data_dir` parameter
-            params['DATA_DIR'] = data_dir
-
-            if edfi_conn_id:
-                edfi_conn = EdFiHook(edfi_conn_id).get_conn()
-
-                params['BASE_URL'] = edfi_conn.host
-                params['CLIENT_ID'] = edfi_conn.login
-                params['CLIENT_SECRET'] = edfi_conn.password
-
-                _api_year = edfi_conn.extra_dejson.get('api_year')
-                if _api_year:
-                    params['YEAR'] = _api_year
-
-                _api_version = edfi_conn.extra_dejson.get('api_version')
-                if _api_version:
-                    params['VERSION'] = _api_version
-
-                _api_mode = edfi_conn.extra_dejson.get('api_mode')
-                if _api_mode:
-                    params['MODE'] = _api_mode
-
-            arguments['--params'] = json.dumps(params)
+        if params:  # JSON string or dictionary
+            if not isinstance(params, str):
+                params = json.dumps(params)
+            arguments['--params'] = params
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
@@ -157,8 +127,32 @@ class LightbeamOperator(BashOperator):
         if newer_than:
             arguments['--newer-than'] = newer_than
 
-        # Build out the final Lighbeam command with any passed arguments
+        # Build out the final Lightbeam command with any passed arguments
         arguments_string = " ".join(f"{kk} {vv}" for kk, vv in arguments.items())
         bash_command = f"lightbeam {command} {arguments_string}"
 
-        super().__init__(bash_command=bash_command, **kwargs)
+        ### Environment variables
+        # Pass required `data_dir` and optional EdFi connection parameters as environment variables
+        # (This obscures them from logging)
+        env_vars = {'DATA_DIR': data_dir}
+
+        if edfi_conn_id:
+            edfi_conn = EdFiHook(edfi_conn_id).get_conn()
+
+            env_vars['BASE_URL'] = edfi_conn.host
+            env_vars['CLIENT_ID'] = edfi_conn.login
+            env_vars['CLIENT_SECRET'] = edfi_conn.password
+
+            _api_year = edfi_conn.extra_dejson.get('api_year')
+            if _api_year:
+                env_vars['YEAR'] = _api_year
+
+            _api_version = edfi_conn.extra_dejson.get('api_version')
+            if _api_version:
+                env_vars['VERSION'] = _api_version
+
+            _api_mode = edfi_conn.extra_dejson.get('api_mode')
+            if _api_mode:
+                env_vars['MODE'] = _api_mode
+
+        super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
