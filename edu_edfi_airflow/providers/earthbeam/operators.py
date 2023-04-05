@@ -1,7 +1,6 @@
 import json
 from typing import Iterable, Optional, Union
 
-from airflow.utils.decorators import apply_defaults
 from airflow.operators.bash import BashOperator
 
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
@@ -10,7 +9,6 @@ class EarthmoverOperator(BashOperator):
     """
 
     """
-    @apply_defaults
     def __init__(self,
         *,
         output_dir : str,
@@ -73,7 +71,6 @@ class LightbeamOperator(BashOperator):
     """
     valid_commands = ('validate', 'send', 'validate+send')
 
-    @apply_defaults
     def __init__(self,
         *,
         data_dir: str,
