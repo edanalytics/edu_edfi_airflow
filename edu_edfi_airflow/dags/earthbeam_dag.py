@@ -70,7 +70,7 @@ class EarthbeamDAG:
     def build_python_preprocessing_operator(self,
         python_callable: Optional[Callable] = None,
         **kwargs
-    ):
+    ) -> PythonOperator:
         """
         Optional Python preprocessing operator to run before Earthmover and Lightbeam.
 
@@ -87,100 +87,219 @@ class EarthbeamDAG:
             dag=self.dag
         )
 
-
-    def build_earthbeam_taskgroup(self,
-        tenant_code : str,
-        api_year: str,
-        tmp_dir: str,
-        *,
-        earthmover_kwargs: Optional[dict] = None,
-
-        lightbeam: bool = True,
-        edfi_conn_id: Optional[str] = None,
-        lightbeam_kwargs : Optional[dict] = None,
-
-        s3_conn_id : Optional[str] = None,
-        s3_filepath: Optional[str] = None
-    ) -> TaskGroup:
+    def build_earthmover_operator(self,
+        tenant_code: str,
+        api_year   : str,
+        tmp_dir    : str,
+        **kwargs
+    ) -> EarthmoverOperator:
         """
-        Earthmover -> Lightbeam
-                   -> (AWS S3)
 
         :param tenant_code:
         :param api_year:
         :param tmp_dir:
-        :param earthmover_kwargs:
-        :param lightbeam:
+        :param kwargs:
+        :return:
+        """
+        return EarthmoverOperator(
+            task_id=f"{tenant_code}_{api_year}_run_earthmover",
+            output_dir=tmp_dir,
+            **kwargs,
+            pool=self.pool,
+            dag=self.dag
+        )
+
+
+    def build_lightbeam_operator(self,
+        tenant_code : str,
+        api_year    : str,
+        tmp_dir     : str,
+        edfi_conn_id: str,
+        **kwargs
+    ) -> LightbeamOperator:
+        """
+
+        :param tenant_code:
+        :param api_year:
+        :param tmp_dir:
         :param edfi_conn_id:
-        :param lightbeam_kwargs:
+        :param kwargs:
+        :return:
+        """
+        return LightbeamOperator(
+            task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
+            data_dir=tmp_dir,
+            edfi_conn_id=edfi_conn_id,
+            **kwargs,
+            pool=self.pool,
+            dag=self.dag
+        )
+
+
+    def build_s3_operator(self,
+        tenant_code: str,
+        api_year   : str,
+        tmp_dir    : str,
+        s3_conn_id : str,
+        s3_filepath: str
+    ) -> PythonOperator:
+        """
+
+        :param tenant_code:
+        :param api_year:
+        :param tmp_dir:
         :param s3_conn_id:
         :param s3_filepath:
         :return:
         """
-        # Label the type of run in the TaskGroup group-ID
-        if lightbeam and s3_filepath:
-            group_id = f"{tenant_code}_{api_year}__earthmover_to_lightbeam_s3"
-        elif lightbeam:
-            group_id = f"{tenant_code}_{api_year}__earthmover_to_lightbeam"
-        elif s3_filepath:
-            group_id = f"{tenant_code}_{api_year}__earthmover_to_s3"
-        else:
-            group_id = f"{tenant_code}_{api_year}__earthmover"
+        return PythonOperator(
+            task_id=f"{tenant_code}_{api_year}_upload_to_s3",
+            python_callable=local_filepath_to_s3,
+            op_kwargs={
+                'local_filepath': tmp_dir,
+                's3_destination_key': s3_filepath,
+                's3_conn_id': s3_conn_id,
+                'remove_local_filepath': False,
+                # TODO: Include local-filepath cleanup in final logs operation.
+            },
+            provide_context=True,
+            pool=self.pool,
+            dag=self.dag
+        )
 
-        # Define the task group, with optional final elements as needed
+
+    def build_earthmover_to_s3_taskgroup(self,
+        tenant_code: str,
+        api_year: str,
+        tmp_dir: str,
+
+        *,
+        s3_conn_id : str,
+        s3_filepath: str,
+
+        earthmover_kwargs: Optional[dict] = None
+    ) -> TaskGroup:
+        """
+
+        :param tenant_code:
+        :param api_year:
+        :param tmp_dir:
+        :param s3_conn_id:
+        :param s3_filepath:
+        :param earthmover_kwargs:
+        :return:
+        """
         with TaskGroup(
-            group_id=group_id,
+            group_id=f"{tenant_code}_{api_year}__earthmover_to_s3",
             prefix_group_id=False,
             dag=self.dag
-        ) as earthbeam_task_group:
+        ) as tg:
 
-            ### EARTHMOVER OPERATOR (required)
-            run_earthmover = EarthmoverOperator(
-                task_id=f"{tenant_code}_{api_year}_run_earthmover",
-                output_dir=tmp_dir,
-                **earthmover_kwargs,
-                pool=self.pool,
-                dag=self.dag
+            run_earthmover = self.build_earthmover_operator(
+                tenant_code, api_year, tmp_dir,
+                **earthmover_kwargs
             )
 
-            ### LIGHTBEAM OPERATOR (optional)
-            if lightbeam:
-                if not edfi_conn_id:
-                    raise Exception(
-                        f"Lightbeam run specified, but argument `edfi_conn_id` is undefined."
-                    )
+            write_to_s3 = self.build_s3_operator(
+                tenant_code, api_year, tmp_dir,
+                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath
+            )
 
-                run_lightbeam = LightbeamOperator(
-                    task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
-                    data_dir=tmp_dir,
-                    edfi_conn_id=edfi_conn_id,
-                    **lightbeam_kwargs,
-                    pool=self.pool,
-                    dag=self.dag
-                )
-                run_earthmover >> run_lightbeam
+            run_earthmover >> write_to_s3
 
-            # S3 OPERATOR (optional)
-            if s3_filepath:
-                if not s3_conn_id:
-                    raise Exception(
-                        f"AWS S3 filepath was provided, but argument `s3_conn_id` is undefined."
-                    )
+        return tg
 
-                push_to_s3 = PythonOperator(
-                    task_id=f"{tenant_code}_{api_year}_upload_to_s3",
-                    python_callable=local_filepath_to_s3,
-                    op_kwargs={
-                        'local_filepath': tmp_dir,
-                        's3_destination_key': s3_filepath,
-                        's3_conn_id': s3_conn_id,
-                        'remove_local_filepath': False,
-                        # TODO: Include local-filepath cleanup in final logs operation.
-                    },
-                    provide_context=True,
-                    pool=self.pool,
-                    dag=self.dag
-                )
-                run_earthmover >> push_to_s3
 
-        return earthbeam_task_group
+    def build_earthbeam_taskgroup(self,
+        tenant_code: str,
+        api_year: str,
+        tmp_dir: str,
+
+        *,
+        edfi_conn_id: str,
+
+        earthmover_kwargs: Optional[dict] = None,
+        lightbeam_kwargs : Optional[dict] = None
+    ) -> TaskGroup:
+        """
+
+        :param tenant_code:
+        :param api_year:
+        :param tmp_dir:
+        :param edfi_conn_id:
+        :param earthmover_kwargs:
+        :param lightbeam_kwargs:
+        :return:
+        """
+        with TaskGroup(
+            group_id=f"{tenant_code}_{api_year}__earthmover_to_lightbeam",
+            prefix_group_id=False,
+            dag=self.dag
+        ) as tg:
+
+            run_earthmover = self.build_earthmover_operator(
+                tenant_code, api_year, tmp_dir,
+                **earthmover_kwargs
+            )
+
+            run_lightbeam = self.build_lightbeam_operator(
+                tenant_code, api_year, tmp_dir,
+                edfi_conn_id=edfi_conn_id,
+                **lightbeam_kwargs
+            )
+
+            run_earthmover >> run_lightbeam
+
+        return tg
+
+
+    def build_earthbeam_s3_taskgroup(self,
+        tenant_code: str,
+        api_year: str,
+        tmp_dir: str,
+
+        *,
+        edfi_conn_id: str,
+        s3_conn_id  : str,
+        s3_filepath : str,
+
+        earthmover_kwargs: Optional[dict] = None,
+        lightbeam_kwargs : Optional[dict] = None
+    ) -> TaskGroup:
+        """
+
+        :param tenant_code:
+        :param api_year:
+        :param tmp_dir:
+        :param edfi_conn_id:
+        :param s3_conn_id:
+        :param s3_filepath:
+        :param earthmover_kwargs:
+        :param lightbeam_kwargs:
+        :return:
+        """
+        with TaskGroup(
+            group_id=f"{tenant_code}_{api_year}__earthmover_to_lightbeam_s3",
+            prefix_group_id=False,
+            dag=self.dag
+        ) as tg:
+
+            run_earthmover = self.build_earthmover_operator(
+                tenant_code, api_year, tmp_dir,
+                **earthmover_kwargs
+            )
+
+            run_lightbeam = self.build_lightbeam_operator(
+                tenant_code, api_year, tmp_dir,
+                edfi_conn_id=edfi_conn_id,
+                **lightbeam_kwargs
+            )
+
+            write_to_s3 = self.build_s3_operator(
+                tenant_code, api_year, tmp_dir,
+                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath
+            )
+
+            run_earthmover >> [run_lightbeam, write_to_s3]
+
+        return tg
