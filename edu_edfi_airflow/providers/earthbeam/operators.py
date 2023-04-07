@@ -63,14 +63,7 @@ class EarthmoverOperator(BashOperator):
         super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
 
 
-    def execute(self, context) -> str:
-        """
 
-        :param context:
-        :return:
-        """
-        super().execute(context)
-        return self.output_dir
 
 
 
@@ -101,6 +94,7 @@ class LightbeamOperator(BashOperator):
         **kwargs
     ):
         self.data_dir = data_dir
+        self.edfi_conn_id = edfi_conn_id
 
         # Verify command argument is valid
         if command not in self.valid_commands:
@@ -147,27 +141,38 @@ class LightbeamOperator(BashOperator):
         bash_command = f"lightbeam {command} {arguments_string}"
 
         ### Environment variables
-        # Pass required `data_dir` and optional EdFi connection parameters as environment variables
-        # (This obscures them from logging)
+        # Pass required `data_dir`
         env_vars = {'DATA_DIR': self.data_dir}
 
-        if edfi_conn_id:
-            edfi_conn = EdFiHook(edfi_conn_id).get_conn()
+        super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
 
-            env_vars['BASE_URL'] = edfi_conn.host
-            env_vars['CLIENT_ID'] = edfi_conn.login
-            env_vars['CLIENT_SECRET'] = edfi_conn.password
+
+    def execute(self, context) -> str:
+        """
+
+        :param context:
+        :return:
+        """
+        #  Extract EdFi connection parameters as environment variables if defined
+        # (This must be done in execute to prevent extraction during DAG-parsing.
+        if self.edfi_conn_id:
+            edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+
+            self.env['BASE_URL'] = edfi_conn.host
+            self.env['CLIENT_ID'] = edfi_conn.login
+            self.env['CLIENT_SECRET'] = edfi_conn.password
 
             _api_year = edfi_conn.extra_dejson.get('api_year')
             if _api_year:
-                env_vars['YEAR'] = _api_year
+                self.env['YEAR'] = _api_year
 
             _api_version = edfi_conn.extra_dejson.get('api_version')
             if _api_version:
-                env_vars['VERSION'] = _api_version
+                self.env['VERSION'] = _api_version
 
             _api_mode = edfi_conn.extra_dejson.get('api_mode')
             if _api_mode:
-                env_vars['MODE'] = _api_mode
+                self.env['MODE'] = _api_mode
 
-        super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
+        super().execute(context)
+        return self.data_dir
