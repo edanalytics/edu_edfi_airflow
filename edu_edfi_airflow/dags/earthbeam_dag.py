@@ -18,6 +18,13 @@ class EarthbeamDAG:
     """
     Full Earthmover-Lightbeam DAG, with optional Python callable pre-processing.
 
+    TODO:
+    - Set up consistent state file pathing.
+    - Set up `force` DAG-config.
+    - S3-to-Snowflake COPY INTO
+    - Post-run Lightbeam-to-Snowflake logging
+    - Optional file hashing before initial S3
+    - Lightbeam and Snowflake are mututally-exclusive actions!
     """
     def __init__(self,
         run_type: str,
@@ -175,6 +182,167 @@ class EarthbeamDAG:
             pool=self.pool,
             dag=self.dag
         )
+
+
+    def build_tenant_year_taskgroup(self,
+        tenant_code: str,
+        api_year: str,
+        tmp_dir: str,
+
+        *,
+        earthmover_kwargs: dict,
+
+        edfi_conn_id     : Optional[str] = None,
+        lightbeam_kwargs : Optional[dict] = None,
+
+        s3_conn_id       : Optional[str] = None,
+        s3_filepath      : Optional[str] = None,
+
+        python_callable  : Optional[Callable] = None,
+        python_kwargs    : Optional[dict] = None,
+
+        snowflake_conn_id: Optional[str] = None,
+        lightbeam_logging_table: Optional[str] = None
+    ):
+        """
+        (Python) -> Earthmover -> (Lightbeam) -> (Snowflake: Lightbeam Logs)
+                 -> (S3: Raw)  -> (S3: Earthmover Output)
+                               -> (Snowflake: Earthmover Output)
+
+        :param tenant_code:
+        :param api_year:
+        :param tmp_dir:
+
+        :param earthmover_kwargs:
+
+        :param edfi_conn_id:
+        :param lightbeam_kwargs:
+
+        :param s3_conn_id:
+        :param s3_filepath:
+
+        :param python_callable:
+        :param python_kwargs:
+
+        :param snowflake_conn_id:
+        :param lightbeam_logging_table:
+        :return:
+        """
+        with TaskGroup(
+            group_id=f"{tenant_code}_{api_year}__earthmover_to_lightbeam",
+            prefix_group_id=False,
+            dag=self.dag
+        ) as tenant_year_task_group:
+
+            ### PythonOperator Preprocess
+            if python_callable:
+                python_preprocess = PythonOperator(
+                    task_id=f"{tenant_code}_{api_year}_preprocess_python",
+                    python_callable=python_callable,
+                    op_kwargs=python_kwargs or {},
+                    provide_context=True,
+                    pool=self.pool,
+                    dag=self.dag
+                )
+            else:
+                python_preprocess = None
+
+            ### Raw to S3
+            if s3_conn_id:
+                s3_raw_filepath = os.path.join(
+                    s3_filepath, 'raw', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+                )
+
+                raw_to_s3 = PythonOperator(
+                    task_id=f"{tenant_code}_{api_year}_upload_raw_to_s3",
+                    python_callable=local_filepath_to_s3,
+                    op_kwargs={
+                        'local_filepath': pull_xcom(python_preprocess.task_id) if python_preprocess else tmp_dir,
+                        's3_destination_key': s3_raw_filepath,
+                        's3_conn_id': s3_conn_id,
+                        'remove_local_filepath': False,
+                        # TODO: Include local-filepath cleanup in final logs operation.
+                    },
+                    provide_context=True,
+                    pool=self.pool,
+                    dag=self.dag
+                )
+            else:
+                raw_to_s3 = None
+
+
+            ### EarthmoverOperator
+            output_dir = os.path.join(
+                tmp_dir, 'earthmover', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+            )
+
+            run_earthmover = EarthmoverOperator(
+                task_id=f"{tenant_code}_{api_year}_run_earthmover",
+                output_dir=pull_xcom(python_preprocess.task_id) if python_preprocess else output_dir,
+                **earthmover_kwargs,
+                pool=self.pool,
+                dag=self.dag
+            )
+
+            ### LightbeamOperator
+            if edfi_conn_id:
+                run_lightbeam = LightbeamOperator(
+                    task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
+                    data_dir=pull_xcom(run_earthmover.task_id),
+                    edfi_conn_id=edfi_conn_id,
+                    **lightbeam_kwargs or {},
+                    pool=self.pool,
+                    dag=self.dag
+                )
+            else:
+                run_lightbeam = None
+
+            ### Earthmover to S3
+            if s3_conn_id:
+                s3_em_filepath = os.path.join(
+                    s3_filepath, 'earthmover', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+                )
+
+                em_to_s3 = PythonOperator(
+                    task_id=f"{tenant_code}_{api_year}_upload_earthmover_to_s3",
+                    python_callable=local_filepath_to_s3,
+                    op_kwargs={
+                        'local_filepath': pull_xcom(run_earthmover.task_id),
+                        's3_destination_key': s3_em_filepath,
+                        's3_conn_id': s3_conn_id,
+                        'remove_local_filepath': False,
+                        # TODO: Include local-filepath cleanup in final logs operation.
+                    },
+                    provide_context=True,
+                    pool=self.pool,
+                    dag=self.dag
+                )
+            else:
+                em_to_s3 = None
+
+            ### Earthmover to Snowflake
+            if lightbeam_kwargs and snowflake_conn_id:
+                if not s3_conn_id:
+                    raise Exception(
+                        "S3 connection required to copy into Snowflake."
+                    )
+                pass
+            em_to_snowflake = None
+
+            ### Lightbeam logs to Snowflake
+            if lightbeam_logging_table:
+                if not edfi_conn_id or not snowflake_conn_id:
+                    raise Exception(
+                        "Ed-Fi connection and snowflake connection required to copy Lightbeam logs into Snowflake."
+                    )
+            log_lightbeam_to_snowflake = None
+
+            ### Order TaskGroup
+            python_preprocess >> [raw_to_s3, run_earthmover]
+            run_earthmover >> [em_to_s3, run_lightbeam, em_to_snowflake]
+            run_lightbeam >> log_lightbeam_to_snowflake
+
+        return tenant_year_task_group
 
 
     def build_earthmover_to_s3_taskgroup(self,
