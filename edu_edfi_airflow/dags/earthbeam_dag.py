@@ -187,9 +187,9 @@ class EarthbeamDAG:
                     task_id=f"{tenant_code}_{api_year}_upload_raw_to_s3",
                     python_callable=local_filepath_to_s3,
                     op_kwargs={
-                        'local_filepath': pull_xcom(python_preprocess.task_id) if python_preprocess else raw_dir,
-                        's3_destination_key': s3_raw_filepath,
                         's3_conn_id': s3_conn_id,
+                        's3_destination_key': s3_raw_filepath,
+                        'local_filepath': pull_xcom(python_preprocess.task_id) if python_preprocess else raw_dir,
                         'remove_local_filepath': False,
                         # TODO: Include local-filepath cleanup in final logs operation.
                     },
@@ -254,9 +254,9 @@ class EarthbeamDAG:
                     task_id=f"{tenant_code}_{api_year}_upload_earthmover_to_s3",
                     python_callable=local_filepath_to_s3,
                     op_kwargs={
-                        'local_filepath': pull_xcom(run_earthmover.task_id),
-                        's3_destination_key': s3_em_filepath,
                         's3_conn_id': s3_conn_id,
+                        's3_destination_key': s3_em_filepath,
+                        'local_filepath': pull_xcom(run_earthmover.task_id),
                         'remove_local_filepath': False,
                         # TODO: Include local-filepath cleanup in final logs operation.
                     },
