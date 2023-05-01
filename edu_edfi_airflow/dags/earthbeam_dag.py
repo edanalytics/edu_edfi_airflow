@@ -19,12 +19,9 @@ class EarthbeamDAG:
     Full Earthmover-Lightbeam DAG, with optional Python callable pre-processing.
 
     TODO:
-    - Set up consistent state file pathing.
-    - Set up `force` DAG-config.
     - S3-to-Snowflake COPY INTO
     - Post-run Lightbeam-to-Snowflake logging
     - Optional file hashing before initial S3
-    - Lightbeam and Snowflake are mututally-exclusive actions!
     """
     emlb_state_directory: str = '/efs/emlb'
 
@@ -96,37 +93,6 @@ class EarthbeamDAG:
             task_id=f"{self.run_type}__preprocess_python_callable",
             python_callable=python_callable,
             op_kwargs=kwargs or {},
-            provide_context=True,
-            pool=self.pool,
-            dag=self.dag
-        )
-
-    def build_s3_operator(self,
-        tenant_code: str,
-        api_year   : str,
-        data_dir   : str,
-        s3_conn_id : str,
-        s3_filepath: str
-    ) -> PythonOperator:
-        """
-
-        :param tenant_code:
-        :param api_year:
-        :param data_dir:
-        :param s3_conn_id:
-        :param s3_filepath:
-        :return:
-        """
-        return PythonOperator(
-            task_id=f"{tenant_code}_{api_year}_upload_to_s3",
-            python_callable=local_filepath_to_s3,
-            op_kwargs={
-                'local_filepath': data_dir,
-                's3_destination_key': s3_filepath,
-                's3_conn_id': s3_conn_id,
-                'remove_local_filepath': False,
-                # TODO: Include local-filepath cleanup in final logs operation.
-            },
             provide_context=True,
             pool=self.pool,
             dag=self.dag
@@ -318,6 +284,37 @@ class EarthbeamDAG:
         return tenant_year_task_group
 
 
+    # def build_s3_operator(self,
+    #     tenant_code: str,
+    #     api_year   : str,
+    #     data_dir   : str,
+    #     s3_conn_id : str,
+    #     s3_filepath: str
+    # ) -> PythonOperator:
+    #     """
+    #
+    #     :param tenant_code:
+    #     :param api_year:
+    #     :param data_dir:
+    #     :param s3_conn_id:
+    #     :param s3_filepath:
+    #     :return:
+    #     """
+    #     return PythonOperator(
+    #         task_id=f"{tenant_code}_{api_year}_upload_to_s3",
+    #         python_callable=local_filepath_to_s3,
+    #         op_kwargs={
+    #             'local_filepath': data_dir,
+    #             's3_destination_key': s3_filepath,
+    #             's3_conn_id': s3_conn_id,
+    #             'remove_local_filepath': False,
+    #             # TODO: Include local-filepath cleanup in final logs operation.
+    #         },
+    #         provide_context=True,
+    #         pool=self.pool,
+    #         dag=self.dag
+    #     )
+    #
     # def build_earthmover_operator(self,
     #     tenant_code: str,
     #     api_year   : str,
