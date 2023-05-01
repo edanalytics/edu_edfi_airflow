@@ -180,7 +180,7 @@ class EarthbeamDAG:
                     )
 
                 s3_raw_filepath = os.path.join(
-                    s3_filepath, 'raw', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+                    s3_filepath, 'raw', tenant_code, self.run_type, str(api_year), '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
 
                 raw_to_s3 = PythonOperator(
@@ -203,11 +203,11 @@ class EarthbeamDAG:
 
             ### EarthmoverOperator
             em_output_dir = os.path.join(
-                self.em_output_directory, tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+                self.em_output_directory, tenant_code, self.run_type, str(api_year), '{{ ds_nodash }}', '{{ ts_nodash }}'
             )
 
             em_state_file = os.path.join(
-                self.emlb_state_directory, tenant_code, self.run_type, api_year, 'earthmover.csv'
+                self.emlb_state_directory, tenant_code, self.run_type, str(api_year), 'earthmover.csv'
             )
 
             run_earthmover = EarthmoverOperator(
@@ -223,7 +223,7 @@ class EarthbeamDAG:
             ### LightbeamOperator
             if edfi_conn_id:
                 lb_state_dir = os.path.join(
-                    self.emlb_state_directory, tenant_code, self.run_type, api_year, 'lightbeam'
+                    self.emlb_state_directory, tenant_code, self.run_type, str(api_year), 'lightbeam'
                 )
 
                 run_lightbeam = LightbeamOperator(
@@ -247,7 +247,7 @@ class EarthbeamDAG:
                     )
 
                 s3_em_filepath = os.path.join(
-                    s3_filepath, 'earthmover', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+                    s3_filepath, 'earthmover', tenant_code, self.run_type, str(api_year), '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
 
                 em_to_s3 = PythonOperator(
