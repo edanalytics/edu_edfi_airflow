@@ -214,7 +214,7 @@ class EarthbeamDAG:
                 task_id=f"{tenant_code}_{api_year}_run_earthmover",
                 output_dir=em_output_dir,
                 state_file=em_state_file,
-                **earthmover_kwargs or {},
+                **(earthmover_kwargs or {}),
                 pool=self.pool,
                 dag=self.dag
             )
@@ -231,7 +231,7 @@ class EarthbeamDAG:
                     data_dir=pull_xcom(run_earthmover.task_id),
                     state_dir=lb_state_dir,
                     edfi_conn_id=edfi_conn_id,
-                    **lightbeam_kwargs or {},
+                    **(lightbeam_kwargs or {}),
                     pool=self.pool,
                     dag=self.dag
                 )
