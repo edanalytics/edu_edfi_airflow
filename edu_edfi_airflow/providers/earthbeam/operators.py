@@ -17,7 +17,7 @@ class EarthmoverOperator(BashOperator):
         state_file : Optional[str] = None,
         config_file: Optional[str] = None,
         selector   : Optional[Union[str, Iterable[str]]] = None,
-        params     : Optional[Union[str, dict]] = None,
+        parameters : Optional[Union[str, dict]] = None,
 
         force          : bool = False,
         skip_hashing   : bool = False,
@@ -41,10 +41,10 @@ class EarthmoverOperator(BashOperator):
                 selector = ",".join(selector)
             self.arguments['--selector'] = selector
 
-        if params:  # JSON string or dictionary
-            if not isinstance(params, str):
-                params = json.dumps(params)
-            self.arguments['--params'] = params
+        if parameters:  # JSON string or dictionary
+            if not isinstance(parameters, str):
+                params = json.dumps(parameters)
+            self.arguments['--params'] = parameters
 
         # Boolean arguments
         if force:
@@ -98,7 +98,7 @@ class LightbeamOperator(BashOperator):
 
         config_file: Optional[str] = None,
         selector: Optional[Union[str, Iterable[str]]] = None,
-        params: Optional[Union[str, dict]] = None,
+        parameters: Optional[Union[str, dict]] = None,
 
         wipe: bool = False,
         force: bool = False,
@@ -131,10 +131,10 @@ class LightbeamOperator(BashOperator):
                 selector = ",".join(selector)
             self.arguments['--selector'] = selector
 
-        if params:  # JSON string or dictionary
-            if not isinstance(params, str):
-                params = json.dumps(params)
-            self.arguments['--params'] = params
+        if parameters:  # JSON string or dictionary
+            if not isinstance(parameters, str):
+                params = json.dumps(parameters)
+            self.arguments['--params'] = parameters
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
