@@ -11,7 +11,8 @@ class EarthmoverOperator(BashOperator):
     """
     def __init__(self,
         *,
-        output_dir : str,
+        output_dir : Optional[str] = None,
+        state_file : Optional[str] = None,
         config_file: Optional[str] = None,
         selector   : Optional[Union[str, Iterable[str]]] = None,
         params     : Optional[Union[str, dict]] = None,
@@ -24,6 +25,7 @@ class EarthmoverOperator(BashOperator):
         **kwargs
     ):
         self.output_dir = output_dir
+        self.state_file = state_file
 
         ### Building the Earthmover CLI command
         self.arguments = {}
@@ -58,7 +60,10 @@ class EarthmoverOperator(BashOperator):
 
         ### Environment variables
         # Pass required `output_dir` parameter as environment variables
-        env_vars = {'OUTPUT_DIR': self.output_dir}
+        env_vars = {
+            'OUTPUT_DIR': self.output_dir,
+            'STATE_FILE': self.state_file,
+        }
 
         super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
 
@@ -75,9 +80,11 @@ class LightbeamOperator(BashOperator):
 
     def __init__(self,
         *,
-        data_dir: str,
-
         command: str = 'send',
+
+        data_dir: Optional[str] = None,
+        state_dir: Optional[str] = None,
+
         edfi_conn_id: Optional[str] = None,
 
         config_file: Optional[str] = None,
@@ -94,6 +101,7 @@ class LightbeamOperator(BashOperator):
         **kwargs
     ):
         self.data_dir = data_dir
+        self.state_dir = state_dir
         self.edfi_conn_id = edfi_conn_id
 
         # Verify command argument is valid
@@ -142,7 +150,10 @@ class LightbeamOperator(BashOperator):
 
         ### Environment variables
         # Pass required `data_dir`
-        env_vars = {'DATA_DIR': self.data_dir}
+        env_vars = {
+            'DATA_DIR'  : self.data_dir,
+            'STATE_DIR': self.state_dir,
+        }
 
         super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
 
