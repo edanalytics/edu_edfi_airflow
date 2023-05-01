@@ -24,6 +24,7 @@ class EarthbeamDAG:
     - Optional file hashing before initial S3
     """
     emlb_state_directory: str = '/efs/emlb'
+    em_output_directory : str = '/efs/tmp_storage/earthmover'
 
     def __init__(self,
         run_type: str,
@@ -202,7 +203,7 @@ class EarthbeamDAG:
 
             ### EarthmoverOperator
             em_output_dir = os.path.join(
-                raw_dir, 'earthmover', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+                self.em_output_directory, tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
             )
 
             em_state_file = os.path.join(
