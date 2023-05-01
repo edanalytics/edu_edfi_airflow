@@ -1,8 +1,10 @@
 import json
+import logging
 from typing import Iterable, Optional, Union
 
 from airflow.operators.bash import BashOperator
 
+from edu_edfi_airflow.dags.dag_util.airflow_util import get_context_parameter
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 class EarthmoverOperator(BashOperator):
@@ -54,10 +56,6 @@ class EarthmoverOperator(BashOperator):
         if show_stacktrace:
             self.arguments['--show-stacktrace'] = ""
 
-        # Build out the final Earthmover command with any passed arguments
-        arguments_string = " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
-        bash_command = f"earthmover run {arguments_string}"
-
         ### Environment variables
         # Pass required `output_dir` parameter as environment variables
         env_vars = {
@@ -65,7 +63,7 @@ class EarthmoverOperator(BashOperator):
             'STATE_FILE': self.state_file,
         }
 
-        super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
+        super().__init__(bash_command="earthmover run ", env=env_vars, **kwargs)
 
 
     def execute(self, context) -> str:
@@ -74,6 +72,10 @@ class EarthmoverOperator(BashOperator):
         :param context:
         :return:
         """
+        # Update final Earthmover command with any passed arguments
+        # This update occurs here instead of init to allow context parameters to be passed.
+        self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
+
         super().execute(context)
         return self.output_dir
 
@@ -151,18 +153,14 @@ class LightbeamOperator(BashOperator):
         if newer_than:
             self.arguments['--newer-than'] = newer_than
 
-        # Build out the final Lightbeam command with any passed arguments
-        arguments_string = " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
-        bash_command = f"lightbeam {command} {arguments_string}"
-
         ### Environment variables
         # Pass required `data_dir`
         env_vars = {
-            'DATA_DIR'  : self.data_dir,
+            'DATA_DIR' : self.data_dir,
             'STATE_DIR': self.state_dir,
         }
 
-        super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
+        super().__init__(bash_command=f"lightbeam {command} ", env=env_vars, **kwargs)
 
 
     def execute(self, context) -> str:
@@ -191,6 +189,15 @@ class LightbeamOperator(BashOperator):
             _api_mode = edfi_conn.extra_dejson.get('api_mode')
             if _api_mode:
                 self.env['MODE'] = _api_mode
+
+        # Overwrite `force` if defined in context.
+        if get_context_parameter(context, 'force'):
+            logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
+            self.arguments['--force'] = ""
+
+        # Update final Lightbeam command with any passed arguments
+        # This update occurs here instead of init to allow context parameters to be passed.
+        self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
 
         super().execute(context)
         return self.data_dir

@@ -19,6 +19,21 @@ def is_full_refresh(context) -> bool:
     return full_refresh
 
 
+def get_context_parameter(context, parameter: str, default: object = None) -> object:
+    """
+    Searches execution context for parameter.
+
+    :param context:
+    :param parameter:
+    :param default:
+    :return:
+    """
+    if context['dag_run'].conf:
+        return context['dag_run'].conf.get(parameter, default)
+    else:
+        return default
+
+
 def is_resource_specified(context, resource: str) -> bool:
     """
 
