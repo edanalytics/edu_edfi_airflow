@@ -106,9 +106,9 @@ class EarthbeamDAG:
         raw_dir: str,
 
         *,
-        earthmover_kwargs: dict,
-
         edfi_conn_id     : Optional[str] = None,
+
+        earthmover_kwargs: Optional[dict] = None,
         lightbeam_kwargs : Optional[dict] = None,
 
         s3_conn_id       : Optional[str] = None,
@@ -137,9 +137,9 @@ class EarthbeamDAG:
         :param api_year:
         :param raw_dir:
 
-        :param earthmover_kwargs:
-
         :param edfi_conn_id:
+
+        :param earthmover_kwargs:
         :param lightbeam_kwargs:
 
         :param s3_conn_id:
@@ -214,7 +214,7 @@ class EarthbeamDAG:
                 task_id=f"{tenant_code}_{api_year}_run_earthmover",
                 output_dir=em_output_dir,
                 state_file=em_state_file,
-                **earthmover_kwargs,
+                **earthmover_kwargs or {},
                 pool=self.pool,
                 dag=self.dag
             )
