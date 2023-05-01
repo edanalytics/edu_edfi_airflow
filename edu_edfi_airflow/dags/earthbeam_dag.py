@@ -288,9 +288,23 @@ class EarthbeamDAG:
 
 
             ### Order TaskGroup
-            # python_preprocess >> [raw_to_s3, run_earthmover]
-            # run_earthmover >> [em_to_s3, run_lightbeam, em_to_snowflake]
-            # run_lightbeam >> log_lightbeam_to_snowflake
+            if python_preprocess:
+                python_preprocess >> run_earthmover
+
+                if raw_to_s3:
+                    python_preprocess >> raw_to_s3
+
+            if run_lightbeam:
+                run_earthmover >> run_lightbeam
+
+                if log_lightbeam_to_snowflake:
+                    run_lightbeam >> log_lightbeam_to_snowflake
+
+            if em_to_s3:
+                run_earthmover >> em_to_s3
+
+            if em_to_snowflake:
+                run_earthmover >> em_to_snowflake
 
         return tenant_year_task_group
 
