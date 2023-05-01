@@ -68,7 +68,14 @@ class EarthmoverOperator(BashOperator):
         super().__init__(bash_command=bash_command, env=env_vars, **kwargs)
 
 
+    def execute(self, context) -> str:
+        """
 
+        :param context:
+        :return:
+        """
+        super().execute(context)
+        return self.output_dir
 
 
 
