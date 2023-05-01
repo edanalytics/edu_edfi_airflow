@@ -26,6 +26,8 @@ class EarthbeamDAG:
     - Optional file hashing before initial S3
     - Lightbeam and Snowflake are mututally-exclusive actions!
     """
+    emlb_state_directory: str = '/efs/emlb'
+
     def __init__(self,
         run_type: str,
 
@@ -134,7 +136,7 @@ class EarthbeamDAG:
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: str,
-        tmp_dir: str,
+        raw_dir: str,
 
         *,
         earthmover_kwargs: dict,
@@ -152,13 +154,21 @@ class EarthbeamDAG:
         lightbeam_logging_table: Optional[str] = None
     ):
         """
-        (Python) -> Earthmover -> (Lightbeam) -> (Snowflake: Lightbeam Logs)
-                 -> (S3: Raw)  -> (S3: Earthmover Output)
-                               -> (Snowflake: Earthmover Output)
+        (Python) +-> Earthmover +-> (Lightbeam) -> (Snowflake: Lightbeam Logs)
+                 \-> (S3: Raw)  \-> (S3: Earthmover Output)
+                                \-> (Snowflake: Earthmover Output)
+
+        Many steps are automatic based on arguments defined:
+        * If `edfi_conn_id` is defined, use Lightbeam to post to ODS.
+        * If `python_callable` is defined, run Python pre-process.
+        * If `s3_conn_id` is defined, upload files raw and post-Earthmover.
+        * If `snowflake_conn_id` is defined and `edfi_conn_id` is NOT defined, copy EM output into raw Snowflake tables.
+        * If `lightbeam_logging_table` is defined, copy LB logs into Snowflake table.
+
 
         :param tenant_code:
         :param api_year:
-        :param tmp_dir:
+        :param raw_dir:
 
         :param earthmover_kwargs:
 
@@ -194,6 +204,7 @@ class EarthbeamDAG:
             else:
                 python_preprocess = None
 
+
             ### Raw to S3
             if s3_conn_id:
                 s3_raw_filepath = os.path.join(
@@ -204,7 +215,7 @@ class EarthbeamDAG:
                     task_id=f"{tenant_code}_{api_year}_upload_raw_to_s3",
                     python_callable=local_filepath_to_s3,
                     op_kwargs={
-                        'local_filepath': pull_xcom(python_preprocess.task_id) if python_preprocess else tmp_dir,
+                        'local_filepath': pull_xcom(python_preprocess.task_id) if python_preprocess else raw_dir,
                         's3_destination_key': s3_raw_filepath,
                         's3_conn_id': s3_conn_id,
                         'remove_local_filepath': False,
@@ -219,23 +230,34 @@ class EarthbeamDAG:
 
 
             ### EarthmoverOperator
-            output_dir = os.path.join(
-                tmp_dir, 'earthmover', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+            em_output_dir = os.path.join(
+                raw_dir, 'earthmover', tenant_code, self.run_type, api_year, '{{ ds_nodash }}', '{{ ts_nodash }}'
+            )
+
+            em_state_file = os.path.join(
+                self.emlb_state_directory, tenant_code, self.run_type, api_year, 'earthmover.csv'
             )
 
             run_earthmover = EarthmoverOperator(
                 task_id=f"{tenant_code}_{api_year}_run_earthmover",
-                output_dir=pull_xcom(python_preprocess.task_id) if python_preprocess else output_dir,
+                output_dir=em_output_dir,
+                state_file=em_state_file,
                 **earthmover_kwargs,
                 pool=self.pool,
                 dag=self.dag
             )
 
+
             ### LightbeamOperator
             if edfi_conn_id:
+                lb_state_dir = os.path.join(
+                    self.emlb_state_directory, tenant_code, self.run_type, api_year, 'lightbeam'
+                )
+
                 run_lightbeam = LightbeamOperator(
                     task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
                     data_dir=pull_xcom(run_earthmover.task_id),
+                    state_dir=lb_state_dir,
                     edfi_conn_id=edfi_conn_id,
                     **lightbeam_kwargs or {},
                     pool=self.pool,
@@ -243,6 +265,7 @@ class EarthbeamDAG:
                 )
             else:
                 run_lightbeam = None
+
 
             ### Earthmover to S3
             if s3_conn_id:
@@ -267,14 +290,16 @@ class EarthbeamDAG:
             else:
                 em_to_s3 = None
 
+
             ### Earthmover to Snowflake
-            if lightbeam_kwargs and snowflake_conn_id:
+            if snowflake_conn_id and not edfi_conn_id:
                 if not s3_conn_id:
                     raise Exception(
                         "S3 connection required to copy into Snowflake."
                     )
                 pass
             em_to_snowflake = None
+
 
             ### Lightbeam logs to Snowflake
             if lightbeam_logging_table:
@@ -283,6 +308,7 @@ class EarthbeamDAG:
                         "Ed-Fi connection and snowflake connection required to copy Lightbeam logs into Snowflake."
                     )
             log_lightbeam_to_snowflake = None
+
 
             ### Order TaskGroup
             python_preprocess >> [raw_to_s3, run_earthmover]
