@@ -174,21 +174,21 @@ class LightbeamOperator(BashOperator):
         if self.edfi_conn_id:
             edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
-            self.env['BASE_URL'] = edfi_conn.host
-            self.env['CLIENT_ID'] = edfi_conn.login
-            self.env['CLIENT_SECRET'] = edfi_conn.password
+            self.env['EDFI_API_BASE_URL'] = edfi_conn.host
+            self.env['EDFI_API_CLIENT_ID'] = edfi_conn.login
+            self.env['EDFI_API_CLIENT_SECRET'] = edfi_conn.password
 
             _api_year = edfi_conn.extra_dejson.get('api_year')
             if _api_year:
-                self.env['YEAR'] = _api_year
+                self.env['EDFI_API_YEAR'] = _api_year
 
             _api_version = edfi_conn.extra_dejson.get('api_version')
             if _api_version:
-                self.env['VERSION'] = _api_version
+                self.env['EDFI_API_VERSION'] = _api_version
 
             _api_mode = edfi_conn.extra_dejson.get('api_mode')
             if _api_mode:
-                self.env['MODE'] = _api_mode
+                self.env['EDFI_API_MODE'] = _api_mode
 
         # Overwrite `force` if defined in context.
         if get_context_parameter(context, 'force'):
