@@ -1,3 +1,4 @@
+import datetime
 import os
 
 from functools import partial
@@ -25,6 +26,7 @@ class EarthbeamDAG:
     - Optional file hashing before initial S3
     """
     emlb_state_directory: str = '/efs/emlb'
+    raw_output_directory: str = '/efs/tmp_storage/raw'
     em_output_directory : str = '/efs/tmp_storage/earthmover'
 
     def __init__(self,
@@ -79,6 +81,20 @@ class EarthbeamDAG:
             **kwargs
         )
 
+
+    def build_local_raw_dir(self, tenant_code: str, api_year: int) -> str:
+        """
+        Helper function to force consistency when building raw filepathing in Python operators.
+
+        :param tenant_code:
+        :param api_year:
+        :return:
+        """
+        now = datetime.datetime.now()
+
+        return os.path.join(
+            self.raw_output_directory, tenant_code, self.run_type, str(api_year), now.strftime("%Y%m%d"), now.strftime("%Y%m%dT%H%M%S")
+        )
 
     def build_python_preprocessing_operator(self,
         identifier: Optional[str] = None,
