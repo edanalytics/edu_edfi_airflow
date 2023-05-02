@@ -2,10 +2,11 @@ import json
 import logging
 from typing import Iterable, Optional, Union
 
+from airflow.models import Connection
 from airflow.operators.bash import BashOperator
 
 from edu_edfi_airflow.dags.dag_util.airflow_util import get_context_parameter
-from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
+
 
 class EarthmoverOperator(BashOperator):
     """
@@ -172,7 +173,7 @@ class LightbeamOperator(BashOperator):
         #  Extract EdFi connection parameters as environment variables if defined
         # (This must be done in execute to prevent extraction during DAG-parsing.
         if self.edfi_conn_id:
-            edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+            edfi_conn = Connection.get_connection_from_secrets(self.edfi_conn_id)
 
             self.env['EDFI_API_BASE_URL'] = edfi_conn.host
             self.env['EDFI_API_CLIENT_ID'] = edfi_conn.login

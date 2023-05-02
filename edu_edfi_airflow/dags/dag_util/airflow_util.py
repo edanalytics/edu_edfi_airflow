@@ -103,9 +103,6 @@ def chain(*tasks):
         up_task.set_downstream(down_task)
 
 
-
-
-
 def get_snowflake_params_from_conn(
     snowflake_conn_id: str
 ) -> Tuple[str, str]:
