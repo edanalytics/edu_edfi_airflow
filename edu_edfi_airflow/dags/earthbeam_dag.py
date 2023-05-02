@@ -4,7 +4,8 @@ from functools import partial
 from typing import Callable, Optional
 
 from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import slack_callbacks
@@ -80,20 +81,49 @@ class EarthbeamDAG:
 
 
     def build_python_preprocessing_operator(self,
-        python_callable: Optional[Callable] = None,
+        identifier: Optional[str] = None,
         **kwargs
     ) -> PythonOperator:
         """
         Optional Python preprocessing operator to run before Earthmover and Lightbeam.
 
-        :param python_callable:
+        :param identifier:
         :param kwargs:
         :return:
         """
+        task_id = f"{self.run_type}__preprocess_python_callable"
+
+        if identifier:
+            task_id += f"__{identifier}"
+
         return PythonOperator(
-            task_id=f"{self.run_type}__preprocess_python_callable",
-            python_callable=python_callable,
-            op_kwargs=kwargs or {},
+            task_id=task_id,
+            **kwargs,
+            provide_context=True,
+            pool=self.pool,
+            dag=self.dag
+        )
+
+
+    def build_bash_preprocessing_operator(self,
+        identifier: Optional[str] = None,
+        **kwargs
+    ) -> PythonOperator:
+        """
+        Optional Bash preprocessing operator to run before Earthmover and Lightbeam.
+
+        :param identifier:
+        :param kwargs:
+        :return:
+        """
+        task_id = f"{self.run_type}__preprocess_bash_script"
+
+        if identifier:
+            task_id += f"__{identifier}"
+
+        return BashOperator(
+            task_id=task_id,
+            **kwargs,
             provide_context=True,
             pool=self.pool,
             dag=self.dag
@@ -121,9 +151,8 @@ class EarthbeamDAG:
         lightbeam_logging_table: Optional[str] = None
     ):
         """
-        (Python) +-> Earthmover +-> (Lightbeam) -> (Snowflake: Lightbeam Logs)
-                 \-> (S3: Raw)  \-> (S3: Earthmover Output)
-                                \-> (Snowflake: Earthmover Output)
+        (Python) -> (S3: Raw) -> Earthmover -> (S3: Earthmover Output) +-> (Lightbeam) -> (Snowflake: Lightbeam Logs)
+                                                                       +-> (Snowflake: Earthmover Output)
 
         Many steps are automatic based on arguments defined:
         * If `edfi_conn_id` is defined, use Lightbeam to post to ODS.
