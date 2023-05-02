@@ -1,6 +1,7 @@
 from typing import Tuple
 
 from airflow.models import Connection
+from airflow.models.baseoperator import BaseOperator
 
 from edfi_api_client import camel_to_snake
 
@@ -69,6 +70,39 @@ def xcom_pull_template(
     xcom_string = f"ti.xcom_pull(task_ids='{task_ids}', key='{key}')"
 
     return '{{ ' + xcom_string + ' }}'
+
+
+def pull_xcom(op: BaseOperator, key: str = 'return_value') -> str:
+    """
+    Generate a Jinja template to pull a particular xcom key from a task_id
+    :param op: An upstream operator to pull xcom from
+    :param key: The key to retrieve. Default: return_value
+    :return: A formatted Jinja string for the xcom pull
+    """
+    xcom_string = f"ti.xcom_pull(task_ids='{op.task_id}', key='{key}')"
+    return '{{ ' + xcom_string + ' }}'
+
+
+def chain(*tasks):
+    """
+    Given a number of tasks, builds a dependency chain.
+
+    chain(task_1, task_2, task_3, task_4)
+
+    is equivalent to
+
+    task_1.set_downstream(task_2)
+    task_2.set_downstream(task_3)
+    task_3.set_downstream(task_4)
+
+    https://airflow.apache.org/docs/apache-airflow/1.10.3/_modules/airflow/utils/helpers.html
+    """
+    tasks = list(filter(None, tasks))  # Remove Nones
+
+    for up_task, down_task in zip(tasks[:-1], tasks[1:]):
+        up_task.set_downstream(down_task)
+
+
 
 
 
