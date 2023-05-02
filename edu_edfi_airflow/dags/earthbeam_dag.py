@@ -92,9 +92,11 @@ class EarthbeamDAG:
         """
         now = datetime.datetime.now()
 
-        return os.path.join(
+        raw_dir = os.path.join(
             self.raw_output_directory, tenant_code, self.run_type, str(api_year), now.strftime("%Y%m%d"), now.strftime("%Y%m%dT%H%M%S")
         )
+        os.makedirs(raw_dir, exist_ok=True)
+        return raw_dir
 
     def build_python_preprocessing_operator(self,
         identifier: Optional[str] = None,
