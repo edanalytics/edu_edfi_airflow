@@ -76,6 +76,7 @@ class EarthmoverOperator(BashOperator):
         # Update final Earthmover command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
+        logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
 
         super().execute(context)
         return self.output_dir
@@ -199,6 +200,7 @@ class LightbeamOperator(BashOperator):
         # Update final Lightbeam command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
+        logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 
         super().execute(context)
         return self.data_dir
