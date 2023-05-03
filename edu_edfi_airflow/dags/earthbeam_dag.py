@@ -25,7 +25,9 @@ class EarthbeamDAG:
     - Post-run Lightbeam-to-Snowflake logging
     - Optional file hashing before initial S3
     """
-    emlb_state_directory: str = '/efs/emlb'
+    # TODO: Should these be user-definable or static?
+    emlb_hash_directory : str = '/efs/emlb/prehash'
+    emlb_state_directory: str = '/efs/emlb/state'
     raw_output_directory: str = '/efs/tmp_storage/raw'
     em_output_directory : str = '/efs/tmp_storage/earthmover'
 
