@@ -22,6 +22,7 @@ class EarthbeamDAG:
 
     TODO:
     - S3-to-Snowflake COPY INTO
+      * Post-Earthmover, {resource}.jsonl files are saved to OUTPUT_DIR; how do we ascertain namespace?
     - Post-run Lightbeam-to-Snowflake logging
     - Optional file hashing before initial S3
     """
