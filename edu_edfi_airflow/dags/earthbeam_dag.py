@@ -197,8 +197,18 @@ class EarthbeamDAG:
         :param lightbeam_logging_table:
         :return:
         """
+        group_id = f"{tenant_code}_{api_year}__earthmover"
+
+        # TaskGroups have three shapes:
+        if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
+            group_id += "_to_lightbeam"
+        elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
+            group_id += "_to_snowflake"
+        elif s3_conn_id:         # Earthmover-to-S3
+            group_id += "_to_s3"
+
         with TaskGroup(
-            group_id=f"{tenant_code}_{api_year}__earthmover_to_lightbeam",
+            group_id=group_id,
             prefix_group_id=False,
             dag=self.dag
         ) as tenant_year_task_group:
