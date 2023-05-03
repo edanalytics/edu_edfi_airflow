@@ -99,24 +99,23 @@ class EarthbeamDAG:
         return raw_dir
 
     def build_python_preprocessing_operator(self,
-        identifier: Optional[str] = None,
+        python_callable: Callable,
         **kwargs
     ) -> PythonOperator:
         """
         Optional Python preprocessing operator to run before Earthmover and Lightbeam.
 
-        :param identifier:
+        :param python_callable:
         :param kwargs:
         :return:
         """
-        task_id = f"{self.run_type}__preprocess_python_callable"
-
-        if identifier:
-            task_id += f"__{identifier}"
+        callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
+        task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
 
         return PythonOperator(
             task_id=task_id,
-            **kwargs,
+            python_callable=python_callable,
+            op_kwargs=kwargs,
             provide_context=True,
             pool=self.pool,
             dag=self.dag
@@ -124,23 +123,22 @@ class EarthbeamDAG:
 
 
     def build_bash_preprocessing_operator(self,
-        identifier: Optional[str] = None,
+        bash_command: str,
         **kwargs
     ) -> PythonOperator:
         """
         Optional Bash preprocessing operator to run before Earthmover and Lightbeam.
 
-        :param identifier:
+        :param bash_command:
         :param kwargs:
         :return:
         """
-        task_id = f"{self.run_type}__preprocess_bash_script"
-
-        if identifier:
-            task_id += f"__{identifier}"
+        command_name = bash_command.split(" ")[0]  # First keyword of the bash-command
+        task_id = f"{self.run_type}__preprocess_bash_script__{command_name}"
 
         return BashOperator(
             task_id=task_id,
+            bash_command=bash_command,
             **kwargs,
             provide_context=True,
             pool=self.pool,
