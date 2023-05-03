@@ -155,6 +155,8 @@ class EarthbeamDAG:
         raw_dir: str,
 
         *,
+        group_id: Optional[str] = None,
+
         edfi_conn_id     : Optional[str] = None,
 
         earthmover_kwargs: Optional[dict] = None,
@@ -185,6 +187,8 @@ class EarthbeamDAG:
         :param api_year:
         :param raw_dir:
 
+        :param group_id:
+
         :param edfi_conn_id:
 
         :param earthmover_kwargs:
@@ -200,15 +204,17 @@ class EarthbeamDAG:
         :param lightbeam_logging_table:
         :return:
         """
-        group_id = f"{tenant_code}_{api_year}__earthmover"
+        # Group ID can be defined manually or built dynamically
+        if not group_id:
+            group_id = f"{tenant_code}_{api_year}__earthmover"
 
-        # TaskGroups have three shapes:
-        if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
-            group_id += "_to_lightbeam"
-        elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
-            group_id += "_to_snowflake"
-        elif s3_conn_id:         # Earthmover-to-S3
-            group_id += "_to_s3"
+            # TaskGroups have three shapes:
+            if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
+                group_id += "_to_lightbeam"
+            elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
+                group_id += "_to_snowflake"
+            elif s3_conn_id:         # Earthmover-to-S3
+                group_id += "_to_s3"
 
         with TaskGroup(
             group_id=group_id,
