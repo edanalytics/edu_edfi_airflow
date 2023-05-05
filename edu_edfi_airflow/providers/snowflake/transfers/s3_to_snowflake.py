@@ -95,8 +95,8 @@ class S3ToSnowflakeOperator(BaseOperator):
                 (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
             FROM (
                 SELECT
-                    SPLIT_PART(metadata$filename, '/', 1) as tenant_code,
-                    SPLIT_PART(metadata$filename, '/', 2) as api_year,
+                    '{self.tenant_code}' as tenant_code,
+                    '{self.api_year}' as api_year,
                     TO_DATE(SPLIT_PART(metadata$filename, '/', 3), 'YYYYMMDD') AS pull_date,
                     TO_TIMESTAMP(SPLIT_PART(metadata$filename, '/', 4), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
                     metadata$file_row_number AS file_row_number,
