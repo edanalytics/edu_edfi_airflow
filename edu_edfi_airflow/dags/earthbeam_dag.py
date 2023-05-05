@@ -183,7 +183,6 @@ class EarthbeamDAG:
         * If `snowflake_conn_id` is defined and `edfi_conn_id` is NOT defined, copy EM output into raw Snowflake tables.
         * If `lightbeam_logging_table` is defined, copy LB logs into Snowflake table.
 
-
         :param tenant_code:
         :param api_year:
         :param raw_dir:
@@ -285,25 +284,6 @@ class EarthbeamDAG:
             )
 
 
-            ### LightbeamOperator
-            if edfi_conn_id:
-                lb_state_dir = os.path.join(
-                    self.emlb_state_directory, tenant_code, self.run_type, str(api_year), 'lightbeam'
-                )
-
-                run_lightbeam = LightbeamOperator(
-                    task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
-                    data_dir=airflow_util.pull_xcom(run_earthmover),
-                    state_dir=lb_state_dir,
-                    edfi_conn_id=edfi_conn_id,
-                    **(lightbeam_kwargs or {}),
-                    pool=self.pool,
-                    dag=self.dag
-                )
-            else:
-                run_lightbeam = None
-
-
             ### Earthmover to S3
             if s3_conn_id:
                 if not s3_filepath:
@@ -333,7 +313,42 @@ class EarthbeamDAG:
                 em_to_s3 = None
 
 
-            ### Earthmover to Snowflake
+            ### LightbeamOperator
+            if edfi_conn_id:
+                lb_state_dir = os.path.join(
+                    self.emlb_state_directory, tenant_code, self.run_type, str(api_year), 'lightbeam'
+                )
+
+                run_lightbeam = LightbeamOperator(
+                    task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
+                    data_dir=airflow_util.pull_xcom(run_earthmover),
+                    state_dir=lb_state_dir,
+                    edfi_conn_id=edfi_conn_id,
+                    **(lightbeam_kwargs or {}),
+                    pool=self.pool,
+                    dag=self.dag
+                )
+            else:
+                run_lightbeam = None
+
+            ### Lightbeam logs to Snowflake
+            if lightbeam_logging_table:
+                if not (edfi_conn_id and snowflake_conn_id):
+                    raise Exception(
+                        "Ed-Fi connection and snowflake connection required to copy Lightbeam logs into Snowflake."
+                    )
+            log_lightbeam_to_snowflake = None
+
+
+            ### Default route: Earthmover-to-Lightbeam
+            airflow_util.chain(
+                python_preprocess, raw_to_s3,
+                run_earthmover, em_to_s3,
+                run_lightbeam, log_lightbeam_to_snowflake
+            )
+
+
+            ### Alternate route: Bypassing the ODS directly into Snowflake
             if snowflake_conn_id and not edfi_conn_id:
                 if not s3_conn_id:
                     raise Exception(
@@ -358,30 +373,5 @@ class EarthbeamDAG:
                     )
 
                     em_to_s3 >> em_to_snowflake
-
-
-            ### Lightbeam logs to Snowflake
-            if lightbeam_logging_table:
-                if not (edfi_conn_id and snowflake_conn_id):
-                    raise Exception(
-                        "Ed-Fi connection and snowflake connection required to copy Lightbeam logs into Snowflake."
-                    )
-            log_lightbeam_to_snowflake = None
-
-
-            ### Order TaskGroup
-            # Default chain with optional checkpointing
-            em_chain = (python_preprocess, raw_to_s3, run_earthmover, em_to_s3)
-
-            # Mutually-exclusive choice: through the ODS or around the ODS?
-            if run_lightbeam:
-                airflow_util.chain(
-                    *em_chain, run_lightbeam, log_lightbeam_to_snowflake
-                )
-
-            elif em_to_snowflake:
-                airflow_util.chain(
-                    *em_chain, em_to_snowflake
-                )
 
         return tenant_year_task_group
