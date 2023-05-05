@@ -355,23 +355,24 @@ class EarthbeamDAG:
                         "S3 connection required to copy into Snowflake."
                     )
 
-                for resource in resources:
-
-                    em_to_snowflake = S3ToSnowflakeOperator(
-                        task_id=f"{tenant_code}_{api_year}_copy_s3_to_snowflake__{resource}",
-
-                        tenant_code=tenant_code,
-                        api_year=api_year,
-                        resource=f"{resource}__{self.run_type}",
-                        table_name=resource,
-
-                        s3_destination_key=airflow_util.pull_xcom(em_to_s3),
-
-                        snowflake_conn_id=snowflake_conn_id,
-                        ods_version="",
-                        data_model_version="",
-                    )
-
-                    em_to_s3 >> em_to_snowflake
+                # TODO: How do we resolve the resources that need to be loaded into Snowflake?
+                # for resource in resources:
+                #
+                #     em_to_snowflake = S3ToSnowflakeOperator(
+                #         task_id=f"{tenant_code}_{api_year}_copy_s3_to_snowflake__{resource}",
+                #
+                #         tenant_code=tenant_code,
+                #         api_year=api_year,
+                #         resource=f"{resource}__{self.run_type}",
+                #         table_name=resource,
+                #
+                #         s3_destination_key=airflow_util.pull_xcom(em_to_s3),
+                #
+                #         snowflake_conn_id=snowflake_conn_id,
+                #         ods_version="",
+                #         data_model_version="",
+                #     )
+                #
+                #     em_to_s3 >> em_to_snowflake
 
         return tenant_year_task_group
