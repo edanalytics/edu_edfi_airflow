@@ -58,20 +58,31 @@ class S3ToSnowflakeOperator(BaseOperator):
         :param context:
         :return:
         """
-        edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id).get_conn()
+        ### Retrieve the database and schema from the Snowflake hook.
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
-
-        # Retrieve the database and schema from the Snowflake hook.
         database, schema = get_snowflake_params_from_conn(self.snowflake_conn_id)
 
-        if edfi_conn.is_edfi2():
-            ods_version = "ED-FI2"
-            data_model_version = "ED-FI2"
-        else:
-            ods_version = edfi_conn.get_ods_version()
-            data_model_version = edfi_conn.get_data_model_version()
+        ### Retrieve the Ed-Fi, ODS, and data model versions if not provided.
+        # (This needs to occur in execute to not call the API at every Airflow synchronize.)
+        if self.edfi_conn_id:
+            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id).get_conn()
+            is_edfi2 = edfi_conn.is_edfi2()
 
-        # Build the SQL queries to be passed into `Hook.run()`.
+            if not self.ods_version:
+                self.ods_version = 'ED-FI2' if is_edfi2 else edfi_conn.get_ods_version()
+
+            if not self.data_model_version:
+                self.data_model_version = 'ED-FI2' if is_edfi2 else edfi_conn.get_data_model_version()
+
+        else:
+            is_edfi2 = False
+
+        if not (self.ods_version and self.data_model_version):
+            raise Exception(
+                f"Arguments `ods_version` and `data_model_version` could not be retrieved and must be provided."
+            )
+
+        ### Build the SQL queries to be passed into `Hook.run()`.
         qry_delete = f"""
             DELETE FROM {database}.{schema}.{self.table_name}
             WHERE tenant_code = '{self.tenant_code}'
@@ -91,8 +102,8 @@ class S3ToSnowflakeOperator(BaseOperator):
                     metadata$file_row_number AS file_row_number,
                     metadata$filename AS filename,
                     '{self.resource}' AS name,
-                    '{ods_version}' AS ods_version,
-                    '{data_model_version}' as data_model_version,
+                    '{self.ods_version}' AS ods_version,
+                    '{self.data_model_version}' as data_model_version,
                     t.$1 AS v
                 FROM @{database}.util.airflow_stage/{self.s3_destination_key}
                 (file_format => 'json_default') t
@@ -100,10 +111,9 @@ class S3ToSnowflakeOperator(BaseOperator):
             force = true;
         """
 
-        # Break off prematurely if EdFi 3+ and not a full refresh.
+        ### Commit the update queries to Snowflake.
         # Incremental runs are only available in EdFi 3+.
-        if edfi_conn.is_edfi2() or (self.full_refresh or is_full_refresh(context)):
-
+        if is_edfi2 or (self.full_refresh or is_full_refresh(context)):
             cursor_log = snowflake_hook.run(
                 sql=[qry_delete, qry_copy_into],
                 autocommit=False
