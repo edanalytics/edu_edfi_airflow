@@ -1,5 +1,7 @@
 import logging
 
+from typing import Optional
+
 from airflow.models import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.utils.decorators import apply_defaults
@@ -17,9 +19,6 @@ class S3ToSnowflakeOperator(BaseOperator):
     @apply_defaults
     def __init__(self,
         *,
-        edfi_conn_id: str,
-        snowflake_conn_id: str,
-
         tenant_code: str,
         api_year: int,
         resource: str,
@@ -27,14 +26,16 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         s3_destination_key: str,
 
+        snowflake_conn_id: str,
         full_refresh: bool = False,
+
+        edfi_conn_id: Optional[str] = None,
+        ods_version: Optional[str] = None,
+        data_model_version: Optional[str] = None,
 
         **kwargs
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
-
-        self.edfi_conn_id = edfi_conn_id
-        self.snowflake_conn_id = snowflake_conn_id
 
         self.tenant_code = tenant_code
         self.api_year = api_year
@@ -43,7 +44,12 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         self.s3_destination_key = s3_destination_key
 
+        self.snowflake_conn_id = snowflake_conn_id
         self.full_refresh = full_refresh
+
+        self.edfi_conn_id = edfi_conn_id
+        self.ods_version = ods_version
+        self.data_model_version = data_model_version
 
 
     def execute(self, context):
