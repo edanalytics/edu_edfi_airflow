@@ -95,15 +95,15 @@ class S3ToSnowflakeOperator(BaseOperator):
                 (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
             FROM (
                 SELECT
-                    '{self.tenant_code}' as tenant_code,
-                    '{self.api_year}' as api_year,
-                    TO_DATE(SPLIT_PART(metadata$filename, '/', 3), 'YYYYMMDD') AS pull_date,
-                    TO_TIMESTAMP(SPLIT_PART(metadata$filename, '/', 4), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
+                    '{self.tenant_code}' AS tenant_code,
+                    '{self.api_year}' AS api_year,
+                    TO_DATE(REGEXP_SUBSTR(metadata$filename, '\\d{8}'), 'YYYYMMDD') AS pull_date,
+                    TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '\\d{8}T\\d{6}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
                     metadata$file_row_number AS file_row_number,
                     metadata$filename AS filename,
                     '{self.resource}' AS name,
                     '{self.ods_version}' AS ods_version,
-                    '{self.data_model_version}' as data_model_version,
+                    '{self.data_model_version}' AS data_model_version,
                     t.$1 AS v
                 FROM @{database}.util.airflow_stage/{self.s3_destination_key}
                 (file_format => 'json_default') t
