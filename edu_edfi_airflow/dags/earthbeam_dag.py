@@ -14,6 +14,7 @@ from ea_airflow_util import slack_callbacks
 from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
+from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
 
 class EarthbeamDAG:
@@ -151,7 +152,7 @@ class EarthbeamDAG:
 
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
-        api_year: str,
+        api_year: int,
         raw_dir: str,
 
         *,
@@ -338,8 +339,25 @@ class EarthbeamDAG:
                     raise Exception(
                         "S3 connection required to copy into Snowflake."
                     )
-                pass
-            em_to_snowflake = None
+
+                for resource in resources:
+
+                    em_to_snowflake = S3ToSnowflakeOperator(
+                        task_id=f"{tenant_code}_{api_year}_copy_s3_to_snowflake__{resource}",
+
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        resource=f"{resource}__{self.run_type}",
+                        table_name=resource,
+
+                        s3_destination_key=airflow_util.pull_xcom(em_to_s3),
+
+                        snowflake_conn_id=snowflake_conn_id,
+                        ods_version="",
+                        data_model_version="",
+                    )
+
+                    em_to_s3 >> em_to_snowflake
 
 
             ### Lightbeam logs to Snowflake
