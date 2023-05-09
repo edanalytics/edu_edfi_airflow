@@ -306,9 +306,8 @@ class EdFiResourceDAG:
 
 
             ### ORDER OPERATORS
-            # Remove undefined operators from
             task_order = (pull_edfi_to_s3, copy_s3_to_snowflake, update_change_version_snowflake)
-            chain(filter(None, task_order))
+            chain(list(filter(None, task_order)))  # Chain all defined operators into task-order.
 
         # Chain with the change-version task group if defined.
         if self.cv_task_group:
