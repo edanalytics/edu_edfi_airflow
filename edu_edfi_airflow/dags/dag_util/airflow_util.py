@@ -5,6 +5,20 @@ from airflow.models import Connection
 from edfi_api_client import camel_to_snake
 
 
+def build_display_name(resource: str, is_deletes: bool = False) -> str:
+    """
+    Universal helper method for building the display name of a resource.
+
+    :param resource:
+    :param is_deletes:
+    :return:
+    """
+    if is_deletes:
+        return f"{resource}_deletes"
+    else:
+        return resource
+
+
 def is_full_refresh(context) -> bool:
     """
 
