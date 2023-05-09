@@ -221,7 +221,7 @@ class EdFiResourceDAG:
                 ### UPDATE CHANGE VERSION TABLE ON SNOWFLAKE
                 update_change_version_snowflake = PythonOperator(
                     task_id=f"update_change_version_{display_resource}",
-                    python_callable=change_version.update_change_version_table,
+                    python_callable=change_version.update_resource_change_version,
 
                     op_kwargs={
                         'tenant_code': self.tenant_code,
