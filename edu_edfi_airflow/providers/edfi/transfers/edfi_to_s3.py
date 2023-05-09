@@ -67,6 +67,11 @@ class EdFiToS3Operator(BaseOperator):
         self.s3_conn_id= s3_conn_id
         self.s3_destination_key= s3_destination_key
 
+        # Force min-change-version if no XCom was found.
+        # TODO: How to provide default values for xcoms?
+        if self.max_change_version and self.min_change_version is None:
+            self.min_change_version = 0
+
 
     def execute(self, context) -> str:
         """
