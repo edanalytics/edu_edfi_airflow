@@ -5,7 +5,7 @@ import os
 from typing import Iterator, Optional
 
 from airflow.models import BaseOperator
-from airflow.exceptions import AirflowSkipException, AirflowException
+from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.utils.decorators import apply_defaults
 
@@ -83,6 +83,23 @@ class EdFiToS3Operator(BaseOperator):
         if not is_resource_specified(context, self.resource):
             raise AirflowSkipException(
                 "Skipping resource not specified in run context 'resources'."
+            )
+
+        # Run sanity checks to make sure we aren't doing something wrong.
+        if self.min_change_version is not None and self.max_change_version is not None:
+            if self.min_change_version == self.max_change_version:
+                raise AirflowSkipException(
+                    "ODS is unchanged since previous pull."
+                )
+            elif self.max_change_version < self.min_change_version:
+                raise AirflowFailException(
+                    "Apparent out-of-sequence run: current change version is smaller than previous!"
+                )
+
+            logging.info(
+                "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
+                    self.api_namespace, self.resource, self.min_change_version, self.max_change_version
+                )
             )
         
         ### Connect to EdFi and write resource data to a temp file.
