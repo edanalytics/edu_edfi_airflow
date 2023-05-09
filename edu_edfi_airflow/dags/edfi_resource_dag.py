@@ -4,14 +4,14 @@ from typing import Optional
 
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
+from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import slack_callbacks
 from edfi_api_client import camel_to_snake
 
-from edu_edfi_airflow.dags.callables import edfi as edfi_callables
-from edu_edfi_airflow.dags.callables import snowflake as snowflake_callables
-from edu_edfi_airflow.dags.dag_util.airflow_util import xcom_pull_template as pull_xcom
+from edu_edfi_airflow.dags.callables import change_version
+from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
@@ -20,6 +20,9 @@ class EdFiResourceDAG:
     """
 
     """
+    newest_edfi_cv_task_id = "get_latest_edfi_change_version"  # Original name for historic run compatibility
+    previous_snowflake_cv_task_id = "get_previous_change_versions_from_snowflake"
+
     def __init__(self,
         *,
         tenant_code: str,
@@ -32,10 +35,11 @@ class EdFiResourceDAG:
         pool     : str,
         tmp_dir  : str,
 
-        use_change_version: bool = True,
-        change_version_table: str = '_meta_change_versions',
         multiyear: bool = False,
         full_refresh: bool = False,
+
+        use_change_version: bool = True,
+        change_version_table: str = '_meta_change_versions',
 
         slack_conn_id: str = None,
 
@@ -52,22 +56,21 @@ class EdFiResourceDAG:
         self.pool = pool
         self.tmp_dir = tmp_dir
 
-        self.use_change_version = use_change_version
-        self.change_version_table = change_version_table
         self.multiyear = multiyear
         self.full_refresh = full_refresh
 
-        # Force full-refreshes if `use_change_version is False`.
-        if self.use_change_version is False:
-            self.full_refresh = True
+        self.use_change_version = use_change_version
+        self.change_version_table = change_version_table
 
+        # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
 
-        # If change-versions operations are turned off, don't build the operator.
-        if use_change_version:
-            self.edfi_change_version_operator = self.build_edfi_change_version_operator()
+        # Retrieve current and previous change versions to define an ingestion window.
+        if self.use_change_version:
+            self.cv_task_group = self.build_change_version_task_group()
         else:
-            self.edfi_change_version_operator = None
+            self.cv_task_group = None
+            self.full_refresh = True  # Force full-refreshes if change versions are not used.
 
 
     def initialize_dag(self,
@@ -109,20 +112,61 @@ class EdFiResourceDAG:
         )
 
 
-    def build_edfi_change_version_operator(self) -> PythonOperator:
+    def build_change_version_task_group(self) -> TaskGroup:
         """
+
         :return:
         """
-        task_id = "get_latest_edfi_change_version"
-
-        return PythonOperator(
-            task_id=task_id,
-            python_callable=edfi_callables.get_edfi_change_version,
-            op_kwargs={
-                'edfi_conn_id': self.edfi_conn_id,
-            },
+        with TaskGroup(
+            group_id="prepare_change_version_window",
+            prefix_group_id=False,
+            parent_group=None,
             dag=self.dag
-        )
+        ) as cv_task_group:
+
+            # Pull the newest change version recorded in Ed-Fi.
+            get_newest_edfi_cv = PythonOperator(
+                task_id=self.newest_edfi_cv_task_id,
+                python_callable=change_version.get_newest_edfi_change_version,
+                op_kwargs={
+                    'edfi_conn_id': self.edfi_conn_id,
+                },
+                dag=self.dag
+            )
+
+            # Reset the Snowflake change version table (if a full-refresh).
+            reset_snowflake_cvs = PythonOperator(
+                task_id="reset_previous_change_versions_in_snowflake",
+                python_callable=change_version.reset_change_versions,
+                op_kwargs={
+                    'tenant_code': self.tenant_code,
+                    'api_year': self.api_year,
+                    'snowflake_conn_id': self.snowflake_conn_id,
+                    'change_version_table': self.change_version_table,
+                    'full_refresh': self.full_refresh,
+                },
+                trigger_rule='all_success',
+                dag=self.dag
+            )
+
+            # Retrieve the latest active pulls from the Snowflake change version table.
+            get_previous_snowflake_cvs = PythonOperator(
+                task_id=self.previous_snowflake_cv_task_id,  # Simpler XCom retrieval as class attribute
+                python_callable=change_version.get_previous_change_versions,
+                op_kwargs={
+                    'tenant_code': self.tenant_code,
+                    'api_year': self.api_year,
+                    'snowflake_conn_id': self.snowflake_conn_id,
+                    'change_version_table': self.change_version_table,
+                },
+                trigger_rule='all_done',  # Run regardless of whether the CV table was reset.
+                dag=self.dag
+            )
+
+            get_newest_edfi_cv >> get_previous_snowflake_cvs
+            get_newest_edfi_cv >> reset_snowflake_cvs >> get_previous_snowflake_cvs
+
+        return cv_task_group
 
 
     def build_edfi_to_snowflake_task_group(self,
@@ -134,8 +178,6 @@ class EdFiResourceDAG:
         table      : Optional[str] = None,
         page_size  : int = 500,
         max_retries: int = 5,
-
-        use_change_version: bool = True,
         change_version_step_size: int = 50000,
 
         parent_group: Optional[TaskGroup] = None,
@@ -151,7 +193,6 @@ class EdFiResourceDAG:
         :param table    : Overwrite the table to output the rows to (exception case for descriptors).
         :param page_size:
         :param max_retries:
-        :param use_change_version:
         :param change_version_step_size:
         :param parent_group:
         :return:
@@ -159,7 +200,7 @@ class EdFiResourceDAG:
         # Snowflake tables and Airflow tasks use snake_cased resources for readability.
         # Apply the deletes suffix for logging deletes across the Airflow DAG.
         snake_resource = camel_to_snake(resource)
-        display_resource = snake_resource + '_deletes' if deletes else snake_resource
+        display_resource = airflow_util.build_display_name(snake_resource, deletes)
 
         # Wrap the branch in a task group
         with TaskGroup(
@@ -170,49 +211,17 @@ class EdFiResourceDAG:
         ) as resource_task_group:
 
             ### EDFI3 CHANGE_VERSION LOGIC
-            if self.edfi_change_version_operator is None:
-                use_change_version = False
-            else:
-                max_change_version = pull_xcom(self.edfi_change_version_operator.task_id)
-
-                # EdFi2 causes an AirflowSkipException during the run.
-                # A None change version from this task presumes EdFi2.
-                # Force `use_change_version = False` to account for this.
-                if max_change_version is None or max_change_version == 'None':
-                    use_change_version = False
-
-            if use_change_version:
-
-                ### GET LAST CHANGE VERSION FROM SNOWFLAKE
-                get_change_version_snowflake = PythonOperator(
-                    task_id=f"get_last_change_version_{display_resource}",
-                    python_callable=snowflake_callables.get_resource_change_version,
-
-                    op_kwargs={
-                        'edfi_change_version': max_change_version,
-                        'snowflake_conn_id': self.snowflake_conn_id,
-
-                        'tenant_code': self.tenant_code,
-                        'api_year': self.api_year,
-                        'resource': snake_resource,
-                        'deletes' : deletes,
-
-                        'change_version_table': self.change_version_table,
-                        'full_refresh': self.full_refresh,
-                    },
-
-                    provide_context=True,
-                    trigger_rule='all_success',
-                    dag=self.dag,
+            if self.use_change_version:
+                max_change_version = airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id)
+                min_change_version = airflow_util.xcom_pull_template(
+                    self.previous_snowflake_cv_task_id,
+                    key=display_resource
                 )
-
-                min_change_version = pull_xcom(get_change_version_snowflake.task_id, key='prev_change_version')
-
 
                 ### UPDATE CHANGE VERSION TABLE ON SNOWFLAKE
                 update_change_version_snowflake = PythonOperator(
                     task_id=f"update_change_version_{display_resource}",
-                    python_callable=snowflake_callables.update_change_version_table,
+                    python_callable=change_version.update_change_version_table,
 
                     op_kwargs={
                         'tenant_code': self.tenant_code,
@@ -223,7 +232,7 @@ class EdFiResourceDAG:
                         'snowflake_conn_id': self.snowflake_conn_id,
                         'change_version_table': self.change_version_table,
 
-                        'edfi_change_version': pull_xcom(self.edfi_change_version_operator.task_id),
+                        'edfi_change_version': max_change_version,
                     },
 
                     provide_context=True,
@@ -232,10 +241,9 @@ class EdFiResourceDAG:
                 )
 
             else:
-                get_change_version_snowflake = None
-                update_change_version_snowflake = None
-                min_change_version = None
                 max_change_version = None
+                min_change_version = None
+                update_change_version_snowflake = None
 
 
             ### EDFI TO S3
@@ -288,7 +296,7 @@ class EdFiResourceDAG:
 
                 table_name=table or snake_resource,  # Use the provided table name, or default to resource.
 
-                s3_destination_key=pull_xcom(pull_edfi_to_s3.task_id),
+                s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
 
                 full_refresh=self.full_refresh,
 
@@ -298,12 +306,12 @@ class EdFiResourceDAG:
 
 
             ### ORDER OPERATORS
-            # If change versions are present, we can use them to only ingest any updates since the last pull.
-            if get_change_version_snowflake and update_change_version_snowflake:
-                get_change_version_snowflake >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_change_version_snowflake
+            # Remove undefined operators from
+            task_order = (pull_edfi_to_s3, copy_s3_to_snowflake, update_change_version_snowflake)
+            chain(filter(None, task_order))
 
-            # A branch consists of a pull from Ed-Fi to S3 and a copy (and optional reset) from S3 to the data lake.
-            else:
-                pull_edfi_to_s3 >> copy_s3_to_snowflake
+        # Chain with the change-version task group if defined.
+        if self.cv_task_group:
+            self.cv_task_group >> resource_task_group
 
-            return resource_task_group
+        return resource_task_group
