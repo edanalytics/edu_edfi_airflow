@@ -126,7 +126,7 @@ class EdFiResourceDAG:
 
             # Pull the newest change version recorded in Ed-Fi.
             get_newest_edfi_cv = PythonOperator(
-                task_id=self.newest_edfi_cv_task_id,
+                task_id=self.newest_edfi_cv_task_id,  # Class attribute for easier XCom retrieval
                 python_callable=change_version.get_newest_edfi_change_version,
                 op_kwargs={
                     'edfi_conn_id': self.edfi_conn_id,
@@ -151,7 +151,7 @@ class EdFiResourceDAG:
 
             # Retrieve the latest active pulls from the Snowflake change version table.
             get_previous_snowflake_cvs = PythonOperator(
-                task_id=self.previous_snowflake_cv_task_id,  # Simpler XCom retrieval as class attribute
+                task_id=self.previous_snowflake_cv_task_id,  # Class attribute for easier XCom retrieval
                 python_callable=change_version.get_previous_change_versions,
                 op_kwargs={
                     'tenant_code': self.tenant_code,
@@ -181,6 +181,7 @@ class EdFiResourceDAG:
         change_version_step_size: int = 50000,
 
         parent_group: Optional[TaskGroup] = None,
+        **kwargs
     ) -> TaskGroup:
         """
         Pulling an EdFi resource/descriptor requires knowing its camelCased name and namespace.
