@@ -83,26 +83,6 @@ def pull_xcom(op: BaseOperator, key: str = 'return_value') -> str:
     return '{{ ' + xcom_string + ' }}'
 
 
-def chain(*tasks):
-    """
-    Given a number of tasks, builds a dependency chain.
-
-    chain(task_1, task_2, task_3, task_4)
-
-    is equivalent to
-
-    task_1.set_downstream(task_2)
-    task_2.set_downstream(task_3)
-    task_3.set_downstream(task_4)
-
-    https://airflow.apache.org/docs/apache-airflow/1.10.3/_modules/airflow/utils/helpers.html
-    """
-    tasks = list(filter(None, tasks))  # Remove Nones
-
-    for up_task, down_task in zip(tasks[:-1], tasks[1:]):
-        up_task.set_downstream(down_task)
-
-
 def get_snowflake_params_from_conn(
     snowflake_conn_id: str
 ) -> Tuple[str, str]:

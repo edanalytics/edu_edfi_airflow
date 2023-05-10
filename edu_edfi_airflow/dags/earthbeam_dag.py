@@ -7,6 +7,7 @@ from typing import Callable, Optional
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
+from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import slack_callbacks
@@ -341,11 +342,13 @@ class EarthbeamDAG:
 
 
             ### Default route: Earthmover-to-Lightbeam
-            airflow_util.chain(
+            task_order = (
                 python_preprocess, raw_to_s3,
                 run_earthmover, em_to_s3,
                 run_lightbeam, log_lightbeam_to_snowflake
             )
+
+            chain(*filter(None, task_order))  # Chain all defined operators into task-order.
 
 
             ### Alternate route: Bypassing the ODS directly into Snowflake
