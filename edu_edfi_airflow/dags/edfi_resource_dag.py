@@ -118,7 +118,7 @@ class EdFiResourceDAG:
         :return:
         """
         with TaskGroup(
-            group_id="prepare_change_version_window",
+            group_id="Ed-Fi3 Change Version Window",
             prefix_group_id=False,
             parent_group=None,
             dag=self.dag
