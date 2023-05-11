@@ -38,12 +38,19 @@ class EarthbeamDAG:
         run_type: str,
 
         *,
+        earthmover_path: Optional[str] = None,
+        lightbeam_path: Optional[str] = None,
+
         pool: str = 'default_pool',
         slack_conn_id: str = None,
 
         **kwargs
     ):
         self.run_type = run_type
+
+        self.earthmover_path = earthmover_path
+        self.lightbeam_path = lightbeam_path
+
         self.pool = pool
         self.slack_conn_id = slack_conn_id
 
@@ -279,6 +286,7 @@ class EarthbeamDAG:
 
             run_earthmover = EarthmoverOperator(
                 task_id=f"{tenant_code}_{api_year}_run_earthmover",
+                earthmover_path=self.earthmover_path,
                 output_dir=em_output_dir,
                 state_file=em_state_file,
                 **(earthmover_kwargs or {}),
@@ -324,6 +332,7 @@ class EarthbeamDAG:
 
                 run_lightbeam = LightbeamOperator(
                     task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
+                    lightbeam_path=self.lightbeam_path,
                     data_dir=airflow_util.pull_xcom(run_earthmover),
                     state_dir=lb_state_dir,
                     edfi_conn_id=edfi_conn_id,

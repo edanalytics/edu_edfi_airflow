@@ -16,6 +16,8 @@ class EarthmoverOperator(BashOperator):
 
     def __init__(self,
         *,
+        earthmover_path: Optional[str] = None,
+
         output_dir : Optional[str] = None,
         state_file : Optional[str] = None,
         config_file: Optional[str] = None,
@@ -29,6 +31,7 @@ class EarthmoverOperator(BashOperator):
 
         **kwargs
     ):
+        self.earthmover_path = earthmover_path or 'earthmover'
         self.output_dir = output_dir
         self.state_file = state_file
 
@@ -66,7 +69,8 @@ class EarthmoverOperator(BashOperator):
             'STATE_FILE': self.state_file,
         }
 
-        super().__init__(bash_command="earthmover run ", env=env_vars, **kwargs)
+        bash_command_prefix = f"{self.earthmover_path} run "
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, **kwargs)
 
 
     def execute(self, context) -> str:
@@ -94,6 +98,7 @@ class LightbeamOperator(BashOperator):
 
     def __init__(self,
         *,
+        lightbeam_path: Optional[str] = None,
         command: str = 'send',
 
         data_dir: Optional[str] = None,
@@ -114,6 +119,7 @@ class LightbeamOperator(BashOperator):
 
         **kwargs
     ):
+        self.lightbeam_path = lightbeam_path or 'lightbeam'
         self.data_dir = data_dir
         self.state_dir = state_dir
         self.edfi_conn_id = edfi_conn_id
@@ -165,7 +171,8 @@ class LightbeamOperator(BashOperator):
             'STATE_DIR': self.state_dir,
         }
 
-        super().__init__(bash_command=f"lightbeam {command} ", env=env_vars, **kwargs)
+        bash_command_prefix = f"{self.lightbeam_path} {command} "
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, **kwargs)
 
 
     def execute(self, context) -> str:
