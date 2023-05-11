@@ -50,7 +50,7 @@ class EarthmoverOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if not isinstance(parameters, str):
                 parameters = json.dumps(parameters)
-            self.arguments['--params'] = "'" + parameters + "'"
+            self.arguments['--params'] = parameters
 
         # Boolean arguments
         if force:
@@ -82,6 +82,7 @@ class EarthmoverOperator(BashOperator):
         # Update final Earthmover command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
+        self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
 
         super().execute(context)
@@ -145,7 +146,7 @@ class LightbeamOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if not isinstance(parameters, str):
                 parameters = json.dumps(parameters)
-            self.arguments['--params'] = "'" + parameters + "'"
+            self.arguments['--params'] = parameters
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
@@ -210,6 +211,7 @@ class LightbeamOperator(BashOperator):
         # Update final Lightbeam command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
+        self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 
         super().execute(context)
