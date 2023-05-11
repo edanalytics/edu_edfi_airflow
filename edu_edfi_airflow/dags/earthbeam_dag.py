@@ -158,6 +158,7 @@ class EarthbeamDAG:
 
         *,
         group_id: Optional[str] = None,
+        prefix_group_id: bool = False,
 
         edfi_conn_id     : Optional[str] = None,
 
@@ -189,6 +190,7 @@ class EarthbeamDAG:
         :param raw_dir:
 
         :param group_id:
+        :param prefix_group_id:
 
         :param edfi_conn_id:
 
@@ -219,7 +221,7 @@ class EarthbeamDAG:
 
         with TaskGroup(
             group_id=group_id,
-            prefix_group_id=False,
+            prefix_group_id=prefix_group_id,
             dag=self.dag
         ) as tenant_year_task_group:
 
