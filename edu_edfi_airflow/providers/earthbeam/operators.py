@@ -50,7 +50,7 @@ class EarthmoverOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if not isinstance(parameters, str):
                 parameters = json.dumps(parameters)
-            self.arguments['--params'] = repr(f"'{parameters}'")
+            self.arguments['--params'] = repr(parameters)
 
         # Boolean arguments
         if force:
@@ -145,7 +145,7 @@ class LightbeamOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if not isinstance(parameters, str):
                 parameters = json.dumps(parameters)
-            self.arguments['--params'] = repr(f"'{parameters}'")
+            self.arguments['--params'] = repr(parameters)
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
