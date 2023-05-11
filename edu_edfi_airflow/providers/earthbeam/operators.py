@@ -12,7 +12,7 @@ class EarthmoverOperator(BashOperator):
     """
 
     """
-    template_fields = ('output_dir', 'state_file', 'arguments',)
+    template_fields = ('output_dir', 'state_file', 'arguments', 'bash_command', 'env',)
 
     def __init__(self,
         *,
@@ -94,7 +94,7 @@ class LightbeamOperator(BashOperator):
     """
 
     """
-    template_fields = ('data_dir', 'state_dir', 'arguments',)
+    template_fields = ('data_dir', 'state_dir', 'arguments', 'bash_command', 'env',)
     valid_commands = ('validate', 'send', 'validate+send')
 
     def __init__(self,
