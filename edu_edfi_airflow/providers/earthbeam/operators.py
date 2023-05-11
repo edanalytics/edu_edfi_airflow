@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import Iterable, Optional, Union
 
 from airflow.models import Connection
@@ -84,6 +85,9 @@ class EarthmoverOperator(BashOperator):
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
         self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
+
+        # Create state_dir if not already defined in filespace
+        os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
         super().execute(context)
         return self.output_dir
@@ -207,6 +211,9 @@ class LightbeamOperator(BashOperator):
         if get_context_parameter(context, 'force'):
             logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
             self.arguments['--force'] = ""
+
+        # Create state_dir if not already defined in filespace
+        os.makedirs(self.state_dir, exist_ok=True)
 
         # Update final Lightbeam command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
