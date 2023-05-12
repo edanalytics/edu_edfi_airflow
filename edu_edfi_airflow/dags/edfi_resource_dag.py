@@ -218,33 +218,9 @@ class EdFiResourceDAG:
                     self.previous_snowflake_cv_task_id,
                     key=display_resource
                 )
-
-                ### UPDATE CHANGE VERSION TABLE ON SNOWFLAKE
-                update_change_version_snowflake = PythonOperator(
-                    task_id=f"update_change_version_{display_resource}",
-                    python_callable=change_version.update_resource_change_version,
-
-                    op_kwargs={
-                        'tenant_code': self.tenant_code,
-                        'api_year': self.api_year,
-                        'resource': snake_resource,
-                        'deletes': deletes,
-
-                        'snowflake_conn_id': self.snowflake_conn_id,
-                        'change_version_table': self.change_version_table,
-
-                        'edfi_change_version': max_change_version,
-                    },
-
-                    provide_context=True,
-                    trigger_rule='all_success',
-                    dag=self.dag
-                )
-
             else:
                 max_change_version = None
                 min_change_version = None
-                update_change_version_snowflake = None
 
 
             ### EDFI TO S3
@@ -305,13 +281,32 @@ class EdFiResourceDAG:
                 dag=self.dag
             )
 
+            pull_edfi_to_s3 >> copy_s3_to_snowflake
 
-            ### ORDER OPERATORS
-            task_order = (pull_edfi_to_s3, copy_s3_to_snowflake, update_change_version_snowflake)
-            chain(*filter(None, task_order))  # Chain all defined operators into task-order.
 
-        # Chain with the change-version task group if defined.
-        if self.cv_task_group:
-            self.cv_task_group >> resource_task_group
+        # Chain with the change-version task group and change-version update operator if specified.
+        if self.use_change_version:
+
+            ### UPDATE CHANGE VERSION TABLE ON SNOWFLAKE
+            update_change_version_snowflake = PythonOperator(
+                task_id=f"update_change_versions_in_snowflake",
+                python_callable=change_version.update_change_versions,
+
+                op_kwargs={
+                    'tenant_code': self.tenant_code,
+                    'api_year': self.api_year,
+
+                    'snowflake_conn_id': self.snowflake_conn_id,
+                    'change_version_table': self.change_version_table,
+
+                    'edfi_change_version': max_change_version,
+                },
+
+                provide_context=True,
+                trigger_rule='all_done',
+                dag=self.dag
+            )
+
+            self.cv_task_group >> resource_task_group >> update_change_version_snowflake
 
         return resource_task_group
