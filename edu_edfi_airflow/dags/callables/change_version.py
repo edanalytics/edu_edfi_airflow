@@ -189,11 +189,11 @@ def update_change_versions(
 
     for task_id in kwargs['task'].get_direct_relative_ids(upstream=True):
 
-        xcom_result = airflow_util.xcom_pull_template(task_id)
+        xcom_result = kwargs['ti'].xcom_pull(task_id)
         logging.info(f"{task_id}: {xcom_result}")
 
         # Only log successful copies into Snowflake (skips will return None)
-        if not airflow_util.xcom_pull_template(task_id):
+        if not xcom_result:
             continue
 
         # Extract resource name and deletes flag from task_id.
