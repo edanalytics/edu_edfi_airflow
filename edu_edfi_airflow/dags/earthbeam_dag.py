@@ -263,7 +263,7 @@ class EarthbeamDAG:
                     op_kwargs={
                         's3_conn_id': s3_conn_id,
                         's3_destination_key': s3_raw_filepath,
-                        'local_filepath': airflow_util.pull_xcom(python_preprocess) if python_preprocess else raw_dir,
+                        'local_filepath': airflow_util.xcom_pull_template(python_preprocess.task_id) if python_preprocess else raw_dir,
                         'remove_local_filepath': False,
                         # TODO: Include local-filepath cleanup in final logs operation.
                     },
@@ -312,7 +312,7 @@ class EarthbeamDAG:
                     op_kwargs={
                         's3_conn_id': s3_conn_id,
                         's3_destination_key': s3_em_filepath,
-                        'local_filepath': airflow_util.pull_xcom(run_earthmover),
+                        'local_filepath': airflow_util.xcom_pull_template(run_earthmover.task_id),
                         'remove_local_filepath': False,
                         # TODO: Include local-filepath cleanup in final logs operation.
                     },
@@ -333,7 +333,7 @@ class EarthbeamDAG:
                 run_lightbeam = LightbeamOperator(
                     task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
                     lightbeam_path=self.lightbeam_path,
-                    data_dir=airflow_util.pull_xcom(run_earthmover),
+                    data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
                     state_dir=lb_state_dir,
                     edfi_conn_id=edfi_conn_id,
                     **(lightbeam_kwargs or {}),
@@ -380,7 +380,7 @@ class EarthbeamDAG:
                 #         resource=f"{resource}__{self.run_type}",
                 #         table_name=resource,
                 #
-                #         s3_destination_key=airflow_util.pull_xcom(em_to_s3),
+                #         s3_destination_key=airflow_util.xcom_pull_template(em_to_s3.task_id),
                 #
                 #         snowflake_conn_id=snowflake_conn_id,
                 #         ods_version="",
