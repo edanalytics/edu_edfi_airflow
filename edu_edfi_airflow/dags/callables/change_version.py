@@ -187,7 +187,11 @@ def update_change_versions(
     """
     rows_to_insert = []
 
-    for task_id in kwargs['ti'].get_direct_relative_ids(upstream=True):
+    # for task_id in kwargs['task'].get_direct_relative_ids(upstream=True):
+    for task_id in kwargs['task'].upstream_task_ids:
+
+        xcom_result = airflow_util.xcom_pull_template(task_id)
+        logging.info(task_id, xcom_result)
 
         # Only log successful copies into Snowflake (skips will return None)
         if not airflow_util.xcom_pull_template(task_id):
