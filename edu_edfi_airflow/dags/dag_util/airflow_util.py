@@ -8,15 +8,21 @@ from edfi_api_client import camel_to_snake
 def build_display_name(resource: str, is_deletes: bool = False) -> str:
     """
     Universal helper method for building the display name of a resource.
-
-    :param resource:
-    :param is_deletes:
-    :return:
     """
     if is_deletes:
         return f"{resource}_deletes"
     else:
         return resource
+
+def split_display_name(display_name: str) -> (str, bool):
+    """
+    Universal helper method for splitting the display name of a resource into resource and deletes flag.
+    """
+    if display_name.endswith("_deletes"):
+        resource = display_name.replace("_deletes", "")
+        return resource, True
+    else:
+        return display_name, False
 
 
 def is_full_refresh(context) -> bool:

@@ -109,3 +109,4 @@ class S3ToSnowflakeOperator(BaseOperator):
             )
 
         logging.info(cursor_log)
+        return True  # Return for update_change_versions() xcom pull

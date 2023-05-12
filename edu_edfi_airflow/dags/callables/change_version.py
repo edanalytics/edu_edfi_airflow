@@ -1,5 +1,4 @@
 import logging
-from typing import Tuple
 
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
@@ -125,12 +124,56 @@ def get_previous_change_versions(
         kwargs['ti'].xcom_push(key=xcom_key, value=max_version)
 
 
-def update_resource_change_version(
+# def update_resource_change_version(
+#     tenant_code: str,
+#     api_year   : int,
+#     resource   : str,
+#     deletes    : str,
+#
+#     snowflake_conn_id: str,
+#     change_version_table: str,
+#
+#     edfi_change_version: int,
+#
+#     **kwargs
+# ):
+#     """
+#
+#     :return:
+#     """
+#     # Retrieve the database and schema from the Snowflake hook.
+#     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+#
+#     # Build the SQL queries to be passed into `Hook.run()`.
+#     qry_insert_into = f"""
+#         insert into {database}.{schema}.{change_version_table}
+#             (tenant_code, api_year, name, is_deletes, pull_date, pull_timestamp, max_version, is_active)
+#         select
+#             '{tenant_code}',
+#             '{api_year}',
+#             '{resource}',
+#             {deletes},
+#             to_date('{kwargs["ds_nodash"]}', 'YYYYMMDD'),
+#             to_timestamp('{kwargs["ts_nodash"]}', 'YYYYMMDDTHH24MISS'),
+#             {edfi_change_version},
+#             TRUE
+#         ;
+#     """
+#
+#     snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
+#
+#     cursor_log = snowflake_hook.run(
+#         sql=qry_insert_into
+#     )
+#
+#     logging.info(cursor_log)
+
+
+def update_change_versions(
     tenant_code: str,
     api_year   : int,
-    resource   : str,
-    deletes    : str,
 
+    *,
     snowflake_conn_id: str,
     change_version_table: str,
 
@@ -142,6 +185,31 @@ def update_resource_change_version(
 
     :return:
     """
+    rows_to_insert = []
+
+    for task_id in kwargs['task'].get_direct_relative_ids(upstream=True):
+
+        # Only log successful copies into Snowflake (skips will return None)
+        if not airflow_util.xcom_pull_template(task_id):
+            continue
+
+        # Extract resource name and deletes flag from task_id.
+        # Task ID is in this shape: "copy_into_snowflake_{display_resource}"
+        resource, deletes = airflow_util.split_display_name(task_id.replace("copy_into_snowflake_", ""))
+
+        rows_to_insert.append(
+            f"""(
+                '{tenant_code}', '{api_year}', '{resource}', {deletes},
+                to_date('{kwargs["ds_nodash"]}', 'YYYYMMDD'),
+                to_timestamp('{kwargs["ts_nodash"]}', 'YYYYMMDDTHH24MISS'),
+                {edfi_change_version}, TRUE
+            )"""
+        )
+
+    logging.info(
+        f"Collected updated change versions for {len(rows_to_insert)} endpoints."
+    )
+
     # Retrieve the database and schema from the Snowflake hook.
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
@@ -149,15 +217,8 @@ def update_resource_change_version(
     qry_insert_into = f"""
         insert into {database}.{schema}.{change_version_table}
             (tenant_code, api_year, name, is_deletes, pull_date, pull_timestamp, max_version, is_active)
-        select
-            '{tenant_code}',
-            '{api_year}',
-            '{resource}',
-            {deletes},
-            to_date('{kwargs["ds_nodash"]}', 'YYYYMMDD'),
-            to_timestamp('{kwargs["ts_nodash"]}', 'YYYYMMDDTHH24MISS'),
-            {edfi_change_version},
-            TRUE
+        values
+            {', '.join(rows_to_insert)}
         ;
     """
 
@@ -168,3 +229,4 @@ def update_resource_change_version(
     )
 
     logging.info(cursor_log)
+
