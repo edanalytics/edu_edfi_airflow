@@ -161,9 +161,14 @@ def update_change_versions(
             )"""
         )
 
-    logging.info(
-        f"Collected updated change versions for {len(rows_to_insert)} endpoints."
-    )
+    if not rows_to_insert:
+        raise AirflowSkipException(
+            "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
+        )
+    else:
+        logging.info(
+            f"Collected updated change versions for {len(rows_to_insert)} endpoints."
+        )
 
     # Retrieve the database and schema from the Snowflake hook.
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
