@@ -71,7 +71,7 @@ class EdFiResourceDAG:
         # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
             self.dbt_var_increment_operator = build_variable_update_operator(
-                self.dbt_incrementer_var, lambda x: x + 1,
+                self.dbt_incrementer_var, lambda x: int(x) + 1,
                 task_id='increment_dbt_variable', trigger_rule='all_done', dag=self.dag
             )
         else:
