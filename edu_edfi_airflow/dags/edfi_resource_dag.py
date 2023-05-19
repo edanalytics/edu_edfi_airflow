@@ -63,13 +63,15 @@ class EdFiResourceDAG:
         self.use_change_version = use_change_version
         self.change_version_table = change_version_table
 
+        self.dbt_incrementer_var = dbt_incrementer_var
+
         # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
 
         # Build an operator to increment the DBT var at the end of the run.
-        if dbt_incrementer_var:
+        if self.dbt_incrementer_var:
             self.dbt_var_increment_operator = build_variable_update_operator(
-                dbt_incrementer_var, lambda x: x + 1,
+                self.dbt_incrementer_var, lambda x: x + 1,
                 task_id='increment_dbt_variable', trigger_rule='all_done', dag=self.dag
             )
         else:
@@ -329,7 +331,7 @@ class EdFiResourceDAG:
             self.cv_task_group >> resource_task_group >> self.cv_update_operator
 
         # Update the DBT incrementer variable
-        if self.dbt_var_increment_operator:
+        if self.dbt_incrementer_var:
             resource_task_group >> self.dbt_var_increment_operator
 
         return resource_task_group
