@@ -90,19 +90,19 @@ class EdFiResourceDAG:
             self.full_refresh = True  # Force full-refreshes if change versions are not used.
 
         # Create nested task-groups for cleaner webserver UI
-        self.resources_task_group = LazyTaskGroup.initialize(
+        self.resources_task_group = LazyTaskGroup(
             group_id="Ed-Fi Resources",
             prefix_group_id=False,
             parent_group=None,
             dag=self.dag
         )
-        self.resource_deletes_task_group = LazyTaskGroup.initialize(
+        self.resource_deletes_task_group = LazyTaskGroup(
             group_id="Ed-Fi Resource Deletes",
             prefix_group_id=False,
             parent_group=None,
             dag=self.dag
         )
-        self.descriptors_task_group = LazyTaskGroup.initialize(
+        self.descriptors_task_group = LazyTaskGroup(
             group_id="Ed-Fi Descriptors",
             prefix_group_id=False,
             parent_group=None,
@@ -364,6 +364,8 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
+        self.resources_task_group.initialize()
+
         self.build_edfi_to_snowflake_task_group(
             resource, namespace,
             parent_group=self.resources_task_group,
@@ -377,6 +379,8 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
+        self.resource_deletes_task_group.initialize()
+
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True, table="_deletes",
             parent_group=self.resource_deletes_task_group,
@@ -390,6 +394,8 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
+        self.descriptors_task_group.initialize()
+
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
             parent_group=self.descriptors_task_group,
