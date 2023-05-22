@@ -88,6 +88,26 @@ class EdFiResourceDAG:
             self.cv_update_operator = None
             self.full_refresh = True  # Force full-refreshes if change versions are not used.
 
+        # Create nested task-groups for cleaner webserver UI
+        self.resources_task_group = TaskGroup(
+            group_id="Ed-Fi Resources",
+            prefix_group_id=False,
+            parent_group=None,
+            dag=self.dag
+        )
+        self.resource_deletes_task_group = TaskGroup(
+            group_id="Ed-Fi Resource Deletes",
+            prefix_group_id=False,
+            parent_group=None,
+            dag=self.dag
+        )
+        self.descriptors_task_group = TaskGroup(
+            group_id="Ed-Fi Descriptors",
+            prefix_group_id=False,
+            parent_group=None,
+            dag=self.dag
+        )
+
 
     def initialize_dag(self,
         dag_id: str,
@@ -325,13 +345,68 @@ class EdFiResourceDAG:
 
             pull_edfi_to_s3 >> copy_s3_to_snowflake
 
+        return resource_task_group
 
+
+    def _chain_task_group_into_dag(self, task_group):
         # Chain with the change-version task group and change-version update operator if specified.
         if self.use_change_version:
-            self.cv_task_group >> resource_task_group >> self.cv_update_operator
+            self.cv_task_group >> task_group >> self.cv_update_operator
 
         # Update the DBT incrementer variable
         if self.dbt_incrementer_var:
-            resource_task_group >> self.dbt_var_increment_operator
+            task_group >> self.dbt_var_increment_operator
 
-        return resource_task_group
+
+    def add_resource(self,
+        resource: str,
+        namespace: str = 'ed-fi',
+
+        *,
+        page_size: int = 500,
+        max_retries: int = 5,
+        change_version_step_size: int = 50000,
+    ):
+        tg = self.build_edfi_to_snowflake_task_group(
+            resource, namespace,
+            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size
+        )
+
+        self.resources_task_group.add(tg)
+        self._chain_task_group_into_dag(self.resources_task_group)
+
+
+    def add_resource_deletes(self,
+        resource: str,
+        namespace: str = 'ed-fi',
+
+        *,
+        page_size: int = 500,
+        max_retries: int = 5,
+        change_version_step_size: int = 50000,
+    ):
+        tg = self.build_edfi_to_snowflake_task_group(
+            resource, namespace, deletes=True,
+            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size
+        )
+
+        self.resource_deletes_task_group.add(tg)
+        self._chain_task_group_into_dag(self.resource_deletes_task_group)
+
+
+    def add_descriptor(self,
+        resource: str,
+        namespace: str = 'ed-fi',
+
+        *,
+        page_size: int = 500,
+        max_retries: int = 5,
+        change_version_step_size: int = 50000,
+    ):
+        tg = self.build_edfi_to_snowflake_task_group(
+            resource, namespace, table="_descriptors",
+            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size
+        )
+
+        self.descriptors_task_group.add(tg)
+        self._chain_task_group_into_dag(self.descriptors_task_group)
