@@ -12,6 +12,7 @@ from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.dags.callables import change_version
 from edu_edfi_airflow.dags.dag_util import airflow_util
+from edu_edfi_airflow.dags.dag_util.task_group import LazyTaskGroup
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
@@ -89,19 +90,19 @@ class EdFiResourceDAG:
             self.full_refresh = True  # Force full-refreshes if change versions are not used.
 
         # Create nested task-groups for cleaner webserver UI
-        self.resources_task_group = TaskGroup(
+        self.resources_task_group = LazyTaskGroup(
             group_id="Ed-Fi Resources",
             prefix_group_id=False,
             parent_group=None,
             dag=self.dag
         )
-        self.resource_deletes_task_group = TaskGroup(
+        self.resource_deletes_task_group = LazyTaskGroup(
             group_id="Ed-Fi Resource Deletes",
             prefix_group_id=False,
             parent_group=None,
             dag=self.dag
         )
-        self.descriptors_task_group = TaskGroup(
+        self.descriptors_task_group = LazyTaskGroup(
             group_id="Ed-Fi Descriptors",
             prefix_group_id=False,
             parent_group=None,
@@ -348,7 +349,7 @@ class EdFiResourceDAG:
         return resource_task_group
 
 
-    def _chain_task_group_into_dag(self, task_group):
+    def chain_task_group_into_dag(self, task_group):
         # Chain with the change-version task group and change-version update operator if specified.
         if self.use_change_version:
             self.cv_task_group >> task_group >> self.cv_update_operator
@@ -368,7 +369,7 @@ class EdFiResourceDAG:
             parent_group=self.resources_task_group,
             **kwargs
         )
-        self._chain_task_group_into_dag(self.resources_task_group)
+        self.chain_task_group_into_dag(self.resources_task_group)
 
 
     def add_resource_deletes(self,
@@ -381,7 +382,7 @@ class EdFiResourceDAG:
             parent_group=self.resource_deletes_task_group,
             **kwargs
         )
-        self._chain_task_group_into_dag(self.resource_deletes_task_group)
+        self.chain_task_group_into_dag(self.resource_deletes_task_group)
 
 
     def add_descriptor(self,
@@ -394,4 +395,4 @@ class EdFiResourceDAG:
             parent_group=self.descriptors_task_group,
             **kwargs
         )
-        self._chain_task_group_into_dag(self.descriptors_task_group)
+        self.chain_task_group_into_dag(self.descriptors_task_group)
