@@ -402,4 +402,4 @@ class EdFiResourceDAG:
         :return:
         """
         task_order = (self.cv_task_group, task_group, self.cv_update_operator, self.dbt_var_increment_operator)
-        chain(filter(None, task_order))
+        chain(*filter(None, task_order))
