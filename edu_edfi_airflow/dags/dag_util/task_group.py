@@ -5,14 +5,12 @@ class LazyTaskGroup(TaskGroup):
     """
     Lazy execution of TaskGroup that only inits when something is added to it.
     """
-    args = []
-    kwargs = {}
+    __exists = False
 
-    def __init__(self):
-        super().__init__(*self.args, **self.kwargs)
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
 
-    @classmethod
-    def initialize(cls, *args, **kwargs):
-        cls.args = args
-        cls.kwargs = kwargs
-        return cls
+    def initialize(self):
+        if not self.__exists:
+            super().__init__(*self.args, **self.kwargs)
