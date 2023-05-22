@@ -13,4 +13,5 @@ class LazyTaskGroup(TaskGroup):
 
     def initialize(self):
         if not self.__exists:
+            self.__exists = True
             super().__init__(*self.args, **self.kwargs)
