@@ -361,16 +361,12 @@ class EdFiResourceDAG:
     def add_resource(self,
         resource: str,
         namespace: str = 'ed-fi',
-
-        *,
-        page_size: int = 500,
-        max_retries: int = 5,
-        change_version_step_size: int = 50000,
+        **kwargs
     ):
-        tg = self.build_edfi_to_snowflake_task_group(
+        self.build_edfi_to_snowflake_task_group(
             resource, namespace,
-            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size,
-            parent_group=self.resources_task_group
+            parent_group=self.resources_task_group,
+            **kwargs
         )
         self._chain_task_group_into_dag(self.resources_task_group)
 
@@ -378,16 +374,12 @@ class EdFiResourceDAG:
     def add_resource_deletes(self,
         resource: str,
         namespace: str = 'ed-fi',
-
-        *,
-        page_size: int = 500,
-        max_retries: int = 5,
-        change_version_step_size: int = 50000,
+        **kwargs
     ):
-        tg = self.build_edfi_to_snowflake_task_group(
-            resource, namespace, deletes=True,
-            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size,
-            parent_group=self.resource_deletes_task_group
+        self.build_edfi_to_snowflake_task_group(
+            resource, namespace, deletes=True, table="_deletes",
+            parent_group=self.resource_deletes_task_group,
+            **kwargs
         )
         self._chain_task_group_into_dag(self.resource_deletes_task_group)
 
@@ -395,15 +387,11 @@ class EdFiResourceDAG:
     def add_descriptor(self,
         resource: str,
         namespace: str = 'ed-fi',
-
-        *,
-        page_size: int = 500,
-        max_retries: int = 5,
-        change_version_step_size: int = 50000,
+        **kwargs
     ):
-        tg = self.build_edfi_to_snowflake_task_group(
+        self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
-            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size,
-            parent_group=self.descriptors_task_group
+            parent_group=self.descriptors_task_group,
+            **kwargs
         )
         self._chain_task_group_into_dag(self.descriptors_task_group)
