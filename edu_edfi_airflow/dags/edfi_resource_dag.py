@@ -91,6 +91,7 @@ class EdFiResourceDAG:
             self.full_refresh = True  # Force full-refreshes if change versions are not used.
 
         # Create nested task-groups for cleaner webserver UI
+        # (Make these lazy to only show the TaskGroups that are actually used.)
         self.resources_task_group = LazyTaskGroup(
             group_id="Ed-Fi Resources",
             prefix_group_id=False,
@@ -111,6 +112,50 @@ class EdFiResourceDAG:
         )
 
 
+    def add_resource(self,
+        resource: str,
+        namespace: str = 'ed-fi',
+        **kwargs
+    ):
+        self.resources_task_group.initialize()
+
+        self.build_edfi_to_snowflake_task_group(
+            resource, namespace,
+            parent_group=self.resources_task_group,
+            **kwargs
+        )
+        self.chain_task_group_into_dag(self.resources_task_group)
+
+    def add_resource_deletes(self,
+        resource: str,
+        namespace: str = 'ed-fi',
+        **kwargs
+    ):
+        self.resource_deletes_task_group.initialize()
+
+        self.build_edfi_to_snowflake_task_group(
+            resource, namespace, deletes=True, table="_deletes",
+            parent_group=self.resource_deletes_task_group,
+            **kwargs
+        )
+        self.chain_task_group_into_dag(self.resource_deletes_task_group)
+
+    def add_descriptor(self,
+        resource: str,
+        namespace: str = 'ed-fi',
+        **kwargs
+    ):
+        self.descriptors_task_group.initialize()
+
+        self.build_edfi_to_snowflake_task_group(
+            resource, namespace, table="_descriptors",
+            parent_group=self.descriptors_task_group,
+            **kwargs
+        )
+        self.chain_task_group_into_dag(self.descriptors_task_group)
+
+
+    ### Internal methods that should probably not be called directly.
     def initialize_dag(self,
         dag_id: str,
         schedule_interval: str,
@@ -358,48 +403,3 @@ class EdFiResourceDAG:
         """
         task_order = (self.cv_task_group, task_group, self.cv_update_operator, self.dbt_var_increment_operator)
         chain(filter(None, task_order))
-
-
-    def add_resource(self,
-        resource: str,
-        namespace: str = 'ed-fi',
-        **kwargs
-    ):
-        self.resources_task_group.initialize()
-
-        self.build_edfi_to_snowflake_task_group(
-            resource, namespace,
-            parent_group=self.resources_task_group,
-            **kwargs
-        )
-        self.chain_task_group_into_dag(self.resources_task_group)
-
-
-    def add_resource_deletes(self,
-        resource: str,
-        namespace: str = 'ed-fi',
-        **kwargs
-    ):
-        self.resource_deletes_task_group.initialize()
-
-        self.build_edfi_to_snowflake_task_group(
-            resource, namespace, deletes=True, table="_deletes",
-            parent_group=self.resource_deletes_task_group,
-            **kwargs
-        )
-        self.chain_task_group_into_dag(self.resource_deletes_task_group)
-
-
-    def add_descriptor(self,
-        resource: str,
-        namespace: str = 'ed-fi',
-        **kwargs
-    ):
-        self.descriptors_task_group.initialize()
-
-        self.build_edfi_to_snowflake_task_group(
-            resource, namespace, table="_descriptors",
-            parent_group=self.descriptors_task_group,
-            **kwargs
-        )
-        self.chain_task_group_into_dag(self.descriptors_task_group)
