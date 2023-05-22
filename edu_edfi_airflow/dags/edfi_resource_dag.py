@@ -369,10 +369,9 @@ class EdFiResourceDAG:
     ):
         tg = self.build_edfi_to_snowflake_task_group(
             resource, namespace,
-            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size
+            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size,
+            parent_group=self.resources_task_group
         )
-
-        self.resources_task_group.add(tg)
         self._chain_task_group_into_dag(self.resources_task_group)
 
 
@@ -387,10 +386,9 @@ class EdFiResourceDAG:
     ):
         tg = self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True,
-            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size
+            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size,
+            parent_group=self.resource_deletes_task_group
         )
-
-        self.resource_deletes_task_group.add(tg)
         self._chain_task_group_into_dag(self.resource_deletes_task_group)
 
 
@@ -405,8 +403,7 @@ class EdFiResourceDAG:
     ):
         tg = self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
-            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size
+            page_size=page_size, max_retries=max_retries, change_version_step_size=change_version_step_size,
+            parent_group=self.descriptors_task_group
         )
-
-        self.descriptors_task_group.add(tg)
         self._chain_task_group_into_dag(self.descriptors_task_group)
