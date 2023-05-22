@@ -3,7 +3,8 @@ from functools import partial
 from typing import Optional
 
 from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python import PythonOperator
+from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import build_variable_update_operator
@@ -350,13 +351,13 @@ class EdFiResourceDAG:
 
 
     def chain_task_group_into_dag(self, task_group):
-        # Chain with the change-version task group and change-version update operator if specified.
-        if self.use_change_version:
-            self.cv_task_group >> task_group >> self.cv_update_operator
-
-        # Update the DBT incrementer variable
-        if self.dbt_incrementer_var:
-            task_group >> self.dbt_var_increment_operator
+        """
+        Chain the task group with the change-version operator and DBT incrementer, if either are defined.
+        :param task_group:
+        :return:
+        """
+        task_order = (self.cv_task_group, task_group, self.cv_update_operator, self.dbt_var_increment_operator)
+        chain(filter(None, task_order))
 
 
     def add_resource(self,
