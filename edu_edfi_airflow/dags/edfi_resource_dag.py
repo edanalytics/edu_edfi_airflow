@@ -4,9 +4,9 @@ from typing import Optional
 
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
-from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
+from ea_airflow_util import build_variable_update_operator
 from ea_airflow_util import slack_callbacks
 from edfi_api_client import camel_to_snake
 
@@ -42,6 +42,7 @@ class EdFiResourceDAG:
         change_version_table: str = '_meta_change_versions',
 
         slack_conn_id: str = None,
+        dbt_incrementer_var: str = None,
 
         **kwargs
     ) -> None:
@@ -62,8 +63,19 @@ class EdFiResourceDAG:
         self.use_change_version = use_change_version
         self.change_version_table = change_version_table
 
+        self.dbt_incrementer_var = dbt_incrementer_var
+
         # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
+
+        # Build an operator to increment the DBT var at the end of the run.
+        if self.dbt_incrementer_var:
+            self.dbt_var_increment_operator = build_variable_update_operator(
+                self.dbt_incrementer_var, lambda x: int(x) + 1,
+                task_id='increment_dbt_variable', trigger_rule='all_done', dag=self.dag
+            )
+        else:
+            self.dbt_var_increment_operator = None
 
         # Retrieve current and previous change versions to define an ingestion window.
         if self.use_change_version:
@@ -317,5 +329,9 @@ class EdFiResourceDAG:
         # Chain with the change-version task group and change-version update operator if specified.
         if self.use_change_version:
             self.cv_task_group >> resource_task_group >> self.cv_update_operator
+
+        # Update the DBT incrementer variable
+        if self.dbt_incrementer_var:
+            resource_task_group >> self.dbt_var_increment_operator
 
         return resource_task_group
