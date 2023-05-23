@@ -117,42 +117,42 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        self.resources_task_group.initialize()
+        if self.resources_task_group.initialize():
+            self.chain_task_group_into_dag(self.resources_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace,
             parent_group=self.resources_task_group,
             **kwargs
         )
-        self.chain_task_group_into_dag(self.resources_task_group)
 
     def add_resource_deletes(self,
         resource: str,
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        self.resource_deletes_task_group.initialize()
+        if self.resource_deletes_task_group.initialize():
+            self.chain_task_group_into_dag(self.resource_deletes_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True, table="_deletes",
             parent_group=self.resource_deletes_task_group,
             **kwargs
         )
-        self.chain_task_group_into_dag(self.resource_deletes_task_group)
 
     def add_descriptor(self,
         resource: str,
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        self.descriptors_task_group.initialize()
+        if self.descriptors_task_group.initialize():
+            self.chain_task_group_into_dag(self.descriptors_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
             parent_group=self.descriptors_task_group,
             **kwargs
         )
-        self.chain_task_group_into_dag(self.descriptors_task_group)
 
 
     ### Internal methods that should probably not be called directly.
