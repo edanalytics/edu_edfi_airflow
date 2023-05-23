@@ -11,7 +11,10 @@ class LazyTaskGroup(TaskGroup):
         self.args = args
         self.kwargs = kwargs
 
-    def initialize(self) -> bool:
+    def __bool__(self) -> bool:
+        return self.__exists
+
+    def initialize(self):
         """
         Method to initialize the TaskGroup after init.
         :return:
@@ -19,7 +22,3 @@ class LazyTaskGroup(TaskGroup):
         if not self.__exists:
             super().__init__(*self.args, **self.kwargs)
             self.__exists = True
-            return True
-
-        else:
-            return False

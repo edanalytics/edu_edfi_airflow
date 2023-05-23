@@ -117,12 +117,15 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        if self.resources_task_group.initialize():
-            self.chain_task_group_into_dag(self.resources_task_group)
+        task_group = self.resources_task_group
+
+        if not task_group:  # Initialize the task group if still undefined.
+            task_group.initialize()
+            self.chain_task_group_into_dag(task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace,
-            parent_group=self.resources_task_group,
+            parent_group=task_group,
             **kwargs
         )
 
@@ -131,12 +134,15 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        if self.resource_deletes_task_group.initialize():
-            self.chain_task_group_into_dag(self.resource_deletes_task_group)
+        task_group = self.resource_deletes_task_group
+
+        if not task_group:  # Initialize the task group if still undefined.
+            task_group.initialize()
+            self.chain_task_group_into_dag(task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True, table="_deletes",
-            parent_group=self.resource_deletes_task_group,
+            parent_group=task_group,
             **kwargs
         )
 
@@ -145,12 +151,15 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        if self.descriptors_task_group.initialize():
-            self.chain_task_group_into_dag(self.descriptors_task_group)
+        task_group = self.descriptors_task_group
+
+        if not task_group:  # Initialize the task group if still undefined.
+            task_group.initialize()
+            self.chain_task_group_into_dag(task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
-            parent_group=self.descriptors_task_group,
+            parent_group=task_group,
             **kwargs
         )
 
