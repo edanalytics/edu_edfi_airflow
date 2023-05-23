@@ -5,7 +5,7 @@ import os
 from typing import Iterator, Optional
 
 from airflow.models import BaseOperator
-from airflow.exceptions import AirflowSkipException, AirflowException
+from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.utils.decorators import apply_defaults
 
@@ -67,6 +67,10 @@ class EdFiToS3Operator(BaseOperator):
         self.s3_conn_id= s3_conn_id
         self.s3_destination_key= s3_destination_key
 
+        # Force min-change-version if no XCom was found.
+        if self.max_change_version and self.min_change_version is None:
+            self.min_change_version = 0
+
 
     def execute(self, context) -> str:
         """
@@ -84,11 +88,27 @@ class EdFiToS3Operator(BaseOperator):
             raise AirflowSkipException(
                 "Skipping resource not specified in run context 'resources'."
             )
+
+        # Run sanity checks to make sure we aren't doing something wrong.
+        if self.min_change_version is not None and self.max_change_version is not None:
+            if self.min_change_version == self.max_change_version:
+                raise AirflowSkipException(
+                    "ODS is unchanged since previous pull."
+                )
+            elif self.max_change_version < self.min_change_version:
+                raise AirflowFailException(
+                    "Apparent out-of-sequence run: current change version is smaller than previous!"
+                )
+
+            logging.info(
+                "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
+                    self.api_namespace, self.resource, self.min_change_version, self.max_change_version
+                )
+            )
         
         ### Connect to EdFi and write resource data to a temp file.
         # Establish a hook to the ODS
-        edfi_hook = EdFiHook(self.edfi_conn_id)
-        edfi_conn = edfi_hook.get_conn()
+        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         # Prepare the EdFiEndpoint for the resource.
         resource_endpoint = edfi_conn.resource(
