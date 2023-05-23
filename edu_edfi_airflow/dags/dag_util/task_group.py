@@ -3,7 +3,8 @@ from airflow.utils.task_group import TaskGroup
 
 class LazyTaskGroup(TaskGroup):
     """
-    Lazy execution of TaskGroup that only inits when something is added to it.
+    Lazy execution of TaskGroup that only inits when explicitly told to.
+    TODO: Can this become automatic when the class is used?
     """
     __initialized = False
 
