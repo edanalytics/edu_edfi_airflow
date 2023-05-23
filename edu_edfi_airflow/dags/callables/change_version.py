@@ -18,7 +18,7 @@ def get_newest_edfi_change_version(edfi_conn_id: str, **kwargs):
 
     # Break off prematurely if change versions not supported.
     if edfi_conn.is_edfi2():
-        print("Change versions are only supported in EdFi 3+!")
+        logging.warning("Change versions are only supported in EdFi 3+!")
         return None
 
     # Pull current max change version from EdFi.
