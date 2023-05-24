@@ -10,6 +10,7 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
+import edfi_api_client
 from ea_airflow_util import slack_callbacks
 
 from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3
@@ -94,18 +95,21 @@ class EarthbeamDAG:
         )
 
 
-    def build_local_raw_dir(self, tenant_code: str, api_year: int) -> str:
+    def build_local_raw_dir(self, tenant_code: str, api_year: int, grain_update: Optional[str] = None) -> str:
         """
         Helper function to force consistency when building raw filepathing in Python operators.
 
         :param tenant_code:
         :param api_year:
+        :param grain_update:
         :return:
         """
         now = datetime.datetime.now()
 
-        raw_dir = os.path.join(
-            self.raw_output_directory, tenant_code, self.run_type, str(api_year), now.strftime("%Y%m%d"), now.strftime("%Y%m%dT%H%M%S")
+        raw_dir = edfi_api_client.url_join(
+            self.raw_output_directory,
+            tenant_code, self.run_type, api_year, grain_update,
+            now.strftime("%Y%m%d"), now.strftime("%Y%m%dT%H%M%S")
         )
         os.makedirs(raw_dir, exist_ok=True)
         return raw_dir
@@ -164,6 +168,8 @@ class EarthbeamDAG:
         raw_dir: str,
 
         *,
+        grain_update: Optional[str] = None,
+
         group_id: Optional[str] = None,
         prefix_group_id: bool = False,
 
@@ -179,7 +185,9 @@ class EarthbeamDAG:
         python_kwargs    : Optional[dict] = None,
 
         snowflake_conn_id: Optional[str] = None,
-        lightbeam_logging_table: Optional[str] = None
+        lightbeam_logging_table: Optional[str] = None,
+
+        **kwargs
     ):
         """
         (Python) -> (S3: Raw) -> Earthmover -> (S3: Earthmover Output) +-> (Lightbeam) -> (Snowflake: Lightbeam Logs)
@@ -196,6 +204,7 @@ class EarthbeamDAG:
         :param api_year:
         :param raw_dir:
 
+        :param grain_update:
         :param group_id:
         :param prefix_group_id:
 
@@ -214,9 +223,13 @@ class EarthbeamDAG:
         :param lightbeam_logging_table:
         :return:
         """
+        taskgroup_grain = f"{tenant_code}_{api_year}"
+        if grain_update:
+            taskgroup_grain += f"_{grain_update}"
+
         # Group ID can be defined manually or built dynamically
         if not group_id:
-            group_id = f"{tenant_code}_{api_year}__earthmover"
+            group_id = f"{taskgroup_grain}__earthmover"
 
             # TaskGroups have three shapes:
             if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
@@ -235,7 +248,7 @@ class EarthbeamDAG:
             ### PythonOperator Preprocess
             if python_callable:
                 python_preprocess = PythonOperator(
-                    task_id=f"{tenant_code}_{api_year}_preprocess_python",
+                    task_id=f"{taskgroup_grain}_preprocess_python",
                     python_callable=python_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
@@ -253,12 +266,14 @@ class EarthbeamDAG:
                         "Argument `s3_filepath` must be defined to upload raw files to S3."
                     )
 
-                s3_raw_filepath = os.path.join(
-                    s3_filepath, 'raw', tenant_code, self.run_type, str(api_year), '{{ ds_nodash }}', '{{ ts_nodash }}'
+                s3_raw_filepath = edfi_api_client.url_join(
+                    s3_filepath, 'raw',
+                    tenant_code, self.run_type, api_year, grain_update,
+                    '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
 
                 raw_to_s3 = PythonOperator(
-                    task_id=f"{tenant_code}_{api_year}_upload_raw_to_s3",
+                    task_id=f"{taskgroup_grain}_upload_raw_to_s3",
                     python_callable=local_filepath_to_s3,
                     op_kwargs={
                         's3_conn_id': s3_conn_id,
@@ -276,16 +291,20 @@ class EarthbeamDAG:
 
 
             ### EarthmoverOperator
-            em_output_dir = os.path.join(
-                self.em_output_directory, tenant_code, self.run_type, str(api_year), '{{ ds_nodash }}', '{{ ts_nodash }}'
+            em_output_dir = edfi_api_client.url_join(
+                self.em_output_directory,
+                tenant_code, self.run_type, api_year, grain_update,
+                '{{ ds_nodash }}', '{{ ts_nodash }}'
             )
 
-            em_state_file = os.path.join(
-                self.emlb_state_directory, tenant_code, self.run_type, str(api_year), 'earthmover.csv'
+            em_state_file = edfi_api_client.url_join(
+                self.emlb_state_directory,
+                tenant_code, self.run_type, api_year, grain_update,
+                'earthmover.csv'
             )
 
             run_earthmover = EarthmoverOperator(
-                task_id=f"{tenant_code}_{api_year}_run_earthmover",
+                task_id=f"{taskgroup_grain}_run_earthmover",
                 earthmover_path=self.earthmover_path,
                 output_dir=em_output_dir,
                 state_file=em_state_file,
@@ -302,12 +321,14 @@ class EarthbeamDAG:
                         "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
                     )
 
-                s3_em_filepath = os.path.join(
-                    s3_filepath, 'earthmover', tenant_code, self.run_type, str(api_year), '{{ ds_nodash }}', '{{ ts_nodash }}'
+                s3_em_filepath = edfi_api_client.url_join(
+                    s3_filepath, 'earthmover',
+                    tenant_code, self.run_type, api_year, grain_update,
+                    '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
 
                 em_to_s3 = PythonOperator(
-                    task_id=f"{tenant_code}_{api_year}_upload_earthmover_to_s3",
+                    task_id=f"{taskgroup_grain}_upload_earthmover_to_s3",
                     python_callable=local_filepath_to_s3,
                     op_kwargs={
                         's3_conn_id': s3_conn_id,
@@ -326,12 +347,14 @@ class EarthbeamDAG:
 
             ### LightbeamOperator
             if edfi_conn_id:
-                lb_state_dir = os.path.join(
-                    self.emlb_state_directory, tenant_code, self.run_type, str(api_year), 'lightbeam'
+                lb_state_dir = edfi_api_client.url_join(
+                    self.emlb_state_directory,
+                    tenant_code, self.run_type, api_year, grain_update,
+                    'lightbeam'
                 )
 
                 run_lightbeam = LightbeamOperator(
-                    task_id=f"{tenant_code}_{api_year}_send_via_lightbeam",
+                    task_id=f"{taskgroup_grain}_send_via_lightbeam",
                     lightbeam_path=self.lightbeam_path,
                     data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
                     state_dir=lb_state_dir,
@@ -373,7 +396,7 @@ class EarthbeamDAG:
                 # for resource in resources:
                 #
                 #     em_to_snowflake = S3ToSnowflakeOperator(
-                #         task_id=f"{tenant_code}_{api_year}_copy_s3_to_snowflake__{resource}",
+                #         task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{resource}",
                 #
                 #         tenant_code=tenant_code,
                 #         api_year=api_year,
