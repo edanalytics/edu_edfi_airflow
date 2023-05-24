@@ -1,5 +1,7 @@
 import logging
 
+from typing import Optional
+
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
@@ -134,6 +136,8 @@ def update_change_versions(
 
     edfi_change_version: int,
 
+    upstream_task_id_prefix: Optional[str] = None,
+
     **kwargs
 ):
     """
@@ -142,7 +146,24 @@ def update_change_versions(
     """
     rows_to_insert = []
 
-    for task_id in kwargs['task'].get_direct_relative_ids(upstream=True):
+    ### Collect a list of upstream tasks to collect XComs from.
+    # Originally, each endpoint taskgroup linked directly to the change-version operator.
+    upstream_relatives = kwargs['task'].get_direct_relative_ids(upstream=True)
+
+    # However, if using resource/deletes/descriptor parent taskgroups, these direct linkages are lost.
+    # Instead, we need to collect all tasks and filter to those with the `copy_into_snowflake` prefix.
+    if not upstream_relatives:
+        if not upstream_task_id_prefix:
+            raise Exception(
+                "No upstream relatives were found, and argument `upstream_task_id_prefix` is undefined."
+            )
+
+        upstream_relatives = [
+            task.task_id for task in kwargs['dag'].tasks
+            if task.task_id.startswith(upstream_task_id_prefix)
+        ]
+
+    for task_id in upstream_relatives:
 
         # Only log successful copies into Snowflake (skips will return None)
         if not kwargs['ti'].xcom_pull(task_id):
