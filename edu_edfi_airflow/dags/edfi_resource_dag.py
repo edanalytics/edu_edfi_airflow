@@ -13,7 +13,6 @@ from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.dags.callables import change_version
 from edu_edfi_airflow.dags.dag_util import airflow_util
-from edu_edfi_airflow.dags.dag_util.task_group import LazyTaskGroup
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
@@ -93,25 +92,10 @@ class EdFiResourceDAG:
             self.full_refresh = True  # Force full-refreshes if change versions are not used.
 
         # Create nested task-groups for cleaner webserver UI
-        # (Make these lazy to only show the TaskGroups that are actually used.)
-        self.resources_task_group = LazyTaskGroup(
-            group_id="Ed-Fi Resources",
-            prefix_group_id=False,
-            parent_group=None,
-            dag=self.dag
-        )
-        self.resource_deletes_task_group = LazyTaskGroup(
-            group_id="Ed-Fi Resource Deletes",
-            prefix_group_id=False,
-            parent_group=None,
-            dag=self.dag
-        )
-        self.descriptors_task_group = LazyTaskGroup(
-            group_id="Ed-Fi Descriptors",
-            prefix_group_id=False,
-            parent_group=None,
-            dag=self.dag
-        )
+        # (Make these lazy to only show populated TaskGroups in the UI.)
+        self.resources_task_group = None
+        self.resource_deletes_task_group = None
+        self.descriptors_task_group = None
 
 
     def add_resource(self,
@@ -119,15 +103,18 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        task_group = self.resources_task_group
-
-        if not task_group:  # Initialize the task group if still undefined.
-            task_group.initialize()
-            self.chain_task_group_into_dag(task_group)
+        if not self.resources_task_group:  # Initialize the task group if still undefined.
+            self.resources_task_group = TaskGroup(
+                group_id="Ed-Fi Resources",
+                prefix_group_id=False,
+                parent_group=None,
+                dag=self.dag
+            )
+            self.chain_task_group_into_dag(self.resources_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace,
-            parent_group=task_group,
+            parent_group=self.resources_task_group,
             **kwargs
         )
 
@@ -136,15 +123,18 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        task_group = self.resource_deletes_task_group
-
-        if not task_group:  # Initialize the task group if still undefined.
-            task_group.initialize()
-            self.chain_task_group_into_dag(task_group)
+        if not self.resource_deletes_task_group:  # Initialize the task group if still undefined.
+            self.resource_deletes_task_group = TaskGroup(
+                group_id="Ed-Fi Resource Deletes",
+                prefix_group_id=False,
+                parent_group=None,
+                dag=self.dag
+            )
+            self.chain_task_group_into_dag(self.resource_deletes_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True, table="_deletes",
-            parent_group=task_group,
+            parent_group=self.resource_deletes_task_group,
             **kwargs
         )
 
@@ -153,15 +143,18 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
         **kwargs
     ):
-        task_group = self.descriptors_task_group
-
-        if not task_group:  # Initialize the task group if still undefined.
-            task_group.initialize()
-            self.chain_task_group_into_dag(task_group)
+        if not self.descriptors_task_group:  # Initialize the task group if still undefined.
+            self.descriptors_task_group = TaskGroup(
+                group_id="Ed-Fi Descriptors",
+                prefix_group_id=False,
+                parent_group=None,
+                dag=self.dag
+            )
+            self.chain_task_group_into_dag(self.descriptors_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
-            parent_group=task_group,
+            parent_group=self.descriptors_task_group,
             **kwargs
         )
 
