@@ -28,7 +28,7 @@ class EdFiResourceDAG:
     s3_to_snowflake_task_id_prefix = "copy_into_snowflake_"  # This prefix is passed to `update_change_versions`.
 
     params_dict = {
-        "full_refresh": Param(False, type="bool"),
+        "full_refresh": Param(False, type="boolean"),
         "endpoints": Param([], type="array"),
     }
 
