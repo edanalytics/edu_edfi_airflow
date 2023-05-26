@@ -155,7 +155,12 @@ class EdFiResourceDAG:
     def chain_task_groups_into_dag(self):
         """
         Chain the optional endpoint task groups with the change-version operator and DBT incrementer if defined.
+
+        Originally, we chained the empty task groups at init, but tasks are only registered if added before dependency.
+        See `https://github.com/apache/airflow/issues/16764` for more information.
+
         Ideally, we'd use `airflow.util.helpers.chain()`, but Airflow2.6 logs dependency warnings when chaining already-included tasks.
+        See `https://github.com/apache/airflow/discussions/20693` for more information.
 
         :return:
         """
