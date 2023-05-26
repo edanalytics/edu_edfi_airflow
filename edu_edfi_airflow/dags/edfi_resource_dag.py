@@ -82,10 +82,8 @@ class EdFiResourceDAG:
 
         # Retrieve current and previous change versions to define an ingestion window.
         if self.use_change_version:
-            self.cv_task_group = self.build_change_version_task_group()
-            self.cv_update_operator = self.build_change_version_update_operator(
-                airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id)
-            )
+            self.cv_task_group      = self.build_change_version_task_group()
+            self.cv_update_operator = self.build_change_version_update_operator()
         else:
             self.cv_task_group = None
             self.cv_update_operator = None
@@ -256,7 +254,7 @@ class EdFiResourceDAG:
         return cv_task_group
 
 
-    def build_change_version_update_operator(self, edfi_change_version: int) -> PythonOperator:
+    def build_change_version_update_operator(self) -> PythonOperator:
         """
 
         :return:
@@ -273,7 +271,7 @@ class EdFiResourceDAG:
                 'snowflake_conn_id': self.snowflake_conn_id,
                 'change_version_table': self.change_version_table,
 
-                'edfi_change_version': edfi_change_version,
+                'edfi_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                 'upstream_task_id_prefix': self.s3_to_snowflake_task_id_prefix,
             },
