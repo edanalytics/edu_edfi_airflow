@@ -74,6 +74,14 @@ class EdFiResourceDAG:
         # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
 
+        # Retrieve current and previous change versions to define an ingestion window.
+        if self.use_change_version:
+            self.cv_task_group      = self.build_change_version_task_group()
+            self.cv_update_operator = self.build_change_version_update_operator()
+        else:
+            self.cv_task_group = None
+            self.cv_update_operator = None
+
         # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
             self.dbt_var_increment_operator = build_variable_update_operator(
@@ -82,14 +90,6 @@ class EdFiResourceDAG:
             )
         else:
             self.dbt_var_increment_operator = None
-
-        # Retrieve current and previous change versions to define an ingestion window.
-        if self.use_change_version:
-            self.cv_task_group      = self.build_change_version_task_group()
-            self.cv_update_operator = self.build_change_version_update_operator()
-        else:
-            self.cv_task_group = None
-            self.cv_update_operator = None
 
         # Create nested task-groups for cleaner webserver UI
         # (Make these lazy to only show populated TaskGroups in the UI.)
@@ -110,7 +110,7 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            self.chain_task_group_into_dag(self.resources_task_group)
+            # self.chain_task_group_into_dag(self.resources_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace,
@@ -130,7 +130,7 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            self.chain_task_group_into_dag(self.resource_deletes_task_group)
+            # self.chain_task_group_into_dag(self.resource_deletes_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True, table="_deletes",
@@ -150,7 +150,7 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            self.chain_task_group_into_dag(self.descriptors_task_group)
+            # self.chain_task_group_into_dag(self.descriptors_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
@@ -402,6 +402,6 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 >> copy_s3_to_snowflake
 
         # TODO: Can tasked added to a TaskGroup be dependent downstream automatically if the TaskGroup is dependent?
-        # self.chain_task_group_into_dag(resource_task_group)
+        self.chain_task_group_into_dag(resource_task_group)
 
         return resource_task_group
