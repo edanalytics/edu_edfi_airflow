@@ -31,34 +31,25 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    full_refresh = False
-
-    if context['dag_run'].conf:
-        full_refresh = context['dag_run'].conf.get('full_refresh', False)
-
-    return full_refresh
+    return context["params"]["full_refresh"]
 
 
-def is_resource_specified(context, resource: str) -> bool:
+def is_endpoint_specified(context, endpoint: str) -> bool:
     """
 
     :param context:
-    :param resource:
+    :param endpoint:
     :return:
     """
-    is_specified = True
+    endpoints_to_run = context["params"]["endpoints"]
 
-    if context['dag_run'].conf:
-        specified_resources = context['dag_run'].conf.get('resources')
+    # If no endpoints are specified, run all.
+    if not endpoints_to_run:
+        return True
 
-        if specified_resources is not None:
-            # Apply camel_to_snake transform on all specified resources to circumvent user-input error.
-            specified_resources = list(map(camel_to_snake, specified_resources))
-
-            if camel_to_snake(resource) not in specified_resources:
-                is_specified = False
-
-    return is_specified
+    else:
+        # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
+        return bool(camel_to_snake(endpoint) in map(camel_to_snake, endpoints_to_run))
 
 
 def xcom_pull_template(
