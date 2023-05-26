@@ -5,7 +5,6 @@ from typing import Optional
 from airflow import DAG
 from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
-from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import build_variable_update_operator
@@ -69,8 +68,6 @@ class EdFiResourceDAG:
         self.use_change_version = use_change_version
         self.change_version_table = change_version_table
 
-        self.dbt_incrementer_var = dbt_incrementer_var
-
         # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
 
@@ -83,9 +80,9 @@ class EdFiResourceDAG:
             self.cv_update_operator = None
 
         # Build an operator to increment the DBT var at the end of the run.
-        if self.dbt_incrementer_var:
+        if dbt_incrementer_var:
             self.dbt_var_increment_operator = build_variable_update_operator(
-                self.dbt_incrementer_var, lambda x: int(x) + 1,
+                dbt_incrementer_var, lambda x: int(x) + 1,
                 task_id='increment_dbt_variable', trigger_rule='all_done', dag=self.dag
             )
         else:
@@ -110,7 +107,6 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            # self.chain_task_group_into_dag(self.resources_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace,
@@ -130,7 +126,6 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            # self.chain_task_group_into_dag(self.resource_deletes_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True, table="_deletes",
@@ -150,7 +145,6 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            # self.chain_task_group_into_dag(self.descriptors_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
@@ -158,14 +152,27 @@ class EdFiResourceDAG:
             **kwargs
         )
 
-    def chain_task_group_into_dag(self, task_group):
+    def chain_task_groups_into_dag(self):
         """
-        Chain the task group with the change-version operator and DBT incrementer, if either are defined.
-        :param task_group:
+        Chain the optional endpoint task groups with the change-version operator and DBT incrementer if defined.
+        Ideally, we'd use `airflow.util.helpers.chain()`, but Airflow2.6 logs dependency warnings when chaining already-included tasks.
+
         :return:
         """
-        task_order = (self.cv_task_group, task_group, self.cv_update_operator, self.dbt_var_increment_operator)
-        chain(*filter(None, task_order))
+        for task_group in (self.resources_task_group, self.resource_deletes_task_group, self.descriptors_task_group):
+
+            # Ignore undefined task groups
+            if not task_group:
+                continue
+
+            if self.use_change_version:
+                self.cv_task_group >> task_group >> self.cv_update_operator
+            elif self.dbt_var_increment_operator:
+                task_group >> self.dbt_var_increment_operator
+
+        # Be extremely intentional with connections to prevent dependency warnings.
+        if self.use_change_version and self.dbt_var_increment_operator:
+            self.cv_update_operator >> self.dbt_var_increment_operator
 
 
     ### Internal methods that should probably not be called directly.
@@ -400,8 +407,5 @@ class EdFiResourceDAG:
             )
 
             pull_edfi_to_s3 >> copy_s3_to_snowflake
-
-        # TODO: Can tasked added to a TaskGroup be dependent downstream automatically if the TaskGroup is dependent?
-        self.chain_task_group_into_dag(resource_task_group)
 
         return resource_task_group
