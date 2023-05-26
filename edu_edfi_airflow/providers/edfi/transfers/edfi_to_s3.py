@@ -86,7 +86,7 @@ class EdFiToS3Operator(BaseOperator):
         # If doing a resource-specific run, confirm resource is in the list.
         if not airflow_util.is_endpoint_specified(context, self.resource):
             raise AirflowSkipException(
-                "Skipping resource not specified in run context 'resources'."
+                "Endpoint not specified in DAG config `endpoints`."
             )
 
         # Run sanity checks to make sure we aren't doing something wrong.
