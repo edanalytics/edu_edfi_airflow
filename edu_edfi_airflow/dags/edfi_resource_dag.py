@@ -108,7 +108,7 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            self.chain_task_group_into_dag(self.resources_task_group)
+            # self.chain_task_group_into_dag(self.resources_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace,
@@ -128,7 +128,7 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            self.chain_task_group_into_dag(self.resource_deletes_task_group)
+            # self.chain_task_group_into_dag(self.resource_deletes_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, deletes=True, table="_deletes",
@@ -148,7 +148,7 @@ class EdFiResourceDAG:
                 parent_group=None,
                 dag=self.dag
             )
-            self.chain_task_group_into_dag(self.descriptors_task_group)
+            # self.chain_task_group_into_dag(self.descriptors_task_group)
 
         self.build_edfi_to_snowflake_task_group(
             resource, namespace, table="_descriptors",
@@ -404,5 +404,8 @@ class EdFiResourceDAG:
             )
 
             pull_edfi_to_s3 >> copy_s3_to_snowflake
+
+        # TODO: Can tasked added to a TaskGroup be dependent downstream automatically if the TaskGroup is dependent?
+        self.chain_task_group_into_dag(resource_task_group)
 
         return resource_task_group
