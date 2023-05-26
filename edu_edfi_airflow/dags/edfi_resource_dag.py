@@ -156,7 +156,7 @@ class EdFiResourceDAG:
         """
         Chain the optional endpoint task groups with the change-version operator and DBT incrementer if defined.
 
-        Originally, we chained the empty task groups at init, but tasks are only registered if added before dependency.
+        Originally, we chained the empty task groups at init, but tasks are only registered if added to the group before downstream dependencies.
         See `https://github.com/apache/airflow/issues/16764` for more information.
 
         Ideally, we'd use `airflow.util.helpers.chain()`, but Airflow2.6 logs dependency warnings when chaining already-included tasks.
@@ -166,8 +166,7 @@ class EdFiResourceDAG:
         """
         for task_group in (self.resources_task_group, self.resource_deletes_task_group, self.descriptors_task_group):
 
-            # Ignore undefined task groups
-            if not task_group:
+            if not task_group:  # Ignore undefined task groups
                 continue
 
             if self.use_change_version:
@@ -175,7 +174,7 @@ class EdFiResourceDAG:
             elif self.dbt_var_increment_operator:
                 task_group >> self.dbt_var_increment_operator
 
-        # Be extremely intentional with connections to prevent dependency warnings.
+        # Be extremely intentional with dependencies to prevent dependency warnings.
         if self.use_change_version and self.dbt_var_increment_operator:
             self.cv_update_operator >> self.dbt_var_increment_operator
 
