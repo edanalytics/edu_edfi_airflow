@@ -3,6 +3,7 @@ from functools import partial
 from typing import Optional
 
 from airflow import DAG
+from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
 from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
@@ -26,6 +27,11 @@ class EdFiResourceDAG:
 
     s3_to_snowflake_task_id_prefix = "copy_into_snowflake_"  # This prefix is passed to `update_change_versions`.
 
+    params_dict = {
+        "full_refresh": Param(False, type="boolean"),
+        "endpoints": Param([], type="array"),
+    }
+
     def __init__(self,
         *,
         tenant_code: str,
@@ -39,7 +45,6 @@ class EdFiResourceDAG:
         tmp_dir  : str,
 
         multiyear: bool = False,
-        full_refresh: bool = False,
 
         use_change_version: bool = True,
         change_version_table: str = '_meta_change_versions',
@@ -51,6 +56,7 @@ class EdFiResourceDAG:
     ) -> None:
         self.tenant_code = tenant_code
         self.api_year = api_year
+        self.multiyear = multiyear
 
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
@@ -60,9 +66,6 @@ class EdFiResourceDAG:
         self.pool = pool
         self.tmp_dir = tmp_dir
 
-        self.multiyear = multiyear
-        self.full_refresh = full_refresh
-
         self.use_change_version = use_change_version
         self.change_version_table = change_version_table
 
@@ -70,6 +73,14 @@ class EdFiResourceDAG:
 
         # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
+
+        # Retrieve current and previous change versions to define an ingestion window.
+        if self.use_change_version:
+            self.cv_task_group      = self.build_change_version_task_group()
+            self.cv_update_operator = self.build_change_version_update_operator()
+        else:
+            self.cv_task_group = None
+            self.cv_update_operator = None
 
         # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
@@ -79,15 +90,6 @@ class EdFiResourceDAG:
             )
         else:
             self.dbt_var_increment_operator = None
-
-        # Retrieve current and previous change versions to define an ingestion window.
-        if self.use_change_version:
-            self.cv_task_group      = self.build_change_version_task_group()
-            self.cv_update_operator = self.build_change_version_update_operator()
-        else:
-            self.cv_task_group = None
-            self.cv_update_operator = None
-            self.full_refresh = True  # Force full-refreshes if change versions are not used.
 
         # Create nested task-groups for cleaner webserver UI
         # (Make these lazy to only show populated TaskGroups in the UI.)
@@ -196,10 +198,7 @@ class EdFiResourceDAG:
             schedule_interval=schedule_interval,
             default_args=default_args,
             catchup=False,
-            # user_defined_macros= {  # Note: none of these UDMs are currently used. (These are beautiful, but antithetical to Airflow's Scheduler design!)
-            #     'tenant_code': self.tenant_code,
-            #     'api_year'   : self.api_year,
-            # },
+            params=self.params_dict,
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
@@ -237,7 +236,6 @@ class EdFiResourceDAG:
                     'api_year': self.api_year,
                     'snowflake_conn_id': self.snowflake_conn_id,
                     'change_version_table': self.change_version_table,
-                    'full_refresh': self.full_refresh,
                 },
                 trigger_rule='all_success',
                 dag=self.dag
@@ -396,8 +394,6 @@ class EdFiResourceDAG:
                 table_name=table or snake_resource,  # Use the provided table name, or default to resource.
 
                 s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
-
-                full_refresh=self.full_refresh,
 
                 trigger_rule='all_success',
                 dag=self.dag

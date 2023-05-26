@@ -31,7 +31,6 @@ Although the DAG-implementation is designed for Ed-Fi3, it will work for Ed-Fi2 
 | use_change_version   | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                           |
 | change_version_table | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                          |
 | multiyear            | Boolean flag for whether the ODS has multiple years of data within one API year (defaults to `False`; dispreferred implementation) |
-| full_refresh         | Boolean flag for whether to use full-refresh logic during a run (used differently in resource vs. descriptor runs)                 |
 | slack_conn_id        | Optional Airflow connection with Slack webhook credentials (default None)                                                          |
 
 Additional Airflow DAG parameters (e.g. `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
@@ -247,7 +246,7 @@ If either `min_change_version` or `max_change_version` are undefined, change ver
 
 ### S3ToSnowflakeOperator
 Transfers a specific S3 key to the specified table in Snowflake.
-First completes a `DELETE FROM` statement if `full_refresh` is defined explicitly or in the context.
+First completes a `DELETE FROM` statement if `full_refresh` is set to True in the DAG configs.
 
 <details>
 <summary>Arguments:</summary>
@@ -261,7 +260,6 @@ First completes a `DELETE FROM` statement if `full_refresh` is defined explicitl
 | resource           | Static name of Ed-Fi resource, placed in the `name` column of the destination table                        |
 | table_name         | Name of the raw Snowflake table to copy into on Snowflake                                                  |
 | s3_destination_key | Source key where JSON data is saved on S3                                                                  |
-| full_refresh       | Boolean flag to explicitly mark the run as a full-refresh; used when pulling descriptors (default `False`) |
 
 -----
 
@@ -308,7 +306,6 @@ Because Ed-Fi2 lacks change versions, all Ed-Fi2 pulls are full-refreshes.
 | resource             | Name of Ed-Fi resource being compared between the ODS and Snowflake                                                   |
 | deletes              | Boolean flag to mark whether the change-version is associated with the specified resource's deletes (default `False`) |
 | change_version_table | Name of the table to record resource change versions on Snowflake                                                     |
-| full_refresh         | Boolean flag to explicitly mark the run as a full-refresh; used internally for pulling descriptors (default `False`)  |
 
 -----
 
