@@ -9,7 +9,7 @@ from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.utils.decorators import apply_defaults
 
-from edu_edfi_airflow.dags.dag_util.airflow_util import is_full_refresh, is_resource_specified
+from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -78,13 +78,13 @@ class EdFiToS3Operator(BaseOperator):
         :param context:
         :return:
         """
-        if is_full_refresh(context) and self.api_get_deletes:
+        if airflow_util.is_full_refresh(context) and self.api_get_deletes:
             raise AirflowSkipException(
                 "Skipping delete pull for full_refresh run."
             )
 
         # If doing a resource-specific run, confirm resource is in the list.
-        if not is_resource_specified(context, self.resource):
+        if not airflow_util.is_endpoint_specified(context, self.resource):
             raise AirflowSkipException(
                 "Skipping resource not specified in run context 'resources'."
             )

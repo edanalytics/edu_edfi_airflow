@@ -1,13 +1,10 @@
 import logging
 
-from typing import Optional
-
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
-
 
 
 def get_newest_edfi_change_version(edfi_conn_id: str, **kwargs):
@@ -38,12 +35,10 @@ def reset_change_versions(
     snowflake_conn_id: str,
     change_version_table: str,
 
-    full_refresh: bool = False,
-
     **kwargs
 ) -> None:
     # Airflow-skip if run not marked for a full-refresh.
-    if full_refresh or airflow_util.is_full_refresh(kwargs):
+    if airflow_util.is_full_refresh(kwargs):
         logging.info(
             "Full refresh: marking previous pulls inactive."
         )

@@ -4,7 +4,7 @@ from airflow.models import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.utils.decorators import apply_defaults
 
-from edu_edfi_airflow.dags.dag_util.airflow_util import is_full_refresh, get_snowflake_params_from_conn
+from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -27,8 +27,6 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         s3_destination_key: str,
 
-        full_refresh: bool = False,
-
         **kwargs
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
@@ -43,8 +41,6 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         self.s3_destination_key = s3_destination_key
 
-        self.full_refresh = full_refresh
-
 
     def execute(self, context):
         """
@@ -56,7 +52,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
 
         # Retrieve the database and schema from the Snowflake hook.
-        database, schema = get_snowflake_params_from_conn(self.snowflake_conn_id)
+        database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
 
         if edfi_conn.is_edfi2():
             ods_version = "ED-FI2"
@@ -96,8 +92,7 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         # Break off prematurely if EdFi 3+ and not a full refresh.
         # Incremental runs are only available in EdFi 3+.
-        if edfi_conn.is_edfi2() or (self.full_refresh or is_full_refresh(context)):
-
+        if edfi_conn.is_edfi2() or airflow_util.is_full_refresh(context):
             cursor_log = snowflake_hook.run(
                 sql=[qry_delete, qry_copy_into],
                 autocommit=False
