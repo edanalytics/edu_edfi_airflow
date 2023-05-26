@@ -136,7 +136,7 @@ def update_change_versions(
 
     edfi_change_version: int,
 
-    upstream_task_id_prefix: Optional[str] = None,
+    task_id_prefix: str,
 
     **kwargs
 ):
@@ -146,24 +146,13 @@ def update_change_versions(
     """
     rows_to_insert = []
 
-    ### Collect a list of upstream tasks to collect XComs from.
-    # Originally, each endpoint taskgroup linked directly to the change-version operator.
-    upstream_relatives = kwargs['task'].get_direct_relative_ids(upstream=True)
+    # Collect all tasks and filter to those with the specified prefix.
+    upstream_relative_ids = [
+        task.task_id for task in kwargs['dag'].tasks
+        if task.task_id.startswith(task_id_prefix)
+    ]
 
-    # However, if using resource/deletes/descriptor parent taskgroups, these direct linkages are lost.
-    # Instead, we need to collect all tasks and filter to those with the `copy_into_snowflake` prefix.
-    if not upstream_relatives:
-        if not upstream_task_id_prefix:
-            raise Exception(
-                "No upstream relatives were found, and argument `upstream_task_id_prefix` is undefined."
-            )
-
-        upstream_relatives = [
-            task.task_id for task in kwargs['dag'].tasks
-            if task.task_id.startswith(upstream_task_id_prefix)
-        ]
-
-    for task_id in upstream_relatives:
+    for task_id in upstream_relative_ids:
 
         # Only log successful copies into Snowflake (skips will return None)
         if not kwargs['ti'].xcom_pull(task_id):
@@ -171,7 +160,7 @@ def update_change_versions(
 
         # Extract resource name and deletes flag from task_id.
         # Task ID is in this shape: "copy_into_snowflake_{display_resource}"
-        resource, deletes = airflow_util.split_display_name(task_id.replace("copy_into_snowflake_", ""))
+        resource, deletes = airflow_util.split_display_name(task_id.replace(task_id_prefix, ""))
 
         rows_to_insert.append(
             f"""(
