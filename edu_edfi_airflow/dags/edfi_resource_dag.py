@@ -156,6 +156,15 @@ class EdFiResourceDAG:
             **kwargs
         )
 
+    def chain_task_group_into_dag(self, task_group):
+        """
+        Chain the task group with the change-version operator and DBT incrementer, if either are defined.
+        :param task_group:
+        :return:
+        """
+        task_order = (self.cv_task_group, task_group, self.cv_update_operator, self.dbt_var_increment_operator)
+        chain(*filter(None, task_order))
+
 
     ### Internal methods that should probably not be called directly.
     def initialize_dag(self,
@@ -397,13 +406,3 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 >> copy_s3_to_snowflake
 
         return resource_task_group
-
-
-    def chain_task_group_into_dag(self, task_group):
-        """
-        Chain the task group with the change-version operator and DBT incrementer, if either are defined.
-        :param task_group:
-        :return:
-        """
-        task_order = (self.cv_task_group, task_group, self.cv_update_operator, self.dbt_var_increment_operator)
-        chain(*filter(None, task_order))
