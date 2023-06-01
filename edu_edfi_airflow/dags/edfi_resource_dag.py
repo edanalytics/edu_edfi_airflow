@@ -395,15 +395,13 @@ class EdFiResourceDAG:
             copy_s3_to_snowflake = S3ToSnowflakeOperator(
                 task_id=f"{self.s3_to_snowflake_task_id_prefix}{display_resource}",
 
-                edfi_conn_id=self.edfi_conn_id,
-                snowflake_conn_id=self.snowflake_conn_id,
-
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
                 resource=snake_resource,
-
                 table_name=table or snake_resource,  # Use the provided table name, or default to resource.
 
+                edfi_conn_id=self.edfi_conn_id,
+                snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
 
                 trigger_rule='all_success',
