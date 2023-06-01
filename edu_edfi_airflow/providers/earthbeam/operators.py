@@ -6,7 +6,7 @@ from typing import Iterable, Optional, Union
 from airflow.models import Connection
 from airflow.operators.bash import BashOperator
 
-from edu_edfi_airflow.dags.dag_util.airflow_util import get_context_parameter
+from edu_edfi_airflow.dags.dag_util import airflow_util
 
 
 class EarthmoverOperator(BashOperator):
@@ -207,8 +207,8 @@ class LightbeamOperator(BashOperator):
             if _api_mode:
                 self.env['EDFI_API_MODE'] = _api_mode
 
-        # Overwrite `force` if defined in context.
-        if get_context_parameter(context, 'force'):
+        # Overwrite `force` if defined in DAG configs.
+        if context["params"]["force"]:
             logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
             self.arguments['--force'] = ""
 

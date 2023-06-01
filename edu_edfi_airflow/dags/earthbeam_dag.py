@@ -5,6 +5,7 @@ from functools import partial
 from typing import Callable, Optional
 
 from airflow import DAG
+from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.helpers import chain
@@ -34,6 +35,10 @@ class EarthbeamDAG:
     emlb_state_directory: str = '/efs/emlb/state'
     raw_output_directory: str = '/efs/tmp_storage/raw'
     em_output_directory : str = '/efs/tmp_storage/earthmover'
+
+    params_dict = {
+        "force": Param(False, type="boolean"),
+    }
 
     def __init__(self,
         run_type: str,
@@ -88,6 +93,7 @@ class EarthbeamDAG:
             schedule_interval=schedule_interval,
             default_args=default_args,
             catchup=False,
+            params=self.params_dict,
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
