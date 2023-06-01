@@ -1,9 +1,28 @@
 from typing import Tuple
 
 from airflow.models import Connection
-from airflow.models.baseoperator import BaseOperator
 
 from edfi_api_client import camel_to_snake
+
+
+def build_display_name(resource: str, is_deletes: bool = False) -> str:
+    """
+    Universal helper method for building the display name of a resource.
+    """
+    if is_deletes:
+        return f"{resource}_deletes"
+    else:
+        return resource
+
+def split_display_name(display_name: str) -> (str, bool):
+    """
+    Universal helper method for splitting the display name of a resource into resource and deletes flag.
+    """
+    if display_name.endswith("_deletes"):
+        resource = display_name.replace("_deletes", "")
+        return resource, True
+    else:
+        return display_name, False
 
 
 def is_full_refresh(context) -> bool:
@@ -12,49 +31,25 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    full_refresh = False
-
-    if context['dag_run'].conf:
-        full_refresh = context['dag_run'].conf.get('full_refresh', False)
-
-    return full_refresh
+    return context["params"]["full_refresh"]
 
 
-def get_context_parameter(context, parameter: str, default: object = None) -> object:
+def is_endpoint_specified(context, endpoint: str) -> bool:
     """
-    Searches execution context for parameter.
 
     :param context:
-    :param parameter:
-    :param default:
+    :param endpoint:
     :return:
     """
-    if context['dag_run'].conf:
-        return context['dag_run'].conf.get(parameter, default)
+    endpoints_to_run = context["params"]["endpoints"]
+
+    # If no endpoints are specified, run all.
+    if not endpoints_to_run:
+        return True
+
     else:
-        return default
-
-
-def is_resource_specified(context, resource: str) -> bool:
-    """
-
-    :param context:
-    :param resource:
-    :return:
-    """
-    is_specified = True
-
-    if context['dag_run'].conf:
-        specified_resources = context['dag_run'].conf.get('resources')
-
-        if specified_resources is not None:
-            # Apply camel_to_snake transform on all specified resources to circumvent user-input error.
-            specified_resources = list(map(camel_to_snake, specified_resources))
-
-            if camel_to_snake(resource) not in specified_resources:
-                is_specified = False
-
-    return is_specified
+        # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
+        return bool(camel_to_snake(endpoint) in map(camel_to_snake, endpoints_to_run))
 
 
 def xcom_pull_template(

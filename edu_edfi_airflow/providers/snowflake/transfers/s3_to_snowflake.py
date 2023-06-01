@@ -6,7 +6,7 @@ from airflow.models import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.utils.decorators import apply_defaults
 
-from edu_edfi_airflow.dags.dag_util.airflow_util import is_full_refresh, get_snowflake_params_from_conn
+from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -27,7 +27,6 @@ class S3ToSnowflakeOperator(BaseOperator):
         s3_destination_key: str,
 
         snowflake_conn_id: str,
-        full_refresh: bool = False,
 
         edfi_conn_id: Optional[str] = None,
         ods_version: Optional[str] = None,
@@ -37,6 +36,9 @@ class S3ToSnowflakeOperator(BaseOperator):
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
 
+        self.edfi_conn_id = edfi_conn_id
+        self.snowflake_conn_id = snowflake_conn_id
+
         self.tenant_code = tenant_code
         self.api_year = api_year
         self.resource = resource
@@ -44,10 +46,6 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         self.s3_destination_key = s3_destination_key
 
-        self.snowflake_conn_id = snowflake_conn_id
-        self.full_refresh = full_refresh
-
-        self.edfi_conn_id = edfi_conn_id
         self.ods_version = ods_version
         self.data_model_version = data_model_version
 
@@ -60,7 +58,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         """
         ### Retrieve the database and schema from the Snowflake hook.
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
-        database, schema = get_snowflake_params_from_conn(self.snowflake_conn_id)
+        database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
 
         ### Retrieve the Ed-Fi, ODS, and data model versions if not provided.
         # (This needs to occur in execute to not call the API at every Airflow synchronize.)
@@ -113,7 +111,7 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         ### Commit the update queries to Snowflake.
         # Incremental runs are only available in EdFi 3+.
-        if is_edfi2 or (self.full_refresh or is_full_refresh(context)):
+        if is_edfi2 or airflow_util.is_full_refresh(context):
             cursor_log = snowflake_hook.run(
                 sql=[qry_delete, qry_copy_into],
                 autocommit=False
@@ -125,3 +123,4 @@ class S3ToSnowflakeOperator(BaseOperator):
             )
 
         logging.info(cursor_log)
+        return True  # Return for update_change_versions() xcom pull
