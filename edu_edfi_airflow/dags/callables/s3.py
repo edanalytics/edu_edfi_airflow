@@ -6,6 +6,8 @@ from typing import Iterator, Tuple
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
+import edfi_api_client
+
 
 def walk_directory(directory: str) -> Iterator[Tuple[str, str]]:
     """
@@ -15,7 +17,7 @@ def walk_directory(directory: str) -> Iterator[Tuple[str, str]]:
     :return:
     """
     for root, _, files in os.walk(directory):
-        subdir = root.replace(directory, '').strip('/')
+        subdir = root.replace(directory, '').strip('/') or None  # Force to None if an empty string
         for file in files:
             yield subdir, file
 
@@ -58,8 +60,8 @@ def local_filepath_to_s3(
         # If a directory, upload all files to S3.
         if os.path.isdir(local_filepath):
             for subdir, file in walk_directory(local_filepath):
-                full_path = os.path.join(local_filepath, subdir, file)
-                s3_full_path = os.path.join(s3_destination_key, subdir, file)
+                full_path = edfi_api_client.url_join(local_filepath, subdir, file)
+                s3_full_path = edfi_api_client.url_join(s3_destination_key, subdir, file)
 
                 s3_hook.load_file(
                     filename=full_path,
