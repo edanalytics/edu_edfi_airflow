@@ -32,6 +32,9 @@ def remove_filepaths(filepaths: Union[str, List[str]]):
     if isinstance(filepaths, str):
         filepaths = [filepaths]
 
+    # Remove Nones before starting.
+    filepaths = filter(None, filepaths)
+
     for path in filepaths:
         logging.info(f"Removing local filepath: `{path}`")
         try:
