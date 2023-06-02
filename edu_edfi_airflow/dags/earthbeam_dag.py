@@ -13,7 +13,7 @@ from airflow.utils.task_group import TaskGroup
 import edfi_api_client
 from ea_airflow_util import slack_callbacks
 
-from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3
+from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3, remove_filepaths
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
@@ -45,6 +45,8 @@ class EarthbeamDAG:
         pool: str = 'default_pool',
         slack_conn_id: str = None,
 
+        fast_cleanup: bool = False,
+
         **kwargs
     ):
         self.run_type = run_type
@@ -54,6 +56,8 @@ class EarthbeamDAG:
 
         self.pool = pool
         self.slack_conn_id = slack_conn_id
+
+        self.fast_cleanup = fast_cleanup
 
         self.dag = self.initialize_dag(**kwargs)
 
@@ -190,8 +194,8 @@ class EarthbeamDAG:
         **kwargs
     ):
         """
-        (Python) -> (S3: Raw) -> Earthmover -> (S3: Earthmover Output) +-> (Lightbeam) -> (Snowflake: Lightbeam Logs)
-                                                                       +-> (Snowflake: Earthmover Output)
+        (Python) -> (S3: Raw) -> Earthmover -> (S3: Earthmover Output) +-> (Lightbeam) -> (Snowflake: Lightbeam Logs) +-> Clean-up
+                                                                       +-> (Snowflake: Earthmover Output)             +
 
         Many steps are automatic based on arguments defined:
         * If `edfi_conn_id` is defined, use Lightbeam to post to ODS.
@@ -366,6 +370,7 @@ class EarthbeamDAG:
             else:
                 run_lightbeam = None
 
+
             ### Lightbeam logs to Snowflake
             if lightbeam_logging_table:
                 if not (edfi_conn_id and snowflake_conn_id):
@@ -375,11 +380,29 @@ class EarthbeamDAG:
             log_lightbeam_to_snowflake = None
 
 
+            ### Final cleanup
+            cleanup_local_disk = PythonOperator(
+                task_id=f"{taskgroup_grain}_cleanup_disk",
+                python_callable=remove_filepaths,
+                op_kwargs={
+                    "paths": [
+                        airflow_util.xcom_pull_template(python_preprocess.task_id),
+                        airflow_util.xcom_pull_template(run_earthmover.task_id),
+                    ],
+                },
+                provide_context=True,
+                pool=self.pool,
+                trigger_rule="all_done" if self.fast_cleanup else "all_succeed",
+                dag=self.dag
+            )
+
+
             ### Default route: Earthmover-to-Lightbeam
             task_order = (
                 python_preprocess, raw_to_s3,
                 run_earthmover, em_to_s3,
-                run_lightbeam, log_lightbeam_to_snowflake
+                run_lightbeam, log_lightbeam_to_snowflake,
+                cleanup_local_disk
             )
 
             chain(*filter(None, task_order))  # Chain all defined operators into task-order.
@@ -410,6 +433,6 @@ class EarthbeamDAG:
                 #         data_model_version="",
                 #     )
                 #
-                #     em_to_s3 >> em_to_snowflake
+                #     em_to_s3 >> em_to_snowflake >> cleanup_local_disk
 
         return tenant_year_task_group
