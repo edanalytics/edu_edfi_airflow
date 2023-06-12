@@ -176,23 +176,24 @@ class EarthbeamDAG:
         group_id: Optional[str] = None,
         prefix_group_id: bool = False,
 
-        edfi_conn_id: Optional[str] = None,
-        s3_conn_id: Optional[str] = None,
-        snowflake_conn_id: Optional[str] = None,
-
         earthmover_kwargs: Optional[dict] = None,
+
+        edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
+
+        s3_conn_id: Optional[str] = None,
         s3_filepath: Optional[str] = None,
 
         python_callable: Optional[Callable] = None,
         python_kwargs: Optional[dict] = None,
 
+        snowflake_conn_id: Optional[str] = None,
+        logging_table: Optional[str] = None,
+
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
-
-        logging_table: Optional[str] = None,
 
         **kwargs
     ):
@@ -217,23 +218,25 @@ class EarthbeamDAG:
         :param group_id:
         :param prefix_group_id:
 
-        :param edfi_conn_id:
-        :param s3_conn_id:
-        :param snowflake_conn_id:
-
         :param earthmover_kwargs:
+
+        :param edfi_conn_id:
         :param lightbeam_kwargs:
+
+        :param s3_conn_id:
         :param s3_filepath:
 
         :param python_callable:
         :param python_kwargs:
+
+        :param snowflake_conn_id:
+        :param logging_table:
 
         :param ods_version:
         :param data_model_version:
         :param endpoints:
         :param full_refresh:
 
-        :param logging_table:
         :return:
         """
         taskgroup_grain = f"{tenant_code}_{api_year}"
