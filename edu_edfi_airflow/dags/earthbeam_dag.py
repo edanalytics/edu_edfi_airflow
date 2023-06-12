@@ -2,7 +2,7 @@ import datetime
 import os
 
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
@@ -24,16 +24,16 @@ class EarthbeamDAG:
     Full Earthmover-Lightbeam DAG, with optional Python callable pre-processing.
 
     TODO:
-    - S3-to-Snowflake COPY INTO
-      * Post-Earthmover, {resource}.jsonl files are saved to OUTPUT_DIR; how do we ascertain namespace?
     - Post-run Lightbeam-to-Snowflake logging
     - Optional file hashing before initial S3
     """
     # TODO: Should these be user-definable or static?
-    emlb_hash_directory : str = '/efs/emlb/prehash'
-    emlb_state_directory: str = '/efs/emlb/state'
-    raw_output_directory: str = '/efs/tmp_storage/raw'
-    em_output_directory : str = '/efs/tmp_storage/earthmover'
+    emlb_hash_directory   : str = '/efs/emlb/prehash'
+    emlb_state_directory  : str = '/efs/emlb/state'
+    emlb_results_directory: str = '/efs/emlb/results'
+    raw_output_directory  : str = '/efs/tmp_storage/raw'
+    em_output_directory   : str = '/efs/tmp_storage/earthmover'
+
 
     def __init__(self,
         run_type: str,
@@ -173,36 +173,41 @@ class EarthbeamDAG:
 
         *,
         grain_update: Optional[str] = None,
-
         group_id: Optional[str] = None,
         prefix_group_id: bool = False,
 
-        edfi_conn_id     : Optional[str] = None,
+        edfi_conn_id: Optional[str] = None,
+        s3_conn_id: Optional[str] = None,
+        snowflake_conn_id: Optional[str] = None,
 
         earthmover_kwargs: Optional[dict] = None,
-        lightbeam_kwargs : Optional[dict] = None,
+        lightbeam_kwargs: Optional[dict] = None,
+        s3_filepath: Optional[str] = None,
 
-        s3_conn_id       : Optional[str] = None,
-        s3_filepath      : Optional[str] = None,
+        python_callable: Optional[Callable] = None,
+        python_kwargs: Optional[dict] = None,
 
-        python_callable  : Optional[Callable] = None,
-        python_kwargs    : Optional[dict] = None,
+        ods_version: Optional[str] = None,
+        data_model_version: Optional[str] = None,
+        endpoints: Optional[List[str]] = None,
+        full_refresh: bool = False,
 
-        snowflake_conn_id: Optional[str] = None,
-        lightbeam_logging_table: Optional[str] = None,
+        logging_table: Optional[str] = None,
 
         **kwargs
     ):
         """
-        (Python) -> (S3: Raw) -> Earthmover -> (S3: Earthmover Output) +-> (Lightbeam) -> (Snowflake: Lightbeam Logs) +-> Clean-up
-                                                                       +-> (Snowflake: Earthmover Output)             +
+        TODO: Can endpoints post-Earthmover be dynamically-inferred instead of explicitly-specified?
+
+        (Python) -> (S3: Raw) -> Earthmover -> (S3: EM Output) -> (Snowflake: EM Logs) +-> (Lightbeam) -> (Snowflake: LB Logs) +-> Clean-up
+                                                                                       +-> (Snowflake: EM Output)
 
         Many steps are automatic based on arguments defined:
         * If `edfi_conn_id` is defined, use Lightbeam to post to ODS.
         * If `python_callable` is defined, run Python pre-process.
         * If `s3_conn_id` is defined, upload files raw and post-Earthmover.
         * If `snowflake_conn_id` is defined and `edfi_conn_id` is NOT defined, copy EM output into raw Snowflake tables.
-        * If `lightbeam_logging_table` is defined, copy LB logs into Snowflake table.
+        * If `logging_table` is defined, copy EM and LB logs into Snowflake table.
 
         :param tenant_code:
         :param api_year:
@@ -213,18 +218,22 @@ class EarthbeamDAG:
         :param prefix_group_id:
 
         :param edfi_conn_id:
+        :param s3_conn_id:
+        :param snowflake_conn_id:
 
         :param earthmover_kwargs:
         :param lightbeam_kwargs:
-
-        :param s3_conn_id:
         :param s3_filepath:
 
         :param python_callable:
         :param python_kwargs:
 
-        :param snowflake_conn_id:
-        :param lightbeam_logging_table:
+        :param ods_version:
+        :param data_model_version:
+        :param endpoints:
+        :param full_refresh:
+
+        :param logging_table:
         :return:
         """
         taskgroup_grain = f"{tenant_code}_{api_year}"
@@ -294,7 +303,7 @@ class EarthbeamDAG:
                 raw_to_s3 = None
 
 
-            ### EarthmoverOperator
+            ### EarthmoverOperator: Required
             em_output_dir = edfi_api_client.url_join(
                 self.em_output_directory,
                 tenant_code, self.run_type, api_year, grain_update,
@@ -307,15 +316,32 @@ class EarthbeamDAG:
                 'earthmover.csv'
             )
 
+            em_results_file = edfi_api_client.url_join(
+                self.emlb_results_directory, 'earthmover',
+                tenant_code, self.run_type, api_year, grain_update,
+                '{{ ds_nodash }}', '{{ ts_nodash }}',
+                "results.json"
+            )
+
             run_earthmover = EarthmoverOperator(
                 task_id=f"{taskgroup_grain}_run_earthmover",
                 earthmover_path=self.earthmover_path,
                 output_dir=em_output_dir,
                 state_file=em_state_file,
+                results_file=em_results_file if logging_table else None,
                 **(earthmover_kwargs or {}),
                 pool=self.pool,
                 dag=self.dag
             )
+
+            ### Earthmover logs to Snowflake
+            if logging_table:
+                if not snowflake_conn_id:
+                    raise Exception(
+                        "Snowflake connection required to copy Earthmover logs into Snowflake."
+                    )
+
+            log_earthmover_to_snowflake = None
 
 
             ### Earthmover to S3
@@ -357,27 +383,37 @@ class EarthbeamDAG:
                     'lightbeam'
                 )
 
+                lb_results_file = edfi_api_client.url_join(
+                    self.emlb_results_directory, 'lightbeam',
+                    tenant_code, self.run_type, api_year, grain_update,
+                    '{{ ds_nodash }}', '{{ ts_nodash }}',
+                    "results.json"
+                )
+
                 run_lightbeam = LightbeamOperator(
                     task_id=f"{taskgroup_grain}_send_via_lightbeam",
                     lightbeam_path=self.lightbeam_path,
                     data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
                     state_dir=lb_state_dir,
+                    results_file=lb_results_file if logging_table else None,
                     edfi_conn_id=edfi_conn_id,
                     **(lightbeam_kwargs or {}),
                     pool=self.pool,
                     dag=self.dag
                 )
+
+                ### Lightbeam logs to Snowflake
+                if logging_table:
+                    if not snowflake_conn_id:
+                        raise Exception(
+                            "Snowflake connection required to copy Lightbeam logs into Snowflake."
+                        )
+
+                log_lightbeam_to_snowflake = None
+
             else:
                 run_lightbeam = None
-
-
-            ### Lightbeam logs to Snowflake
-            if lightbeam_logging_table:
-                if not (edfi_conn_id and snowflake_conn_id):
-                    raise Exception(
-                        "Ed-Fi connection and snowflake connection required to copy Lightbeam logs into Snowflake."
-                    )
-            log_lightbeam_to_snowflake = None
+                log_lightbeam_to_snowflake = None
 
 
             ### Final cleanup
@@ -400,7 +436,7 @@ class EarthbeamDAG:
             ### Default route: Earthmover-to-Lightbeam
             task_order = (
                 python_preprocess, raw_to_s3,
-                run_earthmover, em_to_s3,
+                run_earthmover, em_to_s3, log_earthmover_to_snowflake,
                 run_lightbeam, log_lightbeam_to_snowflake,
                 cleanup_local_disk
             )
@@ -415,24 +451,32 @@ class EarthbeamDAG:
                         "S3 connection required to copy into Snowflake."
                     )
 
-                # TODO: How do we resolve the resources that need to be loaded into Snowflake?
-                # for resource in resources:
-                #
-                #     em_to_snowflake = S3ToSnowflakeOperator(
-                #         task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{resource}",
-                #
-                #         tenant_code=tenant_code,
-                #         api_year=api_year,
-                #         resource=f"{resource}__{self.run_type}",
-                #         table_name=resource,
-                #
-                #         s3_destination_key=airflow_util.xcom_pull_template(em_to_s3.task_id),
-                #
-                #         snowflake_conn_id=snowflake_conn_id,
-                #         ods_version="",
-                #         data_model_version="",
-                #     )
-                #
-                #     em_to_s3 >> em_to_snowflake >> cleanup_local_disk
+                for endpoint in endpoints:
+                    # Snowflake tables are snake_cased; Earthmover outputs are camelCased
+                    snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
+                    camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
+
+                    endpoint_output_path = edfi_api_client.url_join(
+                        airflow_util.xcom_pull_template(em_to_s3.task_id),
+                        camel_endpoint + ".jsonl"  # TODO: Make this dynamic
+                    )
+
+                    em_to_snowflake = S3ToSnowflakeOperator(
+                        task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{camel_endpoint}",
+
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        resource=f"{snake_endpoint}__{self.run_type}",
+                        table_name=snake_endpoint,
+
+                        s3_destination_key=endpoint_output_path,
+
+                        snowflake_conn_id=snowflake_conn_id,
+                        ods_version=ods_version,
+                        data_model_version=data_model_version,
+                        full_refresh=full_refresh,
+                    )
+
+                    em_to_s3 >> em_to_snowflake >> cleanup_local_disk
 
         return tenant_year_task_group
