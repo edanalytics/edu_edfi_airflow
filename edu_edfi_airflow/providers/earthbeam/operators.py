@@ -71,7 +71,7 @@ class EarthmoverOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.earthmover_path} run "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, **kwargs)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
 
     def execute(self, context) -> str:
@@ -177,7 +177,7 @@ class LightbeamOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.lightbeam_path} {command} "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, **kwargs)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
 
     def execute(self, context) -> str:
