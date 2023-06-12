@@ -24,6 +24,7 @@ class EarthmoverOperator(BashOperator):
         config_file: Optional[str] = None,
         selector   : Optional[Union[str, Iterable[str]]] = None,
         parameters : Optional[Union[str, dict]] = None,
+        results_file: Optional[str] = None,
 
         force          : bool = False,
         skip_hashing   : bool = False,
@@ -52,6 +53,9 @@ class EarthmoverOperator(BashOperator):
             if not isinstance(parameters, str):
                 parameters = json.dumps(parameters)
             self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
+
+        if results_file:
+            self.arguments['--results-file'] = results_file
 
         # Boolean arguments
         if force:
@@ -114,6 +118,7 @@ class LightbeamOperator(BashOperator):
         config_file: Optional[str] = None,
         selector: Optional[Union[str, Iterable[str]]] = None,
         parameters: Optional[Union[str, dict]] = None,
+        results_file: Optional[str] = None,
 
         wipe: bool = False,
         force: bool = False,
@@ -151,6 +156,9 @@ class LightbeamOperator(BashOperator):
             if not isinstance(parameters, str):
                 parameters = json.dumps(parameters)
             self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
+
+        if results_file:
+            self.arguments['--results-file'] = results_file
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
