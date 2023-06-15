@@ -507,7 +507,7 @@ class EarthbeamDAG:
                 },
                 provide_context=True,
                 pool=self.pool,
-                trigger_rule="all_done" if self.fast_cleanup else "all_succeed",
+                trigger_rule="all_done" if self.fast_cleanup else "all_success",
                 dag=self.dag
             )
 
