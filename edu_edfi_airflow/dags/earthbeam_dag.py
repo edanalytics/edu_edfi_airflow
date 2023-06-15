@@ -262,6 +262,9 @@ class EarthbeamDAG:
             dag=self.dag
         ) as tenant_year_task_group:
 
+            # Dynamically build a task-order as tasks are added.
+            task_order = []
+
             ### PythonOperator Preprocess
             if python_callable:
                 python_preprocess = PythonOperator(
@@ -272,8 +275,8 @@ class EarthbeamDAG:
                     pool=self.pool,
                     dag=self.dag
                 )
-            else:
-                python_preprocess = None
+
+                task_order.append(python_preprocess)
 
 
             ### Raw to S3
@@ -303,8 +306,8 @@ class EarthbeamDAG:
                     pool=self.pool,
                     dag=self.dag
                 )
-            else:
-                raw_to_s3 = None
+
+                task_order.append(raw_to_s3)
 
 
             ### EarthmoverOperator: Required
@@ -338,6 +341,8 @@ class EarthbeamDAG:
                 dag=self.dag
             )
 
+            task_order.append(run_earthmover)
+
             ### Earthmover logs to Snowflake
             if logging_table:
                 if not snowflake_conn_id:
@@ -359,8 +364,8 @@ class EarthbeamDAG:
                     trigger_rule="all_done",
                     dag=self.dag
                 )
-            else:
-                log_earthmover_to_snowflake = None
+
+                task_order.append(log_earthmover_to_snowflake)
 
 
             ### Earthmover to S3
@@ -390,8 +395,8 @@ class EarthbeamDAG:
                     pool=self.pool,
                     dag=self.dag
                 )
-            else:
-                em_to_s3 = None
+
+                task_order.append(em_to_s3)
 
 
             ### LightbeamOperator
@@ -421,6 +426,8 @@ class EarthbeamDAG:
                     dag=self.dag
                 )
 
+                task_order.append(run_lightbeam)
+
                 ### Lightbeam logs to Snowflake
                 if logging_table:
                     if not snowflake_conn_id:
@@ -442,12 +449,50 @@ class EarthbeamDAG:
                         trigger_rule="all_done",
                         dag=self.dag
                     )
-                else:
-                    log_lightbeam_to_snowflake = None
 
-            else:
-                run_lightbeam = None
-                log_lightbeam_to_snowflake = None
+                    task_order.append(log_lightbeam_to_snowflake)
+
+
+            ### Alternate route: Bypassing the ODS directly into Snowflake
+            if snowflake_conn_id and not edfi_conn_id:
+                if not s3_conn_id:
+                    raise Exception(
+                        "S3 connection required to copy into Snowflake."
+                    )
+
+                with TaskGroup(
+                    group_id=f"{taskgroup_grain}_copy_s3_to_snowflake",
+                    prefix_group_id=True,
+                    dag=self.dag
+                ) as s3_to_snowflake_task_group:
+
+                    for endpoint in endpoints:
+                        # Snowflake tables are snake_cased; Earthmover outputs are camelCased
+                        snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
+                        camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
+
+                        endpoint_output_path = edfi_api_client.url_join(
+                            airflow_util.xcom_pull_template(em_to_s3.task_id),
+                            camel_endpoint + ".jsonl"  # TODO: Make this dynamic
+                        )
+
+                        em_to_snowflake = S3ToSnowflakeOperator(
+                            task_id=f"__{camel_endpoint}",
+
+                            tenant_code=tenant_code,
+                            api_year=api_year,
+                            resource=f"{snake_endpoint}__{self.run_type}",
+                            table_name=snake_endpoint,
+
+                            s3_destination_key=endpoint_output_path,
+
+                            snowflake_conn_id=snowflake_conn_id,
+                            ods_version=ods_version,
+                            data_model_version=data_model_version,
+                            full_refresh=full_refresh,
+                        )
+
+                task_order.append(s3_to_snowflake_task_group)
 
 
             ### Final cleanup
@@ -466,51 +511,9 @@ class EarthbeamDAG:
                 dag=self.dag
             )
 
+            task_order.append(cleanup_local_disk)
 
-            ### Default route: Earthmover-to-Lightbeam
-            task_order = (
-                python_preprocess, raw_to_s3,
-                run_earthmover, em_to_s3, log_earthmover_to_snowflake,
-                run_lightbeam, log_lightbeam_to_snowflake,
-                cleanup_local_disk
-            )
-
-            chain(*filter(None, task_order))  # Chain all defined operators into task-order.
-
-
-            ### Alternate route: Bypassing the ODS directly into Snowflake
-            if snowflake_conn_id and not edfi_conn_id:
-                if not s3_conn_id:
-                    raise Exception(
-                        "S3 connection required to copy into Snowflake."
-                    )
-
-                for endpoint in endpoints:
-                    # Snowflake tables are snake_cased; Earthmover outputs are camelCased
-                    snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
-                    camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
-
-                    endpoint_output_path = edfi_api_client.url_join(
-                        airflow_util.xcom_pull_template(em_to_s3.task_id),
-                        camel_endpoint + ".jsonl"  # TODO: Make this dynamic
-                    )
-
-                    em_to_snowflake = S3ToSnowflakeOperator(
-                        task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{camel_endpoint}",
-
-                        tenant_code=tenant_code,
-                        api_year=api_year,
-                        resource=f"{snake_endpoint}__{self.run_type}",
-                        table_name=snake_endpoint,
-
-                        s3_destination_key=endpoint_output_path,
-
-                        snowflake_conn_id=snowflake_conn_id,
-                        ods_version=ods_version,
-                        data_model_version=data_model_version,
-                        full_refresh=full_refresh,
-                    )
-
-                    em_to_s3 >> em_to_snowflake >> cleanup_local_disk
+            # Chain all defined operators into task-order.
+            chain(task_order)
 
         return tenant_year_task_group
