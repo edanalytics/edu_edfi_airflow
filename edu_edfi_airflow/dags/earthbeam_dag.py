@@ -514,6 +514,6 @@ class EarthbeamDAG:
             task_order.append(cleanup_local_disk)
 
             # Chain all defined operators into task-order.
-            chain(task_order)
+            chain(*task_order)
 
         return tenant_year_task_group
