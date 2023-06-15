@@ -262,7 +262,7 @@ class EarthbeamDAG:
             dag=self.dag
         ) as tenant_year_task_group:
 
-            # Dynamically build a task-order as tasks are added.
+            # Dynamically build a task-order as tasks are defined.
             task_order = []
 
             ### PythonOperator Preprocess
@@ -462,7 +462,7 @@ class EarthbeamDAG:
 
                 with TaskGroup(
                     group_id=f"{taskgroup_grain}_copy_s3_to_snowflake",
-                    prefix_group_id=True,
+                    prefix_group_id=False,
                     dag=self.dag
                 ) as s3_to_snowflake_task_group:
 
@@ -477,7 +477,7 @@ class EarthbeamDAG:
                         )
 
                         em_to_snowflake = S3ToSnowflakeOperator(
-                            task_id=f"__{camel_endpoint}",
+                            task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{camel_endpoint}",
 
                             tenant_code=tenant_code,
                             api_year=api_year,
