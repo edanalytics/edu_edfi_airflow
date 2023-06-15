@@ -500,7 +500,7 @@ class EarthbeamDAG:
                 task_id=f"{taskgroup_grain}_cleanup_disk",
                 python_callable=remove_filepaths,
                 op_kwargs={
-                    "paths": [
+                    "paths": [  # TODO: This will fail when python_preprocess not defined.
                         airflow_util.xcom_pull_template(python_preprocess.task_id),
                         airflow_util.xcom_pull_template(run_earthmover.task_id),
                     ],
