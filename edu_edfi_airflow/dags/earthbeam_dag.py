@@ -34,6 +34,12 @@ class EarthbeamDAG:
     raw_output_directory  : str = '/efs/tmp_storage/raw'
     em_output_directory   : str = '/efs/tmp_storage/earthmover'
 
+    # Logging Earthmover & Lightbeam results to Snowflake
+    logging_columns = [
+        'run_date', 'run_timestamp',
+        'tenant_code', 'api_year', 'grain_update',
+        'run_type', 'results'
+    ]
 
     def __init__(self,
         run_type: str,
@@ -253,6 +259,13 @@ class EarthbeamDAG:
             elif s3_conn_id:         # Earthmover-to-S3
                 group_id += "_to_s3"
 
+        # Use lambda to consistently define logging payload
+        logging_payload = lambda results_file: [
+            '{{ ds_nodash }}', '{{ ts_nodash }}',
+            tenant_code, api_year, grain_update,
+            self.run_type, open(results_file, 'r').readline()
+        ]
+
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=prefix_group_id,
@@ -357,8 +370,8 @@ class EarthbeamDAG:
                     op_kwargs={
                         "snowflake_conn_id": snowflake_conn_id,
                         "table_name": logging_table,
-                        "columns": [],
-                        "values": [],
+                        "columns": self.logging_columns,
+                        "values": logging_payload(em_results_file),
                     },
                     provide_context=True,
                     pool=self.pool,
@@ -441,8 +454,8 @@ class EarthbeamDAG:
                         op_kwargs={
                             "snowflake_conn_id": snowflake_conn_id,
                             "table_name": logging_table,
-                            "columns": [],
-                            "values": [],
+                            "columns": self.logging_columns,
+                            "values": logging_payload(lb_results_file),
                         },
                         provide_context=True,
                         pool=self.pool,
