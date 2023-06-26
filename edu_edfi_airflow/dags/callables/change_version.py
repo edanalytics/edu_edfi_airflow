@@ -3,6 +3,7 @@ import logging
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
+from edu_edfi_airflow.dags.callables.snowflake import insert_into_snowflake
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
@@ -157,14 +158,11 @@ def update_change_versions(
         # Task ID is in this shape: "copy_into_snowflake_{display_resource}"
         resource, deletes = airflow_util.split_display_name(task_id.replace(task_id_prefix, ""))
 
-        rows_to_insert.append(
-            f"""(
-                '{tenant_code}', '{api_year}', '{resource}', {deletes},
-                to_date('{kwargs["ds_nodash"]}', 'YYYYMMDD'),
-                to_timestamp('{kwargs["ts_nodash"]}', 'YYYYMMDDTHH24MISS'),
-                {edfi_change_version}, TRUE
-            )"""
-        )
+        rows_to_insert.append([
+            tenant_code, api_year, resource, deletes,
+            kwargs["ds_nodash"], kwargs["ts_nodash"],
+            edfi_change_version, True
+        ])
 
     if not rows_to_insert:
         raise AirflowSkipException(
@@ -175,23 +173,13 @@ def update_change_versions(
             f"Collected updated change versions for {len(rows_to_insert)} endpoints."
         )
 
-    # Retrieve the database and schema from the Snowflake hook.
-    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
-
-    # Build the SQL queries to be passed into `Hook.run()`.
-    qry_insert_into = f"""
-        insert into {database}.{schema}.{change_version_table}
-            (tenant_code, api_year, name, is_deletes, pull_date, pull_timestamp, max_version, is_active)
-        values
-            {', '.join(rows_to_insert)}
-        ;
-    """
-
-    snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
-
-    cursor_log = snowflake_hook.run(
-        sql=qry_insert_into
+    insert_into_snowflake(
+        snowflake_conn_id=snowflake_conn_id,
+        table_name=change_version_table,
+        columns=[
+            "tenant_code", "api_year", "name", "is_deletes",
+            "pull_date", "pull_timestamp",
+            "max_version", "is_active"
+        ],
+        values=rows_to_insert
     )
-
-    logging.info(cursor_log)
-
