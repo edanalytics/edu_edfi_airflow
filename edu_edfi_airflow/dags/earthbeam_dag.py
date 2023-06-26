@@ -1,4 +1,3 @@
-import datetime
 import os
 
 from functools import partial
@@ -109,12 +108,10 @@ class EarthbeamDAG:
         :param grain_update:
         :return:
         """
-        now = datetime.datetime.now()
-
         raw_dir = edfi_api_client.url_join(
             self.raw_output_directory,
             tenant_code, self.run_type, api_year, grain_update,
-            now.strftime("%Y%m%d"), now.strftime("%Y%m%dT%H%M%S")
+            '{{ ds_nodash }}', '{{ ts_nodash }}'
         )
         os.makedirs(raw_dir, exist_ok=True)
         return raw_dir
