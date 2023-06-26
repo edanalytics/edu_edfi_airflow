@@ -326,10 +326,10 @@ class EarthbeamDAG:
             )
 
             em_results_file = edfi_api_client.url_join(
-                self.emlb_results_directory, 'earthmover',
+                self.emlb_results_directory,
                 tenant_code, self.run_type, api_year, grain_update,
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
-                "results.json"
+                "earthmover_results.json"
             )
 
             run_earthmover = EarthmoverOperator(
@@ -411,10 +411,10 @@ class EarthbeamDAG:
                 )
 
                 lb_results_file = edfi_api_client.url_join(
-                    self.emlb_results_directory, 'lightbeam',
+                    self.emlb_results_directory,
                     tenant_code, self.run_type, api_year, grain_update,
                     '{{ ds_nodash }}', '{{ ts_nodash }}',
-                    "results.json"
+                    "lightbeam_results.json"
                 )
 
                 run_lightbeam = LightbeamOperator(
