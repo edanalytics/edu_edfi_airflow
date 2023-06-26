@@ -264,6 +264,7 @@ class EarthbeamDAG:
 
             # Dynamically build a task-order as tasks are defined.
             task_order = []
+            paths_to_clean = []
 
             ### PythonOperator Preprocess
             if python_callable:
@@ -277,6 +278,7 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(python_preprocess)
+                paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
 
 
             ### Raw to S3
@@ -342,6 +344,8 @@ class EarthbeamDAG:
             )
 
             task_order.append(run_earthmover)
+            paths_to_clean.append(airflow_util.xcom_pull_template(run_earthmover.task_id))
+
 
             ### Earthmover logs to Snowflake
             if logging_table:
@@ -389,7 +393,6 @@ class EarthbeamDAG:
                         's3_destination_key': s3_em_filepath,
                         'local_filepath': airflow_util.xcom_pull_template(run_earthmover.task_id),
                         'remove_local_filepath': False,
-                        # TODO: Include local-filepath cleanup in final logs operation.
                     },
                     provide_context=True,
                     pool=self.pool,
@@ -500,10 +503,7 @@ class EarthbeamDAG:
                 task_id=f"{taskgroup_grain}_cleanup_disk",
                 python_callable=remove_filepaths,
                 op_kwargs={
-                    "paths": [  # TODO: This will fail when python_preprocess not defined.
-                        airflow_util.xcom_pull_template(python_preprocess.task_id),
-                        airflow_util.xcom_pull_template(run_earthmover.task_id),
-                    ],
+                    "paths": paths_to_clean,
                 },
                 provide_context=True,
                 pool=self.pool,
