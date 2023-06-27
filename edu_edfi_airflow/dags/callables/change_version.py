@@ -160,7 +160,7 @@ def update_change_versions(
 
         rows_to_insert.append([
             tenant_code, api_year, resource, deletes,
-            kwargs["ds_nodash"], kwargs["ts_nodash"],
+            kwargs["ds"], kwargs["ts"],
             edfi_change_version, True
         ])
 
