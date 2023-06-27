@@ -110,13 +110,9 @@ def get_previous_change_versions(
         group by 1, 2
     """
 
-    ### Connect to Snowflake and execute the query.
-    snowflake_conn = SnowflakeHook(snowflake_conn_id).get_conn()
-    with snowflake_conn.cursor() as cur:
-        cur.execute(qry_prior_max)
-        prior_change_versions = cur.fetchall()
+    ### Retrieve previous endpoint-level change versions and push as XComs.
+    prior_change_versions = SnowflakeHook(snowflake_conn_id).get_records(qry_prior_max)
 
-    # Push max change versions as resource-level XComs.
     for snake_resource, is_deletes, max_version in prior_change_versions:
         xcom_key = airflow_util.build_display_name(snake_resource, is_deletes)
         kwargs['ti'].xcom_push(key=xcom_key, value=max_version)

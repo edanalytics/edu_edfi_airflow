@@ -386,7 +386,6 @@ class EdFiResourceDAG:
                 dag=self.dag
             )
 
-
             ### COPY FROM S3 TO SNOWFLAKE
             copy_s3_to_snowflake = S3ToSnowflakeOperator(
                 task_id=f"copy_into_snowflake_{display_resource}",
