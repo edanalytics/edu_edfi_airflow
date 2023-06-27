@@ -21,32 +21,16 @@ def insert_into_snowflake(
     :param values:
     :return:
     """
-    # Retrieve the database and schema from the Snowflake hook.
-    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
-
     # Force a single record into a list for iteration below.
     if not all(isinstance(val, (list, tuple)) for val in values):
         values = [values]
 
-    # qry_insert_into = f"""
-    #     INSERT INTO {database}.{schema}.{table_name}
-    #         ({', '.join(columns)})
-    #     VALUES
-    #         ({', '.join(['%s'] * len(columns))})
-    #     ;
-    # """
+    # Retrieve the database and schema from the Snowflake hook.
+    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
     snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
     snowflake_hook.insert_rows(
         table=f"{database}.{schema}.{table_name}",
         rows=values,
         target_fields=columns,
-        commit_every=0,  # Commit all rows in one transaction.
     )
-
-    # # Insert each row into the table, passing the values as parameters.
-    # for row in values:
-    #     snowflake_hook.run(
-    #         sql=qry_insert_into,
-    #         parameters=row
-    #     )
