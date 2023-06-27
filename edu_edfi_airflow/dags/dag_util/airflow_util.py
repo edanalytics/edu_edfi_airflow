@@ -14,16 +14,6 @@ def build_display_name(resource: str, is_deletes: bool = False) -> str:
     else:
         return resource
 
-def split_display_name(display_name: str) -> (str, bool):
-    """
-    Universal helper method for splitting the display name of a resource into resource and deletes flag.
-    """
-    if display_name.endswith("_deletes"):
-        resource = display_name.replace("_deletes", "")
-        return resource, True
-    else:
-        return display_name, False
-
 
 def is_full_refresh(context) -> bool:
     """
