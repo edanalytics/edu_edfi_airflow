@@ -143,12 +143,12 @@ def update_change_versions(
     rows_to_insert = []
 
     # Collect all tasks and filter to those with the specified prefix.
-    upstream_relative_ids = [
-        task.task_id for task in kwargs['dag'].tasks
-        if task.task_id.startswith(task_id_prefix)
-    ]
+    # upstream_relative_ids = [
+    #     task.task_id for task in kwargs['dag'].tasks
+    #     if task.task_id.startswith(task_id_prefix)
+    # ]
 
-    for task_id in upstream_relative_ids:
+    for task_id in kwargs['task'].upstream_task_ids:
 
         # Only log successful copies into Snowflake (skips will return None)
         if not kwargs['ti'].xcom_pull(task_id):
