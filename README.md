@@ -196,7 +196,7 @@ Channel configurations must be specified on webhook-creation.
 ## Classes
 
 ### EdFiHook
-This Airflow Hook connects to the Ed-Fi ODS using an `EdFiApiClient`.
+This Airflow Hook connects to the Ed-Fi ODS using an `EdFiClient`.
 
 <details>
 <summary>Arguments:</summary>
@@ -221,6 +221,9 @@ Transfers a specific resource (or resource deletes) from the Ed-Fi ODS to S3.
 |:-------------------------|:--------------------------------------------------------------------------------------------------------|
 | edfi_conn_id             | Name of the Airflow connection where Ed-Fi ODS connection metadata has been defined                     |
 | resource                 | Name of Ed-Fi resource/descriptor to pull from the ODS                                                  |
+| tmp_dir                  | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3 |
+| s3_conn_id               | Name of the Airflow connection where S3 connection metadata has been defined                            |
+| s3_destination_key       | Destination key where Ed-Fi resource data should be written on S3                                       |
 | query_parameters         | Custom parameters to apply to the pull (default `None`)                                                 |
 | min_change_version       | Minimum change version to pull for the resource (default `None`)                                        |
 | max_change_version       | Maximum change version to pull for the resource (default `None`)                                        |
@@ -229,9 +232,6 @@ Transfers a specific resource (or resource deletes) from the Ed-Fi ODS to S3.
 | api_get_deletes          | Boolean flag for whether to retrieve the resource's associated deletes (default `False`)                |
 | api_retries              | Number of attempts the pull should make before giving up (default `5`)                                  |
 | page_size                | Number of rows to pull at each GET (default `100`)                                                      |
-| tmp_dir                  | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3 |
-| s3_conn_id               | Name of the Airflow connection where S3 connection metadata has been defined                            |
-| s3_destination_key       | Destination key where Ed-Fi resource data should be written on S3                                       |
 
 `page_size` should be tuned per ODS and resource.
 Contact your ODS-administrator to determine maximum-allowable page-size and recommendeded size to prevent overwhelming the ODS.
@@ -270,8 +270,8 @@ First completes a `DELETE FROM` statement if `full_refresh` is set to True in th
 
 ## Callables
 
-### get_edfi_change_version
-Retrieves the most recent change version in the ODS using `EdFiApiClient.get_newest_change_version()`
+### get_newest_edfi_change_version
+Retrieves the most recent change version in the ODS using `EdFiClient.get_newest_change_version()`
 Returns `None` if an Ed-Fi2 ODS, as change versions are unimplemented.
 
 <details>
@@ -286,11 +286,11 @@ Returns `None` if an Ed-Fi2 ODS, as change versions are unimplemented.
 </details>
 
 
-### get_resource_change_version
-Retrieves the most recent change version for a given (tenant, year, resource) grain saved in the Snowflake `change_version_table`.
-Returns `0` if Ed-Fi2 or if no records for this resource are found (signifying full-refresh).
+### get_previous_change_versions
+Pushes and XCom of the most recent change version for each resource of a given (tenant, year) grain saved in the Snowflake `change_version_table`.
+Pushes `None` if Ed-Fi2 or if no records for this resource are found (signifying full-refresh).
 
-Combining `get_edfi_change_version` with `get_resource_change_version` allows a `min_change_version` to `max_change_version` window to be defined for the pull.
+Combining `get_newest_edfi_change_version` with `get_previous_change_versions` allows a `min_change_version` to `max_change_version` window to be defined for the pull.
 This allows incremental ingests of resource deltas since the last pull, drastically improving runtimes when compared to full-refreshes.
 Because Ed-Fi2 lacks change versions, all Ed-Fi2 pulls are full-refreshes.
 
@@ -299,12 +299,9 @@ Because Ed-Fi2 lacks change versions, all Ed-Fi2 pulls are full-refreshes.
 
 | Argument             | Description                                                                                                           |
 |:---------------------|:----------------------------------------------------------------------------------------------------------------------|
-| edfi_change_version  | The most recent change version present in the ODS (as retrieved from `get_edfi_change_version`)                       |
-| snowflake_conn_id    | Name of the Airflow connection where Snowflake connection metadata has been defined                                   |
 | tenant_code          | ODS-tenant representation to be saved in Snowflake tables                                                             | 
 | api_year             | ODS API-year to be saved in Snowflake tables                                                                          |
-| resource             | Name of Ed-Fi resource being compared between the ODS and Snowflake                                                   |
-| deletes              | Boolean flag to mark whether the change-version is associated with the specified resource's deletes (default `False`) |
+| snowflake_conn_id    | Name of the Airflow connection where Snowflake connection metadata has been defined                                   |
 | change_version_table | Name of the table to record resource change versions on Snowflake                                                     |
 
 -----
@@ -312,22 +309,19 @@ Because Ed-Fi2 lacks change versions, all Ed-Fi2 pulls are full-refreshes.
 </details>
 
 
-### update_change_version_table
-Updates the change version table in Snowflake with the most recent change version for which data was ingested,
-as specified by the (tenant, year, resource) grain.
+### update_change_versions
+Updates the change version table in Snowflake with the most recent change version for all endpoints in which data was ingested, as specified by the (tenant, year) grain.
 
 <details>
 <summary>Arguments:</summary>
 
-| Argument             | Description                                                                                                           |
-|:---------------------|:----------------------------------------------------------------------------------------------------------------------|
-| tenant_code          | ODS-tenant representation to be saved in Snowflake tables                                                             | 
-| api_year             | ODS API-year to be saved in Snowflake tables                                                                          |
-| resource             | Name of Ed-Fi resource being compared between the ODS and Snowflake                                                   |
-| deletes              | Boolean flag to mark whether the change-version is associated with the specified resource's deletes (default `False`) |
-| snowflake_conn_id    | Name of the Airflow connection where Snowflake connection metadata has been defined                                   |
-| change_version_table | Name of the table to record resource change versions on Snowflake                                                     |
-| edfi_change_version  | The most recent change version present in the ODS (as retrieved from `get_edfi_change_version`)                       |
+| Argument             | Description                                                                                            |
+|:---------------------|:-------------------------------------------------------------------------------------------------------|
+| tenant_code          | ODS-tenant representation to be saved in Snowflake tables                                              | 
+| api_year             | ODS API-year to be saved in Snowflake tables                                                           |
+| snowflake_conn_id    | Name of the Airflow connection where Snowflake connection metadata has been defined                    |
+| change_version_table | Name of the table to record resource change versions on Snowflake                                      |
+| edfi_change_version  | The most recent change version present in the ODS (as retrieved from `get_newest_edfi_change_version`) |
 
 -----
 
