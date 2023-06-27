@@ -132,8 +132,6 @@ def update_change_versions(
 
     edfi_change_version: int,
 
-    task_id_prefix: str,
-
     **kwargs
 ):
     """
@@ -142,21 +140,13 @@ def update_change_versions(
     """
     rows_to_insert = []
 
-    # Collect all tasks and filter to those with the specified prefix.
-    # upstream_relative_ids = [
-    #     task.task_id for task in kwargs['dag'].tasks
-    #     if task.task_id.startswith(task_id_prefix)
-    # ]
-
     for task_id in kwargs['task'].upstream_task_ids:
 
         # Only log successful copies into Snowflake (skips will return None)
-        if not kwargs['ti'].xcom_pull(task_id):
+        if not (xcom_value := kwargs['ti'].xcom_pull(task_id)):
             continue
-
-        # Extract resource name and deletes flag from task_id.
-        # Task ID is in this shape: "copy_into_snowflake_{display_resource}"
-        resource, deletes = airflow_util.split_display_name(task_id.replace(task_id_prefix, ""))
+        else:
+            resource, deletes = xcom_value
 
         rows_to_insert.append([
             tenant_code, api_year, resource, deletes,

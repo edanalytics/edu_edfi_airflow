@@ -1,4 +1,4 @@
-import logging
+from typing import Any, Optional
 
 from airflow.models import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
@@ -27,6 +27,7 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         s3_destination_key: str,
 
+        xcom_return: Optional[Any] = None,
         **kwargs
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
@@ -40,6 +41,8 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.table_name = table_name
 
         self.s3_destination_key = s3_destination_key
+
+        self.xcom_return = xcom_return
 
 
     def execute(self, context):
@@ -93,15 +96,13 @@ class S3ToSnowflakeOperator(BaseOperator):
         # Break off prematurely if EdFi 3+ and not a full refresh.
         # Incremental runs are only available in EdFi 3+.
         if edfi_conn.is_edfi2() or airflow_util.is_full_refresh(context):
-            cursor_log = snowflake_hook.run(
+            snowflake_hook.run(
                 sql=[qry_delete, qry_copy_into],
                 autocommit=False
             )
-
         else:
-            cursor_log = snowflake_hook.run(
+            snowflake_hook.run(
                 sql=qry_copy_into
             )
 
-        logging.info(cursor_log)
-        return True  # Return for update_change_versions() xcom pull
+        return self.xcom_return
