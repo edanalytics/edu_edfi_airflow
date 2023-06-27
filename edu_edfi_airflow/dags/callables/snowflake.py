@@ -28,9 +28,8 @@ def insert_into_snowflake(
     # Retrieve the database and schema from the Snowflake hook.
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
-    snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
-    snowflake_hook.insert_rows(
+    SnowflakeHook(snowflake_conn_id=snowflake_conn_id).insert_rows(
         table=f"{database}.{schema}.{table_name}",
-        rows=values,
         target_fields=columns,
+        rows=values,
     )
