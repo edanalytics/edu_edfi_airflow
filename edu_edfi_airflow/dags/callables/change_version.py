@@ -61,9 +61,7 @@ def reset_change_versions(
     """
 
     ### Connect to Snowflake and execute the query.
-    snowflake_conn = SnowflakeHook(snowflake_conn_id).get_conn()
-    with snowflake_conn.cursor() as cur:
-        cur.execute(qry_mark_inactive)
+    SnowflakeHook(snowflake_conn_id).run(qry_mark_inactive)
 
     # No XComs are pushed, so all downstream XCom-pulls will fail and default to 0.
 
