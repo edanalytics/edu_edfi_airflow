@@ -32,7 +32,7 @@ def insert_into_snowflake(
         INSERT INTO {database}.{schema}.{table_name}
             ({', '.join(columns)})
         VALUES
-            ({', '.join('%s' * len(columns))})
+            ({', '.join(['%s'] * len(columns))})
         ;
     """
 
