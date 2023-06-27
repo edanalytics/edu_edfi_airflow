@@ -28,20 +28,25 @@ def insert_into_snowflake(
     if not all(isinstance(val, (list, tuple)) for val in values):
         values = [values]
 
-    qry_insert_into = f"""
-        INSERT INTO {database}.{schema}.{table_name}
-            ({', '.join(columns)})
-        VALUES
-            ({', '.join(['%s'] * len(columns))})
-        ;
-    """
+    # qry_insert_into = f"""
+    #     INSERT INTO {database}.{schema}.{table_name}
+    #         ({', '.join(columns)})
+    #     VALUES
+    #         ({', '.join(['%s'] * len(columns))})
+    #     ;
+    # """
 
     snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
+    snowflake_hook.insert_rows(
+        table=f"{database}.{schema}.{table_name}",
+        rows=values,
+        target_fields=columns,
+        commit_every=0,  # Commit all rows in one transaction.
+    )
 
-    # Insert each row into the table, passing the values as parameters.
-    for row in values:
-        cursor_log = snowflake_hook.run(
-            sql=qry_insert_into,
-            parameters=row
-        )
-        logging.info(cursor_log)
+    # # Insert each row into the table, passing the values as parameters.
+    # for row in values:
+    #     snowflake_hook.run(
+    #         sql=qry_insert_into,
+    #         parameters=row
+    #     )
