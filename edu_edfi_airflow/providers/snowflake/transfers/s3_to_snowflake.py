@@ -88,6 +88,10 @@ class S3ToSnowflakeOperator(BaseOperator):
             AND name = '{self.resource}'
         """
 
+        # Brackets in regex conflict with string formatting.
+        date_regex = "\\d{8}"
+        ts_regex   = "\\d{8}T\\d{6}"
+
         qry_copy_into = f"""
             COPY INTO {database}.{schema}.{self.table_name}
                 (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
@@ -95,8 +99,8 @@ class S3ToSnowflakeOperator(BaseOperator):
                 SELECT
                     '{self.tenant_code}' AS tenant_code,
                     '{self.api_year}' AS api_year,
-                    TO_DATE(REGEXP_SUBSTR(metadata$filename, '\\d{8}'), 'YYYYMMDD') AS pull_date,
-                    TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '\\d{8}T\\d{6}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
+                    TO_DATE(REGEXP_SUBSTR(metadata$filename, '{date_regex}'), 'YYYYMMDD') AS pull_date,
+                    TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '{ts_regex}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
                     metadata$file_row_number AS file_row_number,
                     metadata$filename AS filename,
                     '{self.resource}' AS name,
