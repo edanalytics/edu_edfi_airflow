@@ -119,7 +119,6 @@ class EarthbeamDAG:
             tenant_code, self.run_type, api_year, grain_update,
             '{{ ds_nodash }}', '{{ ts_nodash }}'
         )
-        os.makedirs(raw_dir, exist_ok=True)
         return raw_dir
 
     def build_python_preprocessing_operator(self,
