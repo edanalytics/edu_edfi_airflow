@@ -24,6 +24,7 @@ class EarthmoverOperator(BashOperator):
         config_file: Optional[str] = None,
         selector   : Optional[Union[str, Iterable[str]]] = None,
         parameters : Optional[Union[str, dict]] = None,
+        results_file: Optional[str] = None,
 
         force          : bool = False,
         skip_hashing   : bool = False,
@@ -53,6 +54,9 @@ class EarthmoverOperator(BashOperator):
                 parameters = json.dumps(parameters)
             self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
 
+        if results_file:
+            self.arguments['--results-file'] = results_file
+
         # Boolean arguments
         if force:
             self.arguments['--force'] = ""
@@ -71,7 +75,7 @@ class EarthmoverOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.earthmover_path} run "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, **kwargs)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
 
     def execute(self, context) -> str:
@@ -114,6 +118,7 @@ class LightbeamOperator(BashOperator):
         config_file: Optional[str] = None,
         selector: Optional[Union[str, Iterable[str]]] = None,
         parameters: Optional[Union[str, dict]] = None,
+        results_file: Optional[str] = None,
 
         wipe: bool = False,
         force: bool = False,
@@ -152,6 +157,9 @@ class LightbeamOperator(BashOperator):
                 parameters = json.dumps(parameters)
             self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
 
+        if results_file:
+            self.arguments['--results-file'] = results_file
+
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
                 resend_status_codes = ",".join(resend_status_codes)
@@ -177,7 +185,7 @@ class LightbeamOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.lightbeam_path} {command} "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, **kwargs)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
 
     def execute(self, context) -> str:
