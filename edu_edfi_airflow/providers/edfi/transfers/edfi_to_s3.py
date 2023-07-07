@@ -9,6 +9,7 @@ from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.utils.decorators import apply_defaults
 
+from edfi_api_client import camel_to_snake
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
@@ -84,7 +85,7 @@ class EdFiToS3Operator(BaseOperator):
             )
 
         # If doing a resource-specific run, confirm resource is in the list.
-        if not airflow_util.is_endpoint_specified(context, self.resource):
+        if not self.is_endpoint_specified(context, self.resource):
             raise AirflowSkipException(
                 "Endpoint not specified in DAG config `endpoints`."
             )
@@ -207,3 +208,21 @@ class EdFiToS3Operator(BaseOperator):
             json.dumps(row).encode('utf8') + b'\n'
             for row in rows
         )
+
+    @staticmethod
+    def is_endpoint_specified(context, endpoint: str) -> bool:
+        """
+
+        :param context:
+        :param endpoint:
+        :return:
+        """
+        endpoints_to_run = context["params"]["endpoints"]
+
+        # If no endpoints are specified, run all.
+        if not endpoints_to_run:
+            return True
+
+        else:
+            # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
+            return bool(camel_to_snake(endpoint) in map(camel_to_snake, endpoints_to_run))

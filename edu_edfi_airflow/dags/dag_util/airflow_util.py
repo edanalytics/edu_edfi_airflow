@@ -2,8 +2,6 @@ from typing import Tuple
 
 from airflow.models import Connection
 
-from edfi_api_client import camel_to_snake
-
 
 def build_display_name(resource: str, is_deletes: bool = False) -> str:
     """
@@ -24,24 +22,6 @@ def is_full_refresh(context) -> bool:
     return context["params"]["full_refresh"]
 
 
-def is_endpoint_specified(context, endpoint: str) -> bool:
-    """
-
-    :param context:
-    :param endpoint:
-    :return:
-    """
-    endpoints_to_run = context["params"]["endpoints"]
-
-    # If no endpoints are specified, run all.
-    if not endpoints_to_run:
-        return True
-
-    else:
-        # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
-        return bool(camel_to_snake(endpoint) in map(camel_to_snake, endpoints_to_run))
-
-
 def xcom_pull_template(
     task_ids: str,
     key: str = 'return_value'
@@ -55,7 +35,6 @@ def xcom_pull_template(
     xcom_string = f"ti.xcom_pull(task_ids='{task_ids}', key='{key}')"
 
     return '{{ ' + xcom_string + ' }}'
-
 
 
 def get_snowflake_params_from_conn(
