@@ -92,8 +92,8 @@ class S3ToSnowflakeOperator(BaseOperator):
         """
 
         # Brackets in regex conflict with string formatting.
-        date_regex = "\\d{8}"
-        ts_regex   = "\\d{8}T\\d{6}"
+        date_regex = "\\\\d{8}"
+        ts_regex   = "\\\\d{8}T\\\\d{6}"
 
         qry_copy_into = f"""
             COPY INTO {database}.{schema}.{self.table_name}
