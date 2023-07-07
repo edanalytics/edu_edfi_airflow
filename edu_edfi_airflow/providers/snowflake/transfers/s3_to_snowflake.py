@@ -1,4 +1,4 @@
-import logging
+from typing import Any, Optional
 
 from typing import Optional
 
@@ -32,6 +32,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
 
+        xcom_return: Optional[Any] = None,
         **kwargs
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
@@ -48,6 +49,8 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         self.ods_version = ods_version
         self.data_model_version = data_model_version
+        
+        self.xcom_return = xcom_return
 
 
     def execute(self, context):
@@ -116,15 +119,13 @@ class S3ToSnowflakeOperator(BaseOperator):
         ### Commit the update queries to Snowflake.
         # Incremental runs are only available in EdFi 3+.
         if is_edfi2 or airflow_util.is_full_refresh(context):
-            cursor_log = snowflake_hook.run(
+            snowflake_hook.run(
                 sql=[qry_delete, qry_copy_into],
                 autocommit=False
             )
-
         else:
-            cursor_log = snowflake_hook.run(
+            snowflake_hook.run(
                 sql=qry_copy_into
             )
 
-        logging.info(cursor_log)
-        return True  # Return for update_change_versions() xcom pull
+        return self.xcom_return

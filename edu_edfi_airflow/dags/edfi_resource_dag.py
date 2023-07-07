@@ -24,8 +24,6 @@ class EdFiResourceDAG:
     newest_edfi_cv_task_id = "get_latest_edfi_change_version"  # Original name for historic run compatibility
     previous_snowflake_cv_task_id = "get_previous_change_versions_from_snowflake"
 
-    s3_to_snowflake_task_id_prefix = "copy_into_snowflake_"  # This prefix is passed to `update_change_versions`.
-
     params_dict = {
         "full_refresh": Param(False, type="boolean"),
         "endpoints": Param([], type="array"),
@@ -290,8 +288,6 @@ class EdFiResourceDAG:
                 'change_version_table': self.change_version_table,
 
                 'edfi_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
-
-                'task_id_prefix': self.s3_to_snowflake_task_id_prefix,
             },
 
             provide_context=True,
@@ -390,10 +386,9 @@ class EdFiResourceDAG:
                 dag=self.dag
             )
 
-
             ### COPY FROM S3 TO SNOWFLAKE
             copy_s3_to_snowflake = S3ToSnowflakeOperator(
-                task_id=f"{self.s3_to_snowflake_task_id_prefix}{display_resource}",
+                task_id=f"copy_into_snowflake_{display_resource}",
 
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
@@ -402,7 +397,10 @@ class EdFiResourceDAG:
 
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
+
                 s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
+                table_name=table or snake_resource,  # Use the provided table name, or default to resource.
+                xcom_return=(snake_resource, deletes),  # Force return structure for downstream XCom.
 
                 trigger_rule='all_success',
                 dag=self.dag
