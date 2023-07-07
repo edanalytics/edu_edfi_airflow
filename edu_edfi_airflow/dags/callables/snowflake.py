@@ -1,5 +1,3 @@
-import logging
-
 from typing import List, Union
 
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
