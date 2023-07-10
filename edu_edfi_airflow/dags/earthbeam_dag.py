@@ -518,7 +518,7 @@ class EarthbeamDAG:
                 task_id=f"{taskgroup_grain}_cleanup_disk",
                 python_callable=remove_filepaths,
                 op_kwargs={
-                    "paths": paths_to_clean,
+                    "filepaths": paths_to_clean,
                 },
                 provide_context=True,
                 pool=self.pool,
