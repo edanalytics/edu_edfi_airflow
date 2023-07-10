@@ -37,9 +37,9 @@ class EarthbeamDAG:
 
     # Logging Earthmover & Lightbeam results to Snowflake
     logging_columns = [
-        'run_date', 'run_timestamp',
         'tenant_code', 'api_year', 'grain_update',
-        'run_type', 'results'
+        'run_date', 'run_timestamp',
+        'run_type', 'result'
     ]
 
     params_dict = {
@@ -266,8 +266,8 @@ class EarthbeamDAG:
 
         # Use lambda to consistently define logging payload
         logging_payload = lambda results_file: [
-            '{{ ds_nodash }}', '{{ ts_nodash }}',
             tenant_code, api_year, grain_update,
+            '{{ ds_nodash }}', '{{ ts_nodash }}',
             self.run_type, open(results_file, 'r').readline()
         ]
 
