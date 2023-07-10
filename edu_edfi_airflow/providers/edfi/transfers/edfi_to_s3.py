@@ -86,7 +86,7 @@ class EdFiToS3Operator(BaseOperator):
 
         # If doing a resource-specific run, confirm resource is in the list.
         config_endpoints = airflow_util.get_config_endpoints(context)  # Returns `[]` if none explicitly specified.
-        if config_endpoints and not camel_to_snake(self.resource) in config_endpoints:
+        if config_endpoints and camel_to_snake(self.resource) not in config_endpoints:
             raise AirflowSkipException(
                 "Endpoint not specified in DAG config `endpoints`."
             )
