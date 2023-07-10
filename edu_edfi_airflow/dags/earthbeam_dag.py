@@ -315,7 +315,7 @@ class EarthbeamDAG:
                     op_kwargs={
                         's3_conn_id': s3_conn_id,
                         's3_destination_key': s3_raw_filepath,
-                        'local_filepath': airflow_util.xcom_pull_template(python_preprocess.task_id) if python_preprocess else raw_dir,
+                        'local_filepath': airflow_util.xcom_pull_template(python_preprocess.task_id) if python_callable else raw_dir,
                         'remove_local_filepath': False,
                         # TODO: Include local-filepath cleanup in final logs operation.
                     },
