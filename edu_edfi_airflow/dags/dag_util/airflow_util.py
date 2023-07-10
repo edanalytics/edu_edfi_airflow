@@ -1,6 +1,8 @@
-from typing import Tuple
+from typing import List, Tuple
 
 from airflow.models import Connection
+
+from edfi_api_client import camel_to_snake
 
 
 def build_display_name(resource: str, is_deletes: bool = False) -> str:
@@ -20,6 +22,16 @@ def is_full_refresh(context) -> bool:
     :return:
     """
     return context["params"]["full_refresh"]
+
+
+def get_config_endpoints(context) -> List[str]:
+    """
+
+    :param context:
+    :return:
+    """
+    # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
+    return list(map(camel_to_snake, context["params"]["endpoints"]))
 
 
 def xcom_pull_template(

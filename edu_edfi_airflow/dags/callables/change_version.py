@@ -60,6 +60,10 @@ def reset_change_versions(
         and api_year = {api_year}
     """
 
+    # Filter only to inactive endpoints to those specified in DAG-configs, if defined.
+    if config_endpoints := airflow_util.get_config_endpoints(kwargs):
+        qry_mark_inactive += "\n    and name in ('{}')".format("', '".join(config_endpoints))
+
     ### Connect to Snowflake and execute the query.
     SnowflakeHook(snowflake_conn_id).run(qry_mark_inactive)
 

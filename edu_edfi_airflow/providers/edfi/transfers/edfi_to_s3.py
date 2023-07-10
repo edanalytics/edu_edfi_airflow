@@ -85,7 +85,8 @@ class EdFiToS3Operator(BaseOperator):
             )
 
         # If doing a resource-specific run, confirm resource is in the list.
-        if not self.is_endpoint_specified(context, self.resource):
+        config_endpoints = airflow_util.get_config_endpoints(context)  # Returns `[]` if none explicitly specified.
+        if config_endpoints and camel_to_snake(self.resource) in config_endpoints:
             raise AirflowSkipException(
                 "Endpoint not specified in DAG config `endpoints`."
             )
@@ -208,21 +209,3 @@ class EdFiToS3Operator(BaseOperator):
             json.dumps(row).encode('utf8') + b'\n'
             for row in rows
         )
-
-    @staticmethod
-    def is_endpoint_specified(context, endpoint: str) -> bool:
-        """
-
-        :param context:
-        :param endpoint:
-        :return:
-        """
-        endpoints_to_run = context["params"]["endpoints"]
-
-        # If no endpoints are specified, run all.
-        if not endpoints_to_run:
-            return True
-
-        else:
-            # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
-            return bool(camel_to_snake(endpoint) in map(camel_to_snake, endpoints_to_run))
