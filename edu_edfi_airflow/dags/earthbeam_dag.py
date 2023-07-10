@@ -35,13 +35,6 @@ class EarthbeamDAG:
     raw_output_directory  : str = '/efs/tmp_storage/raw'
     em_output_directory   : str = '/efs/tmp_storage/earthmover'
 
-    # Logging Earthmover & Lightbeam results to Snowflake
-    logging_columns = [
-        'tenant_code', 'api_year', 'grain_update',
-        'run_date', 'run_timestamp',
-        'run_type', 'result'
-    ]
-
     params_dict = {
         "force": Param(False, type="boolean"),
     }
@@ -264,12 +257,6 @@ class EarthbeamDAG:
             elif s3_conn_id:         # Earthmover-to-S3
                 group_id += "_to_s3"
 
-        # Use lambda to consistently define logging payload
-        logging_payload = lambda results_file: [
-            tenant_code, api_year, grain_update,
-            '{{ ds_nodash }}', '{{ ts_nodash }}',
-            self.run_type, open(results_file, 'r').readline()
-        ]
 
         with TaskGroup(
             group_id=group_id,
@@ -371,12 +358,15 @@ class EarthbeamDAG:
 
                 log_earthmover_to_snowflake = PythonOperator(
                     task_id=f"{taskgroup_grain}_log_earthmover_to_snowflake",
-                    python_callable=insert_into_snowflake,
+                    python_callable=self.insert_earthbeam_result_to_logging_table,
                     op_kwargs={
-                        "snowflake_conn_id": snowflake_conn_id,
-                        "table_name": logging_table,
-                        "columns": self.logging_columns,
-                        "values": logging_payload(em_results_file),
+                        'snowflake_conn_id': snowflake_conn_id,
+                        'logging_table': logging_table,
+                        'results_filepath': em_results_file,
+
+                        'tenant_code': tenant_code,
+                        'api_year': api_year,
+                        'grain_update': grain_update,
                     },
                     provide_context=True,
                     pool=self.pool,
@@ -455,12 +445,15 @@ class EarthbeamDAG:
 
                     log_lightbeam_to_snowflake = PythonOperator(
                         task_id=f"{taskgroup_grain}_log_lightbeam_to_snowflake",
-                        python_callable=insert_into_snowflake,
+                        python_callable=self.insert_earthbeam_result_to_logging_table,
                         op_kwargs={
-                            "snowflake_conn_id": snowflake_conn_id,
-                            "table_name": logging_table,
-                            "columns": self.logging_columns,
-                            "values": logging_payload(lb_results_file),
+                            'snowflake_conn_id': snowflake_conn_id,
+                            'logging_table': logging_table,
+                            'results_filepath': lb_results_file,
+
+                            'tenant_code': tenant_code,
+                            'api_year': api_year,
+                            'grain_update': grain_update,
                         },
                         provide_context=True,
                         pool=self.pool,
@@ -532,3 +525,40 @@ class EarthbeamDAG:
             chain(*task_order)
 
         return tenant_year_task_group
+
+
+    def insert_earthbeam_result_to_logging_table(self,
+        snowflake_conn_id: str,
+        logging_table: str,
+        results_filepath: str,
+
+        tenant_code: str,
+        api_year: int,
+        grain_update: Optional[str] = None
+    ):
+        """
+
+        :return:
+        """
+        logging_columns = [
+            'tenant_code', 'api_year', 'grain_update',
+            'run_date', 'run_timestamp',
+            'run_type', 'result'
+        ]
+
+        # Assume the results file is overwritten at every run.
+        with open(results_filepath, 'r') as fp:
+            results = fp.readline()
+
+        logging_values = [
+            tenant_code, api_year, grain_update,
+            '{{ ds_nodash }}', '{{ ts_nodash }}',
+            self.run_type, results
+        ]
+
+        insert_into_snowflake(
+            snowflake_conn_id=snowflake_conn_id,
+            table_name=logging_table,
+            columns=logging_columns,
+            values=logging_values
+        )
