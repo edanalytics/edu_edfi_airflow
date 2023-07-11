@@ -549,7 +549,7 @@ class EarthbeamDAG:
 
         # Assume the results file is overwritten at every run.
         with open(results_filepath, 'r') as fp:
-            results = fp.readline()
+            results = fp.read()
 
         logging_values = [
             tenant_code, api_year, grain_update,
