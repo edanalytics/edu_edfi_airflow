@@ -553,7 +553,7 @@ class EarthbeamDAG:
 
         logging_values = [
             tenant_code, api_year, grain_update,
-            kwargs['ds_nodash'], kwargs['ts_nodash'],
+            kwargs['ds'], kwargs['ts'],
             self.run_type, results
         ]
 
