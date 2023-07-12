@@ -32,6 +32,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
 
+        full_refresh: bool = False,
         xcom_return: Optional[Any] = None,
         **kwargs
     ) -> None:
@@ -49,7 +50,8 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         self.ods_version = ods_version
         self.data_model_version = data_model_version
-        
+
+        self.full_refresh = full_refresh
         self.xcom_return = xcom_return
 
 
@@ -118,7 +120,7 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         ### Commit the update queries to Snowflake.
         # Incremental runs are only available in EdFi 3+.
-        if is_edfi2 or airflow_util.is_full_refresh(context):
+        if is_edfi2 or self.full_refresh or airflow_util.is_full_refresh(context):
             snowflake_hook.run(
                 sql=[qry_delete, qry_copy_into],
                 autocommit=False
