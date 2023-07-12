@@ -471,6 +471,16 @@ class EarthbeamDAG:
                         "S3 connection required to copy into Snowflake."
                     )
 
+                if not (ods_version and data_model_version):
+                    raise Exception(
+                        "ODS-bypass requires arguments `ods_version` and `data_model_version` to be defined."
+                    )
+
+                if not endpoints:
+                    raise Exception(
+                        "No endpoints defined for ODS-bypass!"
+                    )
+
                 with TaskGroup(
                     group_id=f"{taskgroup_grain}_copy_s3_to_snowflake",
                     prefix_group_id=False,
