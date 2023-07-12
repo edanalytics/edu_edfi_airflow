@@ -487,13 +487,19 @@ class EarthbeamDAG:
                             camel_endpoint + ".jsonl"  # TODO: Make this dynamic
                         )
 
+                        # Descriptors have their own table
+                        if 'descriptor' in snake_endpoint:
+                            table_name = '_descriptors'
+                        else:
+                            table_name = snake_endpoint
+
                         em_to_snowflake = S3ToSnowflakeOperator(
                             task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{camel_endpoint}",
 
                             tenant_code=tenant_code,
                             api_year=api_year,
                             resource=f"{snake_endpoint}__{self.run_type}",
-                            table_name=snake_endpoint,
+                            table_name=table_name,
 
                             s3_destination_key=endpoint_output_path,
 
