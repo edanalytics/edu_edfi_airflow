@@ -517,6 +517,8 @@ class EarthbeamDAG:
                             ods_version=ods_version,
                             data_model_version=data_model_version,
                             full_refresh=full_refresh,
+
+                            dag=self.dag
                         )
 
                 task_order.append(s3_to_snowflake_task_group)
