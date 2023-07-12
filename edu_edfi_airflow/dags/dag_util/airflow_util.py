@@ -21,7 +21,7 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    return context["params"]["full_refresh"]
+    return context["params"].get("full_refresh", False)
 
 
 def get_config_endpoints(context) -> List[str]:
