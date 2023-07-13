@@ -573,7 +573,7 @@ class EarthbeamDAG:
             SELECT
                 '{tenant_code}' AS tenant_code,
                 '{api_year}' AS api_year,
-                '{grain_update}' AS grain_update,
+                '{grain_update or "NULL"}' AS grain_update,
                 '{self.run_type}' AS run_type,
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
