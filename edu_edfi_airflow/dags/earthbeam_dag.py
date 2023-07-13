@@ -14,7 +14,6 @@ import edfi_api_client
 from ea_airflow_util import slack_callbacks
 
 from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3, remove_filepaths
-from edu_edfi_airflow.dags.callables.snowflake import insert_select_into_snowflake
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
