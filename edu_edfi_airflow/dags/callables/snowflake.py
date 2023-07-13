@@ -59,7 +59,7 @@ def insert_select_into_snowflake(
         INSERT INTO {database}.{schema}.{table_name}
             ({', '.join(columns)})
         SELECT
-            ({["%s",] * len(columns)})
+            ({', '.join(["%s",] * len(columns))})
     """
 
     # Insert each row into the table, passing the values as parameters.
