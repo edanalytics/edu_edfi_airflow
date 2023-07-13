@@ -567,13 +567,15 @@ class EarthbeamDAG:
         # Retrieve the database and schema from the Snowflake hook and build the insert-query.
         database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
+        grain_update_str = f"'{grain_update}'" if grain_update else None
+
         qry_insert_into = f"""
             INSERT INTO {database}.{schema}.{logging_table}
                 (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
             SELECT
                 '{tenant_code}' AS tenant_code,
                 '{api_year}' AS api_year,
-                '{grain_update or "NULL"}' AS grain_update,
+                {grain_update_str} AS grain_update,
                 '{self.run_type}' AS run_type,
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
