@@ -6,8 +6,6 @@ from typing import Iterable, Optional, Union
 from airflow.models import Connection
 from airflow.operators.bash import BashOperator
 
-from edu_edfi_airflow.dags.dag_util import airflow_util
-
 
 class EarthmoverOperator(BashOperator):
     """
