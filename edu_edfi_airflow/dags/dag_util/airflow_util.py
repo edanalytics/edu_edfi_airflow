@@ -25,14 +25,11 @@ def get_context_variable(context, variable_name: str, default: object):
     :return:
     """
     # Check Airflow 2.6 params first
-    if dag_params := context.get('params'):
-        if (dag_param_value := dag_params.get(variable_name)) is not None:
-            return dag_param_value
+    if 'params' in context and variable_name in context['params']:
+        return context['params'][variable_name]
 
-    # Then check the DAG run configurations directly
-    elif dag_vars := context['dag_run'].conf:
-        if (dag_var_value := dag_vars.get(variable_name)) is not None:
-            return dag_var_value
+    elif context['dag_run'].conf and variable_name in context['dag_run'].conf:
+        return context['dag_run'].conf[variable_name]
 
     else:
         return default
