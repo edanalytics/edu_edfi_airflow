@@ -559,25 +559,30 @@ class EarthbeamDAG:
 
         :return:
         """
-        logging_columns = [
-            'tenant_code', 'api_year', 'grain_update',
-            'run_date', 'run_timestamp',
-            'run_type', 'result'
-        ]
+        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
         # Assume the results file is overwritten at every run.
         with open(results_filepath, 'r') as fp:
             results = fp.read()
 
-        logging_values = [
-            tenant_code, api_year, grain_update,
-            kwargs['ds'], kwargs['ts'],
-            self.run_type, f"parse_json('{results}')"
-        ]
+        # Retrieve the database and schema from the Snowflake hook and build the insert-query.
+        database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
-        insert_select_into_snowflake(
-            snowflake_conn_id=snowflake_conn_id,
-            table_name=logging_table,
-            columns=logging_columns,
-            values=logging_values
+        qry_insert_into = f"""
+            INSERT INTO {database}.{schema}.{logging_table}
+                (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
+            SELECT
+                '{tenant_code}' AS tenant_code,
+                '{api_year}' AS api_year,
+                '{grain_update}' AS grain_update,
+                '{self.run_type}' AS run_type,
+                '{kwargs['ds']}' AS run_date,
+                '{kwargs['ts']}' AS run_timestamp,
+                PARSE_JSON('{results}') AS result
+        """
+
+        # Insert each row into the table, passing the values as parameters.
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
+        snowflake_hook.run(
+            sql=qry_insert_into
         )
