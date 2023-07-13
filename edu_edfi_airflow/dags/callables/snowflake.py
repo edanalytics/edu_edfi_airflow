@@ -55,17 +55,17 @@ def insert_select_into_snowflake(
     # Retrieve the database and schema from the Snowflake hook and build the insert-query.
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
-    qry_insert_into = f"""
-        INSERT INTO {database}.{schema}.{table_name}
-            ({', '.join(columns)})
-        SELECT
-            ({', '.join(["%s",] * len(columns))})
-    """
-
     # Insert each row into the table, passing the values as parameters.
     snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
 
     for row in values:
+        qry_insert_into = f"""
+            INSERT INTO {database}.{schema}.{table_name}
+                ({', '.join(columns)})
+            SELECT
+                ({', '.join(map(snowflake_hook._serialize_cell, row))})
+        """
+
         snowflake_hook.run(
             sql=qry_insert_into,
             parameters=row
