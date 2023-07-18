@@ -20,12 +20,7 @@ from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToS
 class EarthbeamDAG:
     """
     Full Earthmover-Lightbeam DAG, with optional Python callable pre-processing.
-
-    TODO:
-    - Post-run Lightbeam-to-Snowflake logging
-    - Optional file hashing before initial S3
     """
-    # TODO: Should these be user-definable or static?
     emlb_hash_directory   : str = '/efs/emlb/prehash'
     emlb_state_directory  : str = '/efs/emlb/state'
     emlb_results_directory: str = '/efs/emlb/results'
@@ -301,7 +296,6 @@ class EarthbeamDAG:
                         's3_destination_key': s3_raw_filepath,
                         'local_filepath': airflow_util.xcom_pull_template(python_preprocess.task_id) if python_callable else raw_dir,
                         'remove_local_filepath': False,
-                        # TODO: Include local-filepath cleanup in final logs operation.
                     },
                     provide_context=True,
                     pool=self.pool,
