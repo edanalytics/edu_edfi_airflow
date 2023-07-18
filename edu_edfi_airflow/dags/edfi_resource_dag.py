@@ -260,7 +260,7 @@ class EdFiResourceDAG:
                     'snowflake_conn_id': self.snowflake_conn_id,
                     'change_version_table': self.change_version_table,
                 },
-                trigger_rule='all_done',  # Run regardless of whether the CV table was reset.
+                trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
                 dag=self.dag
             )
 
