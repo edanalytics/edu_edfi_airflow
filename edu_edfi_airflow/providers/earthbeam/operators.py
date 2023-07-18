@@ -216,7 +216,7 @@ class LightbeamOperator(BashOperator):
                 self.env['EDFI_API_MODE'] = _api_mode
 
         # Overwrite `force` if defined in DAG configs.
-        if context["params"]["force"]:
+        if airflow_util.get_context_variable(context, 'force', default=False):
             logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
             self.arguments['--force'] = ""
 

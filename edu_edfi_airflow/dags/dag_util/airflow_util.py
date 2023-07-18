@@ -15,13 +15,33 @@ def build_display_name(resource: str, is_deletes: bool = False) -> str:
         return resource
 
 
+def get_context_variable(context, variable_name: str, default: object):
+    """
+    Generic method to search the DAG Run conf and params for a context variable.
+
+    :param context:
+    :param variable_name:
+    :param default:
+    :return:
+    """
+    # Check Airflow 2.6 params first
+    if 'params' in context and variable_name in context['params']:
+        return context['params'][variable_name]
+
+    elif context['dag_run'].conf and variable_name in context['dag_run'].conf:
+        return context['dag_run'].conf[variable_name]
+
+    else:
+        return default
+
+
 def is_full_refresh(context) -> bool:
     """
 
     :param context:
     :return:
     """
-    return context["params"].get("full_refresh", False)
+    return get_context_variable(context, 'full_refresh', default=False)
 
 
 def get_config_endpoints(context) -> List[str]:
@@ -31,7 +51,8 @@ def get_config_endpoints(context) -> List[str]:
     :return:
     """
     # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
-    return list(map(camel_to_snake, context["params"]["endpoints"]))
+    raw_endpoints = get_context_variable(context, 'endpoints', default=[])
+    return list(map(camel_to_snake, raw_endpoints))
 
 
 def xcom_pull_template(
