@@ -17,7 +17,7 @@ class EarthmoverOperator(BashOperator):
 
     def __init__(self,
         *,
-        earthmover_path: Optional[str] = None,
+        earthmover_path: Optional[str] = "earthmover",
 
         output_dir : Optional[str] = None,
         state_file : Optional[str] = None,
@@ -33,7 +33,7 @@ class EarthmoverOperator(BashOperator):
 
         **kwargs
     ):
-        self.earthmover_path = earthmover_path or 'earthmover'
+        self.earthmover_path = earthmover_path
         self.output_dir = output_dir
         self.state_file = state_file
 
@@ -107,7 +107,7 @@ class LightbeamOperator(BashOperator):
 
     def __init__(self,
         *,
-        lightbeam_path: Optional[str] = None,
+        lightbeam_path: Optional[str] = "lightbeam",
         command: str = 'send',
 
         data_dir: Optional[str] = None,
@@ -129,7 +129,7 @@ class LightbeamOperator(BashOperator):
 
         **kwargs
     ):
-        self.lightbeam_path = lightbeam_path or 'lightbeam'
+        self.lightbeam_path = lightbeam_path
         self.data_dir = data_dir
         self.state_dir = state_dir
         self.edfi_conn_id = edfi_conn_id
