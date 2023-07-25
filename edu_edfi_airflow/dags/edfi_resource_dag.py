@@ -211,6 +211,7 @@ class EdFiResourceDAG:
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
+            **kwargs
         )
 
 
