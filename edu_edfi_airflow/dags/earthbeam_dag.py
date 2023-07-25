@@ -39,7 +39,9 @@ class EarthbeamDAG:
         lightbeam_path: Optional[str] = None,
 
         pool: str = 'default_pool',
-        slack_conn_id: str = None,
+        earthmover_pool: Optional[str] = None,
+        lightbeam_pool: Optional[str] = None,
+        slack_conn_id: Optional[str] = None,
 
         fast_cleanup: bool = False,
 
@@ -51,6 +53,8 @@ class EarthbeamDAG:
         self.lightbeam_path = lightbeam_path
 
         self.pool = pool
+        self.earthmover_pool = earthmover_pool or self.pool
+        self.lightbeam_pool = lightbeam_pool or self.pool
         self.slack_conn_id = slack_conn_id
 
         self.fast_cleanup = fast_cleanup
@@ -332,7 +336,7 @@ class EarthbeamDAG:
                 state_file=em_state_file,
                 results_file=em_results_file if logging_table else None,
                 **(earthmover_kwargs or {}),
-                pool=self.pool,
+                pool=self.earthmover_pool,
                 dag=self.dag
             )
 
@@ -421,7 +425,7 @@ class EarthbeamDAG:
                     results_file=lb_results_file if logging_table else None,
                     edfi_conn_id=edfi_conn_id,
                     **(lightbeam_kwargs or {}),
-                    pool=self.pool,
+                    pool=self.lightbeam_pool,
                     dag=self.dag
                 )
 
