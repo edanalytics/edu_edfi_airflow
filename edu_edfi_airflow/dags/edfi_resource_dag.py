@@ -211,7 +211,7 @@ class EdFiResourceDAG:
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
-            # **kwargs  # These need to be commented-out until we detangle `schedule_interval_resources` from kwargs.
+            **airflow_util.subset_kwargs_to_class(DAG, kwargs)  # Remove kwargs not expected in DAG.
         )
 
 

@@ -1,3 +1,5 @@
+import inspect
+
 from typing import List, Tuple
 
 from airflow.models import Connection
@@ -91,3 +93,19 @@ def get_snowflake_params_from_conn(
 
     except KeyError:
         raise undefined_snowflake_error
+
+
+def subset_kwargs_to_class(class_: object, kwargs: dict) -> dict:
+    """
+    Helper function to remove unexpected arguments from kwargs,
+    based on the actual arguments of the class.
+
+    :param class_:
+    :param kwargs:
+    :return:
+    """
+    class_parameters = list(inspect.signature(class_).parameters.keys())
+    return {
+        arg: val for arg, val in kwargs.items()
+        if arg in class_parameters
+    }
