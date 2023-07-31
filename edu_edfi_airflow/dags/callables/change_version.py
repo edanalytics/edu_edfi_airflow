@@ -155,23 +155,25 @@ def update_change_versions(
             edfi_change_version, True
         ])
 
-    if not rows_to_insert:
-        raise AirflowSkipException(
-            "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
-        )
-    else:
+    if rows_to_insert:
         logging.info(
             f"Collected updated change versions for {len(rows_to_insert)} endpoints."
         )
 
-    insert_into_snowflake(
-        snowflake_conn_id=snowflake_conn_id,
-        table_name=change_version_table,
-        columns=[
-            "tenant_code", "api_year", "name", "is_deletes",
-            "pull_date", "pull_timestamp",
-            "max_version", "is_active"
-        ],
-        values=rows_to_insert
-    )
-    return True
+        insert_into_snowflake(
+            snowflake_conn_id=snowflake_conn_id,
+            table_name=change_version_table,
+            columns=[
+                "tenant_code", "api_year", "name", "is_deletes",
+                "pull_date", "pull_timestamp",
+                "max_version", "is_active"
+            ],
+            values=rows_to_insert
+        )
+        return True
+
+    else:
+        logging.info(
+            "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
+        )
+        return False
