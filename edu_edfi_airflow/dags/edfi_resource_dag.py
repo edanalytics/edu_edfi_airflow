@@ -305,7 +305,7 @@ class EdFiResourceDAG:
             """
             from airflow.exceptions import AirflowSkipException
 
-            if not change_version.confirm_change_version_updates():
+            if not change_version.confirm_change_version_updates(**kwargs):
                 raise AirflowSkipException(
                     "There is no new data to process using DBT. All upstream tasks skipped or failed."
                 )
