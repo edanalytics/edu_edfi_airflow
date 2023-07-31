@@ -123,6 +123,20 @@ def get_previous_change_versions(
         kwargs['ti'].xcom_push(key=xcom_key, value=max_version)
 
 
+def confirm_change_version_updates(**kwargs) -> bool:
+    """
+    Boolean helper to confirm whether any change versions were updated upstream.
+
+    :param kwargs:
+    :return:
+    """
+    for task_id in kwargs['task'].upstream_task_ids:
+        if kwargs['ti'].xcom_pull(task_id):
+            return True
+    else:
+        return False
+
+
 def update_change_versions(
     tenant_code: str,
     api_year   : int,
@@ -155,25 +169,22 @@ def update_change_versions(
             edfi_change_version, True
         ])
 
-    if rows_to_insert:
+    if not rows_to_insert:
+        raise AirflowSkipException(
+            "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
+        )
+    else:
         logging.info(
             f"Collected updated change versions for {len(rows_to_insert)} endpoints."
         )
 
-        insert_into_snowflake(
-            snowflake_conn_id=snowflake_conn_id,
-            table_name=change_version_table,
-            columns=[
-                "tenant_code", "api_year", "name", "is_deletes",
-                "pull_date", "pull_timestamp",
-                "max_version", "is_active"
-            ],
-            values=rows_to_insert
-        )
-        return True
-
-    else:
-        logging.info(
-            "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
-        )
-        return False
+    insert_into_snowflake(
+        snowflake_conn_id=snowflake_conn_id,
+        table_name=change_version_table,
+        columns=[
+            "tenant_code", "api_year", "name", "is_deletes",
+            "pull_date", "pull_timestamp",
+            "max_version", "is_active"
+        ],
+        values=rows_to_insert
+    )
