@@ -4,11 +4,10 @@ from typing import Optional
 
 from airflow import DAG
 from airflow.models.param import Param
-from airflow.operators.python import PythonOperator, ShortCircuitOperator
+from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
-from ea_airflow_util import build_variable_update_operator
-from ea_airflow_util import slack_callbacks
+from ea_airflow_util import slack_callbacks, update_variable
 from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.dags.callables import change_version
@@ -66,6 +65,8 @@ class EdFiResourceDAG:
         self.use_change_version = use_change_version
         self.change_version_table = change_version_table
 
+        self.dbt_incrementer_var = dbt_incrementer_var
+
         # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
 
@@ -78,11 +79,8 @@ class EdFiResourceDAG:
             self.cv_update_operator = None
 
         # Build an operator to increment the DBT var at the end of the run.
-        if dbt_incrementer_var:
-            self.dbt_var_increment_operator = build_variable_update_operator(
-                dbt_incrementer_var, lambda x: int(x) + 1,
-                task_id='increment_dbt_variable', trigger_rule='all_done', dag=self.dag
-            )
+        if self.dbt_incrementer_var:
+            self.dbt_var_increment_operator = self.build_dbt_var_increment_operator()
         else:
             self.dbt_var_increment_operator = None
 
@@ -169,12 +167,9 @@ class EdFiResourceDAG:
 
             if self.use_change_version:
                 self.cv_task_group >> task_group >> self.cv_update_operator
-            elif self.dbt_var_increment_operator:
-                task_group >> self.dbt_var_increment_operator
 
-        # Be extremely intentional with dependencies to prevent dependency warnings.
-        if self.use_change_version and self.dbt_var_increment_operator:
-            self.cv_update_operator >> self.dbt_var_increment_operator
+            if self.dbt_var_increment_operator:
+                task_group >> self.dbt_var_increment_operator
 
 
     ### Internal methods that should probably not be called directly.
@@ -277,7 +272,7 @@ class EdFiResourceDAG:
         :return:
         """
         ### UPDATE CHANGE VERSION TABLE ON SNOWFLAKE
-        return ShortCircuitOperator(
+        return PythonOperator(
             task_id=f"update_change_versions_in_snowflake",
             python_callable=change_version.update_change_versions,
 
@@ -292,6 +287,39 @@ class EdFiResourceDAG:
             },
 
             provide_context=True,
+            trigger_rule='all_done',
+            dag=self.dag
+        )
+
+    def build_dbt_var_increment_operator(self):
+        """
+
+        :return:
+        """
+        def cv_short_circuit_callable(**kwargs):
+            """
+            Helper to build short-circuit logic into the update_variable callable if change versions are un-updated.
+            :param var:
+            :param value:
+            :return:
+            """
+            from airflow.exceptions import AirflowSkipException
+
+            if not change_version.confirm_change_version_updates():
+                raise AirflowSkipException(
+                    "There is no new data to process using DBT. All upstream tasks skipped or failed."
+                )
+
+            return update_variable(**kwargs)
+
+
+        return PythonOperator(
+            task_id='increment_dbt_variable',
+            python_callable=cv_short_circuit_callable if self.use_change_version else update_variable,
+            op_kwargs={
+                'var': self.dbt_incrementer_var,
+                'value': 0,
+            },
             trigger_rule='all_done',
             dag=self.dag
         )
