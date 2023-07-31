@@ -171,3 +171,4 @@ def update_change_versions(
         ],
         values=rows_to_insert
     )
+    return True

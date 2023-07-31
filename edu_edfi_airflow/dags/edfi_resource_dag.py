@@ -4,7 +4,7 @@ from typing import Optional
 
 from airflow import DAG
 from airflow.models.param import Param
-from airflow.operators.python import PythonOperator
+from airflow.operators.python import PythonOperator, ShortCircuitOperator
 from airflow.utils.task_group import TaskGroup
 
 from ea_airflow_util import build_variable_update_operator
@@ -277,7 +277,7 @@ class EdFiResourceDAG:
         :return:
         """
         ### UPDATE CHANGE VERSION TABLE ON SNOWFLAKE
-        return PythonOperator(
+        return ShortCircuitOperator(
             task_id=f"update_change_versions_in_snowflake",
             python_callable=change_version.update_change_versions,
 
