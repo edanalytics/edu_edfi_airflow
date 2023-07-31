@@ -114,6 +114,9 @@ def get_previous_change_versions(
 
     ### Retrieve previous endpoint-level change versions and push as XComs.
     prior_change_versions = SnowflakeHook(snowflake_conn_id).get_records(qry_prior_max)
+    logging.info(
+        f"Collected prior change versions for {len(prior_change_versions)} endpoints."
+    )
 
     for snake_resource, is_deletes, max_version in prior_change_versions:
         xcom_key = airflow_util.build_display_name(snake_resource, is_deletes)
