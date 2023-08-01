@@ -308,7 +308,7 @@ class EdFiResourceDAG:
             """
             from airflow.exceptions import AirflowSkipException
 
-            if not airflow_util.xcom_pull_template(self.cv_update_operator.task_id):
+            if not kwargs['ti'].pull_xcom(self.cv_update_operator.task_id):
                 raise AirflowSkipException(
                     "There is no new data to process using DBT. All upstream tasks skipped or failed."
                 )
