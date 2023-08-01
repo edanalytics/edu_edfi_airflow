@@ -167,9 +167,12 @@ class EdFiResourceDAG:
 
             if self.use_change_version:
                 self.cv_task_group >> task_group >> self.cv_update_operator
-
-            if self.dbt_var_increment_operator:
+            elif self.dbt_var_increment_operator:
                 task_group >> self.dbt_var_increment_operator
+
+        # Be extremely intentional with defining dependencies only once to avoid dependency warnings.
+        if self.use_change_version and self.dbt_var_increment_operator:
+            self.cv_update_operator >> self.dbt_var_increment_operator
 
 
     ### Internal methods that should probably not be called directly.
@@ -305,7 +308,7 @@ class EdFiResourceDAG:
             """
             from airflow.exceptions import AirflowSkipException
 
-            if not change_version.confirm_change_version_updates(**kwargs):
+            if not airflow_util.xcom_pull_template(self.cv_update_operator.task_id):
                 raise AirflowSkipException(
                     "There is no new data to process using DBT. All upstream tasks skipped or failed."
                 )
@@ -318,7 +321,7 @@ class EdFiResourceDAG:
             python_callable=cv_short_circuit_callable if self.use_change_version else update_variable,
             op_kwargs={
                 'var': self.dbt_incrementer_var,
-                'value': 0,
+                'value': lambda x: int(x) + 1,
             },
             trigger_rule='all_done',
             dag=self.dag

@@ -123,20 +123,6 @@ def get_previous_change_versions(
         kwargs['ti'].xcom_push(key=xcom_key, value=max_version)
 
 
-def confirm_change_version_updates(**kwargs) -> bool:
-    """
-    Boolean helper to confirm whether any change versions were updated upstream.
-
-    :param kwargs:
-    :return:
-    """
-    for task_id in kwargs['task'].upstream_task_ids:
-        if kwargs['ti'].xcom_pull(task_id):
-            return True
-    else:
-        return False
-
-
 def update_change_versions(
     tenant_code: str,
     api_year   : int,
@@ -188,3 +174,5 @@ def update_change_versions(
         ],
         values=rows_to_insert
     )
+
+    return True
