@@ -302,8 +302,6 @@ class EdFiResourceDAG:
         def cv_short_circuit_callable(**kwargs):
             """
             Helper to build short-circuit logic into the update_variable callable if change versions are un-updated.
-            :param var:
-            :param value:
             :return:
             """
             from airflow.exceptions import AirflowSkipException

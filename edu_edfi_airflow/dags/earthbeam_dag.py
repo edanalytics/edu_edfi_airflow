@@ -196,8 +196,6 @@ class EarthbeamDAG:
         **kwargs
     ):
         """
-        TODO: Can endpoints post-Earthmover be dynamically-inferred instead of explicitly-specified?
-
         (Python) -> (S3: Raw) -> Earthmover -> (S3: EM Output) -> (Snowflake: EM Logs) +-> (Lightbeam) -> (Snowflake: LB Logs) +-> Clean-up
                                                                                        +-> (Snowflake: EM Output)
 
@@ -489,7 +487,7 @@ class EarthbeamDAG:
 
                         endpoint_output_path = edfi_api_client.url_join(
                             airflow_util.xcom_pull_template(em_to_s3.task_id),
-                            camel_endpoint + ".jsonl"  # TODO: Make this dynamic
+                            camel_endpoint + ".jsonl"
                         )
 
                         # Descriptors have their own table
