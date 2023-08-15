@@ -552,11 +552,19 @@ class EarthbeamDAG:
 
         :return:
         """
+        from airflow.exceptions import AirflowSkipException
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
         # Assume the results file is overwritten at every run.
-        with open(results_filepath, 'r') as fp:
-            results = fp.read()
+        # If not found, raise a skip-exception instead of failing.
+        try:
+            with open(results_filepath, 'r') as fp:
+                results = fp.read()
+        except FileNotFoundError:
+            raise AirflowSkipException(
+                f"Results file not found: {results_filepath}\n"
+                "Did Earthmover/Lightbeam run without error?"
+            )
 
         # Retrieve the database and schema from the Snowflake hook and build the insert-query.
         database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
