@@ -4,6 +4,7 @@ from typing import Optional
 
 from airflow import DAG
 from airflow.models.param import Param
+from airflow.operators.dummy import DummyOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
@@ -168,6 +169,13 @@ class EdFiResourceDAG:
 
         :return:
         """
+        # Create a dummy sentinel to display the success of the endpoint taskgroups.
+        dag_state_sentinel = DummyOperator(
+            task_id='dag_state_sentinel',
+            trigger_rule='none_failed',
+            dag=self.dag
+        )
+
         for task_group in (self.resources_task_group, self.resource_deletes_task_group, self.descriptors_task_group):
 
             if not task_group:  # Ignore undefined task groups
@@ -175,12 +183,19 @@ class EdFiResourceDAG:
 
             if self.use_change_version:
                 self.cv_task_group >> task_group >> self.cv_update_operator
-            elif self.dbt_var_increment_operator:
+
+            if self.dbt_var_increment_operator:
                 task_group >> self.dbt_var_increment_operator
 
-        # Be extremely intentional with defining dependencies only once to avoid dependency warnings.
-        if self.use_change_version and self.dbt_var_increment_operator:
-            self.cv_update_operator >> self.dbt_var_increment_operator
+            # Always apply the state sentinel.
+            task_group >> dag_state_sentinel
+
+        # The sentinel also holds the state of the CV and DBT var operators.
+        if self.use_change_version:
+            self.cv_update_operator >> dag_state_sentinel
+
+        if self.dbt_var_increment_operator:
+            self.dbt_var_increment_operator >> dag_state_sentinel
 
 
     ### Internal methods that should probably not be called directly.
@@ -302,29 +317,30 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
+
     def build_dbt_var_increment_operator(self):
         """
 
         :return:
         """
-        def cv_short_circuit_callable(**kwargs):
+        def short_circuit_update_variable(**kwargs):
             """
-            Helper to build short-circuit logic into the update_variable callable if change versions are un-updated.
+            Helper to build short-circuit logic into the update_variable callable if no new data was ingested.
             :return:
             """
             from airflow.exceptions import AirflowSkipException
 
-            if not kwargs['ti'].xcom_pull(self.cv_update_operator.task_id):
+            for task_id in kwargs['task'].upstream_task_ids:
+                if kwargs['ti'].xcom_pull(task_id):
+                    return update_variable(**kwargs)
+            else:
                 raise AirflowSkipException(
                     "There is no new data to process using DBT. All upstream tasks skipped or failed."
                 )
 
-            return update_variable(**kwargs)
-
-
         return PythonOperator(
             task_id='increment_dbt_variable',
-            python_callable=cv_short_circuit_callable if self.use_change_version else update_variable,
+            python_callable=short_circuit_update_variable,
             op_kwargs={
                 'var': self.dbt_incrementer_var,
                 'value': lambda x: int(x) + 1,
