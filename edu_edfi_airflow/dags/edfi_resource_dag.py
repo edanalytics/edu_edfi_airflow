@@ -24,8 +24,16 @@ class EdFiResourceDAG:
     previous_snowflake_cv_task_id = "get_previous_change_versions_from_snowflake"
 
     params_dict = {
-        "full_refresh": Param(False, type="boolean"),
-        "endpoints": Param([], type="array"),
+        "full_refresh": Param(
+            default=False,
+            type="boolean",
+            description="If true, deletes endpoint data in Snowflake before ingestion"
+        ),
+        "endpoints": Param(
+            default=[],
+            type="array",
+            description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
+        ),
     }
 
     def __init__(self,

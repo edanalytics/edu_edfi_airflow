@@ -28,7 +28,11 @@ class EarthbeamDAG:
     em_output_directory   : str = '/efs/tmp_storage/earthmover'
 
     params_dict = {
-        "force": Param(False, type="boolean"),
+        "force": Param(
+            default=False,
+            type="boolean",
+            description="If true, passes `--force` flag to Earthmover and Lightbeam"
+        ),
     }
 
     def __init__(self,
