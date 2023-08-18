@@ -5,11 +5,12 @@ import os
 from typing import Iterator, Optional
 
 from airflow.models import BaseOperator
-from airflow.exceptions import AirflowSkipException, AirflowException
+from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.utils.decorators import apply_defaults
 
-from edu_edfi_airflow.dags.dag_util.airflow_util import is_full_refresh, is_resource_specified
+from edfi_api_client import camel_to_snake
+from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -67,6 +68,10 @@ class EdFiToS3Operator(BaseOperator):
         self.s3_conn_id= s3_conn_id
         self.s3_destination_key= s3_destination_key
 
+        # Force min-change-version if no XCom was found.
+        if self.max_change_version and self.min_change_version is None:
+            self.min_change_version = 0
+
 
     def execute(self, context) -> str:
         """
@@ -74,21 +79,38 @@ class EdFiToS3Operator(BaseOperator):
         :param context:
         :return:
         """
-        if is_full_refresh(context) and self.api_get_deletes:
+        if airflow_util.is_full_refresh(context) and self.api_get_deletes:
             raise AirflowSkipException(
                 "Skipping delete pull for full_refresh run."
             )
 
         # If doing a resource-specific run, confirm resource is in the list.
-        if not is_resource_specified(context, self.resource):
+        config_endpoints = airflow_util.get_config_endpoints(context)  # Returns `[]` if none explicitly specified.
+        if config_endpoints and camel_to_snake(self.resource) not in config_endpoints:
             raise AirflowSkipException(
-                "Skipping resource not specified in run context 'resources'."
+                "Endpoint not specified in DAG config `endpoints`."
+            )
+
+        # Run sanity checks to make sure we aren't doing something wrong.
+        if self.min_change_version is not None and self.max_change_version is not None:
+            if self.min_change_version == self.max_change_version:
+                raise AirflowSkipException(
+                    "ODS is unchanged since previous pull."
+                )
+            elif self.max_change_version < self.min_change_version:
+                raise AirflowFailException(
+                    "Apparent out-of-sequence run: current change version is smaller than previous!"
+                )
+
+            logging.info(
+                "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
+                    self.api_namespace, self.resource, self.min_change_version, self.max_change_version
+                )
             )
         
         ### Connect to EdFi and write resource data to a temp file.
         # Establish a hook to the ODS
-        edfi_hook = EdFiHook(self.edfi_conn_id)
-        edfi_conn = edfi_hook.get_conn()
+        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         # Prepare the EdFiEndpoint for the resource.
         resource_endpoint = edfi_conn.resource(
