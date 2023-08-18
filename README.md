@@ -435,6 +435,20 @@ Task-groups can also apply an optional Python preprocessing callable to the raw 
 
 </details>
 
+XComs can be passed between tasks in a tenant-year taskgroup
+(e.g., referencing return values from the Python preprocessing task to `earthmover_kwargs`).
+When passing XComs in this manner, make sure to include the name of the task-group ID in the referenced task ID.
+
+For example, to reference the optional Python preprocessing task at the beginning of a task-group,
+use one of the following (depending on whether the optional argument `grain_update` is defined):
+```python
+"{{ ti.xcom_pull(task_ids='{group_id}.{tenant_code}_{api_year}__python_preprocess', key='return_value') }}"
+"{{ ti.xcom_pull(task_ids='{group_id}.{tenant_code}_{api_year}_{grain_update}__python_preprocess', key='return_value') }}"
+```
+
+Task-group IDs are built dynamically, depending on the type of processing being completed.
+If you are using XComs in this manner, it is recommended to use the optional `group_id` argument when initializing
+your task-group to ensure that its value is static and easily-referenced in your DAG-initialization code.
 
 
 -----
