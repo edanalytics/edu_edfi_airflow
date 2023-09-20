@@ -371,7 +371,7 @@ class EarthbeamDAG:
                     dag=self.dag
                 )
 
-                task_order.append(log_earthmover_to_snowflake)
+                run_earthmover >> log_earthmover_to_snowflake
 
 
             ### Earthmover to S3
@@ -458,7 +458,7 @@ class EarthbeamDAG:
                         dag=self.dag
                     )
 
-                    task_order.append(log_lightbeam_to_snowflake)
+                    run_lightbeam >> log_lightbeam_to_snowflake
 
 
             ### Alternate route: Bypassing the ODS directly into Snowflake
