@@ -162,7 +162,6 @@ class EarthbeamDAG:
             task_id=task_id,
             bash_command=bash_command,
             **kwargs,
-            provide_context=True,
             pool=self.pool,
             dag=self.dag
         )
