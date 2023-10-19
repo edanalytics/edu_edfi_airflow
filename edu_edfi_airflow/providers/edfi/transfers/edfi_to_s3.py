@@ -126,26 +126,22 @@ class EdFiToS3Operator(BaseOperator):
         # Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
         tmp_file = os.path.join(self.tmp_dir, self.s3_destination_key)
-        total_rows = 0
+        os.makedirs(self.tmp_dir, exist_ok=True)
 
         try:
             # Turn off change version stepping if min and max change versions have not been defined.
             step_change_version = (self.min_change_version is not None and self.max_change_version is not None)
 
-            paged_iter = resource_endpoint.get_pages(
-                page_size=self.page_size,
+            resource_endpoint.async_get_to_json(
+                path=tmp_file,
                 step_change_version=step_change_version, change_version_step_size=self.change_version_step_size,
                 reverse_paging=(not self.api_get_deletes),  # Reverse_paging is true for resources and false for deletes
                 retry_on_failure=True, max_retries=self.api_retries
             )
 
-            # Output each page of results as JSONL strings to the output file.
-            os.makedirs(os.path.dirname(tmp_file), exist_ok=True)  # Create its parent-directory in not extant.
-
-            with open(tmp_file, 'wb') as fp:
-                for page_result in paged_iter:
-                    fp.write(self.to_jsonl_string(page_result))
-                    total_rows += len(page_result)
+            # Scan the output file to compare with expected row count.
+            with open(tmp_file, 'rb') as fp:
+                total_rows = sum(1 for _ in fp)
 
         # In the case of any failures, we need to delete the temporary files written, then reraise the error.
         except Exception as err:
