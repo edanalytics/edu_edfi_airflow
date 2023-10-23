@@ -150,11 +150,11 @@ class EdFiToS3Operator(BaseOperator):
 
         # Check whether the number of rows returned matched the number expected.
         try:
-            expected_rows = resource_endpoint.total_count()
-            if total_rows != expected_rows:
+            if total_rows != (expected_rows := resource_endpoint.total_count()):
                 logging.warning(f"Expected {expected_rows} rows for `{self.resource}`.")
             else:
                 logging.info("Number of collected rows matches expected count in the ODS.")
+                context['ti'].xcom_push(key="total_count_match", value=True)
 
         except Exception:
             logging.warning(f"Unable to access expected number of rows for `{self.resource}`.")

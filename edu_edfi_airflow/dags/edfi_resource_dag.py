@@ -441,6 +441,8 @@ class EdFiResourceDAG:
             )
 
             ### COPY FROM S3 TO SNOWFLAKE
+            total_count_match = airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, "total_count_match")
+
             copy_s3_to_snowflake = S3ToSnowflakeOperator(
                 task_id=f"copy_into_snowflake_{display_resource}",
 
@@ -453,7 +455,9 @@ class EdFiResourceDAG:
                 snowflake_conn_id=self.snowflake_conn_id,
 
                 s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
-                xcom_return=(snake_resource, deletes),  # Force return structure for downstream XCom.
+
+                # Force return structure for downstream XCom; only populate if Ed-Fi task ingested all new rows.
+                xcom_return=(snake_resource, deletes, total_count_match),
 
                 trigger_rule='all_success',
                 dag=self.dag

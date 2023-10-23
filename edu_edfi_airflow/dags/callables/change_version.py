@@ -147,13 +147,15 @@ def update_change_versions(
         if not (xcom_value := kwargs['ti'].xcom_pull(task_id)):
             continue
         else:
-            resource, deletes = xcom_value
+            resource, deletes, total_count_match = xcom_value
 
-        rows_to_insert.append([
-            tenant_code, api_year, resource, deletes,
-            kwargs["ds"], kwargs["ts"],
-            edfi_change_version, True
-        ])
+        # Only increment change version if the ingestion was successful (i.e., expected row-count was pulled).
+        if total_count_match:
+            rows_to_insert.append([
+                tenant_code, api_year, resource, deletes,
+                kwargs["ds"], kwargs["ts"],
+                edfi_change_version, True
+            ])
 
     if not rows_to_insert:
         raise AirflowSkipException(
