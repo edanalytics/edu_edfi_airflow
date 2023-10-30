@@ -126,7 +126,7 @@ class EdFiToS3Operator(BaseOperator):
         # Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
         tmp_file = os.path.join(self.tmp_dir, self.s3_destination_key)
-        os.makedirs(self.tmp_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
 
         try:
             # Turn off change version stepping if min and max change versions have not been defined.
