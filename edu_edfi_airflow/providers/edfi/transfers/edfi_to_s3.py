@@ -37,7 +37,7 @@ class EdFiToS3Operator(BaseOperator):
         query_parameters  : Optional[dict] = None,
         min_change_version: Optional[int ] = None,
         max_change_version: Optional[int ] = None,
-        change_version_step_size: int = 50000,
+        change_version_step_size: int = 100000,
 
         api_namespace  : str = 'ed-fi',  # Should these variables line up 1-to-1 with EdFiClient?
         api_get_deletes: bool = False,
