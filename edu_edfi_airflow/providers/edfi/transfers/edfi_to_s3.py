@@ -132,7 +132,7 @@ class EdFiToS3Operator(BaseOperator):
 
         try:
             # Turn off change version stepping if min and max change versions have not been defined.
-            step_change_version = (self.min_change_version is not None and self.max_change_version is not None)
+            step_change_version: bool = (self.min_change_version is not None and self.max_change_version is not None)
 
             resource_endpoint.async_get_to_json(
                 path=tmp_file,
@@ -143,14 +143,13 @@ class EdFiToS3Operator(BaseOperator):
 
         # In the case of any failures, we need to delete the temporary files written, then reraise the error.
         except Exception as err:
+            logging.warning(f"Total rows retrieved before failure: {self.count_rows(tmp_file)}")
             self.delete_path(tmp_file)
             raise err
 
         ### Check whether the number of rows returned matched the number expected.
         # Scan the output file to compare with expected row count.
-        with open(tmp_file, 'rb') as fp:
-            total_rows = sum(1 for _ in fp)
-
+        total_rows = self.count_rows(tmp_file)
         logging.info(f"{total_rows} rows were returned for `{self.resource}`.")
 
         if total_rows == expected_rows:
@@ -180,19 +179,14 @@ class EdFiToS3Operator(BaseOperator):
 
 
     @staticmethod
+    def count_rows(path: str) -> int:
+        with open(path, 'rb') as fp:
+            return sum(1 for _ in fp)
+
+    @staticmethod
     def delete_path(path: str):
         logging.info(f"Removing temporary files written to `{path}`")
         try:
             os.remove(path)
         except FileNotFoundError:
             pass
-
-    @staticmethod
-    def to_jsonl_string(rows: Iterator[dict]) -> bytes:
-        """
-        :return:
-        """
-        return b''.join(
-            json.dumps(row).encode('utf8') + b'\n'
-            for row in rows
-        )
