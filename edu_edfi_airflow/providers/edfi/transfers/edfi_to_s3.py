@@ -134,7 +134,7 @@ class EdFiToS3Operator(BaseOperator):
             step_change_version: bool = (self.min_change_version is not None and self.max_change_version is not None)
 
             resource_endpoint.async_get_to_json(
-                path=tmp_file,
+                path=tmp_file, page_size=self.page_size,
                 step_change_version=step_change_version, change_version_step_size=self.change_version_step_size,
                 reverse_paging=(not self.api_get_deletes),  # Reverse_paging is true for resources and false for deletes
                 retry_on_failure=True, max_retries=self.api_retries
