@@ -118,10 +118,12 @@ class EdFiToS3Operator(BaseOperator):
             min_change_version=self.min_change_version, max_change_version=self.max_change_version
         )
 
-        # # Fail immediately if the endpoint is forbidden.
-        # _response = resource_endpoint.ping()
-        # if not _response.ok:
-        #     raise Exception(f"Unable to connect to `{self.resource}`! {_response.status_code}: {_response.reason}")
+        # Log the number of rows expected in the pull.
+        if expected_rows := resource_endpoint.total_count():
+            logging.info(f"Expect {expected_rows} rows for `{self.resource}`.")
+        else:
+            logging.info(f"No rows expected for `{self.resource}`. Skipping ingestion...")
+            raise AirflowSkipException
 
         # Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
@@ -139,34 +141,23 @@ class EdFiToS3Operator(BaseOperator):
                 retry_on_failure=True, max_retries=self.api_retries
             )
 
-            # Scan the output file to compare with expected row count.
-            with open(tmp_file, 'rb') as fp:
-                total_rows = sum(1 for _ in fp)
-
         # In the case of any failures, we need to delete the temporary files written, then reraise the error.
         except Exception as err:
             self.delete_path(tmp_file)
             raise err
 
-        # Check whether the number of rows returned matched the number expected.
-        try:
-            if total_rows != (expected_rows := resource_endpoint.total_count()):
-                logging.warning(f"Expected {expected_rows} rows for `{self.resource}`.")
-            else:
-                logging.info("Number of collected rows matches expected count in the ODS.")
-                context['ti'].xcom_push(key="total_count_match", value=True)
+        ### Check whether the number of rows returned matched the number expected.
+        # Scan the output file to compare with expected row count.
+        with open(tmp_file, 'rb') as fp:
+            total_rows = sum(1 for _ in fp)
 
-        except Exception:
-            logging.warning(f"Unable to access expected number of rows for `{self.resource}`.")
+        logging.info(f"{total_rows} rows were returned for `{self.resource}`.")
 
-        finally:
-            logging.info(f"{total_rows} rows were returned for `{self.resource}`.")
-
-        # Raise a Skip if no data was collected.
-        if total_rows == 0:
-            logging.info(f"No results returned for `{self.resource}`")
-            self.delete_path(tmp_file)
-            raise AirflowSkipException
+        if total_rows == expected_rows:
+            logging.info("Number of collected rows matches expected count in the ODS.")
+            context['ti'].xcom_push(key="total_count_match", value=True)  # Push XCom to force CV table update.
+        else:
+            logging.warning(f"Number of collected rows does not match expected count in the ODS: {expected_rows}")
 
         ### Connect to S3 and push
         try:
