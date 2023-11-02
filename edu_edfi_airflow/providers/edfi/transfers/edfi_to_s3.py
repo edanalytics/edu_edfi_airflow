@@ -1,8 +1,7 @@
-import json
 import logging
 import os
 
-from typing import Iterator, Optional
+from typing import Optional
 
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
@@ -179,9 +178,12 @@ class EdFiToS3Operator(BaseOperator):
 
 
     @staticmethod
-    def count_rows(path: str) -> int:
-        with open(path, 'rb') as fp:
-            return sum(1 for _ in fp)
+    def count_rows(path: str) -> Optional[int]:
+        try:
+            with open(path, 'rb') as fp:
+                return sum(1 for _ in fp)
+        except FileNotFoundError:
+            return None
 
     @staticmethod
     def delete_path(path: str):
