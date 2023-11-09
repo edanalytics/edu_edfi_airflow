@@ -436,6 +436,9 @@ class EdFiResourceDAG:
                 s3_conn_id= self.s3_conn_id,
                 s3_destination_key= s3_destination_key,
 
+                # Force Ed-Fi tasks to run before Snowflake tasks (in an attempt to limit how long LOADING_PROD is active.
+                priority_weight=10,
+                weight_rule="absolute",
                 trigger_rule='all_success',
                 dag=self.dag
             )
@@ -455,6 +458,7 @@ class EdFiResourceDAG:
                 s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
                 xcom_return=(snake_resource, deletes),  # Force return structure for downstream XCom.
 
+                weight_rule="absolute",
                 trigger_rule='all_success',
                 dag=self.dag
             )
