@@ -177,6 +177,7 @@ class EarthbeamDAG:
         group_id: Optional[str] = None,
         prefix_group_id: bool = False,
 
+        database_conn_id: Optional[str] = None,
         earthmover_kwargs: Optional[dict] = None,
 
         edfi_conn_id: Optional[str] = None,
@@ -217,6 +218,7 @@ class EarthbeamDAG:
         :param group_id:
         :param prefix_group_id:
 
+        :param database_conn_id:
         :param earthmover_kwargs:
 
         :param edfi_conn_id:
@@ -335,6 +337,7 @@ class EarthbeamDAG:
                 earthmover_path=self.earthmover_path,
                 output_dir=em_output_dir,
                 state_file=em_state_file,
+                database_conn_id=database_conn_id,
                 results_file=em_results_file if logging_table else None,
                 **(earthmover_kwargs or {}),
                 pool=self.earthmover_pool,
