@@ -357,6 +357,7 @@ class EdFiResourceDAG:
         *,
         deletes    : bool = False,
         table      : Optional[str] = None,
+        pool       : Optional[str] = None,
         page_size  : int = 500,
         max_retries: int = 5,
         change_version_step_size: int = 50000,
@@ -373,6 +374,7 @@ class EdFiResourceDAG:
         :param namespace:
         :param deletes  :
         :param table    : Overwrite the table to output the rows to (exception case for descriptors).
+        :param pool     : Custom pool to use for this specific resource (overrides DAG-level pool).
         :param page_size:
         :param max_retries:
         :param change_version_step_size:
@@ -431,7 +433,7 @@ class EdFiResourceDAG:
                 max_change_version=max_change_version,
                 change_version_step_size=change_version_step_size,
 
-                pool      = self.pool,
+                pool      = pool or self.pool,
                 tmp_dir   = self.tmp_dir,
                 s3_conn_id= self.s3_conn_id,
                 s3_destination_key= s3_destination_key,
