@@ -45,7 +45,7 @@ class EdFiResourceDAG:
         dbt_incrementer_var: str = None,
 
         full_refresh: bool = False,
-        endpoints: [],
+        endpoints: list = [],
 
         **kwargs
     ) -> None:
