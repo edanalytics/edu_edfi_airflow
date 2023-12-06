@@ -24,19 +24,6 @@ class EdFiResourceDAG:
     newest_edfi_cv_task_id = "get_latest_edfi_change_version"  # Original name for historic run compatibility
     previous_snowflake_cv_task_id = "get_previous_change_versions_from_snowflake"
 
-    params_dict = {
-        "full_refresh": Param(
-            default=False,
-            type="boolean",
-            description="If true, deletes endpoint data in Snowflake before ingestion"
-        ),
-        "endpoints": Param(
-            default=[],
-            type="array",
-            description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
-        ),
-    }
-
     def __init__(self,
         *,
         tenant_code: str,
@@ -57,6 +44,9 @@ class EdFiResourceDAG:
         slack_conn_id: str = None,
         dbt_incrementer_var: str = None,
 
+        full_refresh: bool = False,
+        endpoints: [],
+
         **kwargs
     ) -> None:
         self.tenant_code = tenant_code
@@ -75,6 +65,22 @@ class EdFiResourceDAG:
         self.change_version_table = change_version_table
 
         self.dbt_incrementer_var = dbt_incrementer_var
+
+        self.full_refresh = full_refresh
+        self.endpoints = endpoints
+
+        self.params_dict = {
+        "full_refresh": Param(
+            default=self.full_refresh,
+            type="boolean",
+            description="If true, deletes endpoint data in Snowflake before ingestion"
+        ),
+        "endpoints": Param(
+            default=self.endpoints,
+            type="array",
+            description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
+        ),
+        }
 
         # Initialize the DAG scaffolding for TaskGroup declaration.
         self.dag = self.initialize_dag(**kwargs)
