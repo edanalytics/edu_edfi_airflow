@@ -44,8 +44,8 @@ class EdFiResourceDAG:
         slack_conn_id: str = None,
         dbt_incrementer_var: str = None,
 
-        full_refresh: bool = False,
-        endpoints: list = [],
+        default_full_refresh: bool = False,
+        default_endpoints: list = [],
 
         **kwargs
     ) -> None:
@@ -66,17 +66,17 @@ class EdFiResourceDAG:
 
         self.dbt_incrementer_var = dbt_incrementer_var
 
-        self.full_refresh = full_refresh
-        self.endpoints = endpoints
+        self.default_full_refresh = default_full_refresh
+        self.default_endpoints = default_endpoints
 
         self.params_dict = {
         "full_refresh": Param(
-            default=self.full_refresh,
+            default=self.default_full_refresh,
             type="boolean",
             description="If true, deletes endpoint data in Snowflake before ingestion"
         ),
         "endpoints": Param(
-            default=self.endpoints,
+            default=self.default_endpoints,
             type="array",
             description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
         ),
