@@ -50,6 +50,7 @@ class EdFiResourceDAG:
         tmp_dir  : str,
 
         multiyear: bool = False,
+        full_refresh_dom: Optional[int] = None,
 
         use_change_version: bool = True,
         change_version_table: str = '_meta_change_versions',
@@ -62,6 +63,7 @@ class EdFiResourceDAG:
         self.tenant_code = tenant_code
         self.api_year = api_year
         self.multiyear = multiyear
+        self.full_refresh_dom = full_refresh_dom  # Turn on full-refresh when ds DoM == full_refresh_dom
 
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
@@ -232,6 +234,9 @@ class EdFiResourceDAG:
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
+            user_defined_macros={
+                "is_dom_full_refresh": partial(airflow_util.is_dom, dom=self.full_refresh_dom)
+            },
             **airflow_util.subset_kwargs_to_class(DAG, kwargs)  # Remove kwargs not expected in DAG.
         )
 

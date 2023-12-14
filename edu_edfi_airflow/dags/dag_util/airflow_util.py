@@ -43,7 +43,14 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    return get_context_variable(context, 'full_refresh', default=False)
+    return context.get("is_dom_full_refresh", False) or get_context_variable(context, 'full_refresh', default=False)
+
+def is_dom(dom: int, **context) -> bool:
+    """
+    Simple helper to check whether the day-of-month of the DAG-run matches a specified argument.
+    """
+    execution_date = context["dag_run"]["logical_date"]
+    return execution_date.day == dom
 
 
 def get_config_endpoints(context) -> List[str]:
