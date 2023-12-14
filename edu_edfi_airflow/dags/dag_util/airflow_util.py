@@ -45,7 +45,7 @@ def is_full_refresh(context) -> bool:
     :return:
     """
     if dom_full_refresh_macro := context["dag"].user_defined_macros.get("is_dom_full_refresh", False):
-        if dom_full_refresh_macro():
+        if dom_full_refresh_macro(**context):
             logging.info("Day-of-month full-refresh criteria met! Triggering a full-refresh run.")
             return True
 
