@@ -1,4 +1,5 @@
 import inspect
+import logging
 
 from typing import List, Tuple
 
@@ -43,7 +44,10 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    return context.get("is_dom_full_refresh", False) or get_context_variable(context, 'full_refresh', default=False)
+    if dom_full_refresh := context.get("is_dom_full_refresh", False):
+        logging.info("Day-of-month full-refresh criteria met! Triggering a full-refresh run.")
+
+    return dom_full_refresh or get_context_variable(context, 'full_refresh', default=False)
 
 def is_dom(dom: int, **context) -> bool:
     """
