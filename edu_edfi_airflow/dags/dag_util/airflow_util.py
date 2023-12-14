@@ -51,11 +51,12 @@ def is_full_refresh(context) -> bool:
 
     return get_context_variable(context, 'full_refresh', default=False)
 
+
 def is_dom(dom: int, **context) -> bool:
     """
     Simple helper to check whether the day-of-month of the DAG-run matches a specified argument.
     """
-    execution_date = context["dag_run"]["logical_date"]
+    execution_date = context["dag_run"].logical_date
     return execution_date.day == dom
 
 
