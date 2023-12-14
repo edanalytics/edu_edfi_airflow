@@ -44,10 +44,12 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    if dom_full_refresh := context["dag"].user_defined_macros.get("is_dom_full_refresh", False):
-        logging.info("Day-of-month full-refresh criteria met! Triggering a full-refresh run.")
+    if dom_full_refresh_macro := context["dag"].user_defined_macros.get("is_dom_full_refresh", False):
+        if dom_full_refresh_macro():
+            logging.info("Day-of-month full-refresh criteria met! Triggering a full-refresh run.")
+            return True
 
-    return dom_full_refresh or get_context_variable(context, 'full_refresh', default=False)
+    return get_context_variable(context, 'full_refresh', default=False)
 
 def is_dom(dom: int, **context) -> bool:
     """
