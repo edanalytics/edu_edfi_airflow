@@ -1,3 +1,8 @@
+# edu_edfi_airflow v0.2.3
+## Fixes
+- Fix parsing error in full-refresh runs
+
+
 # edu_edfi_airflow v0.2.2
 ## New features
 - Add optional argument `pool` to `EdFiResourceDAG.build_edfi_to_snowflake_task_group()` to override DAG-level pool when ingesting high-impact resources.
