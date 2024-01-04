@@ -22,6 +22,7 @@ setuptools.setup(
       install_requires=[
           'ea_airflow_util',
           'edfi_api_client',
+          'croniter',
       ],
       zip_safe=False,
 )
