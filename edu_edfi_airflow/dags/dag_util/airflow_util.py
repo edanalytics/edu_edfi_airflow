@@ -1,7 +1,8 @@
+import croniter
 import inspect
 import logging
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from airflow.models import Connection
 
@@ -38,26 +39,37 @@ def get_context_variable(context, variable_name: str, default: object):
         return default
 
 
-def is_full_refresh(context) -> bool:
+def is_full_refresh(**context) -> bool:
     """
 
     :param context:
     :return:
     """
-    if dom_full_refresh_macro := context["dag"].user_defined_macros.get("is_dom_full_refresh", False):
-        if dom_full_refresh_macro(**context):
-            logging.info("Day-of-month full-refresh criteria met! Triggering a full-refresh run.")
+    if full_refresh_macro := context["dag"].user_defined_macros.get("is_scheduled_full_refresh", False):
+        if full_refresh_macro(**context):
+            logging.info("Scheduled full-refresh criteria met! Triggering a full-refresh run.")
             return True
 
     return get_context_variable(context, 'full_refresh', default=False)
 
 
-def is_dom(dom: int, **context) -> bool:
+def run_matches_cron(cron: Optional[str], **context) -> bool:
     """
-    Simple helper to check whether the day-of-month of the DAG-run matches a specified argument.
+    Simple helper to check whether the execution timestamp of the DAG-run matches a specified cron expression.
+    Note that default cron behavior uses boolean OR logic to handle day and day-of-week entries, so we set day_or=False.
+
+    Advanced cron examples:
+        "2 4 1 * wed        ": 04:02 on every 1st day of the month if it is a Wednesday
+        "0 0 * * sat#1,sun#2": 00:00 on the 1st Saturday and 2nd Sunday of the month
+        "0 0 * * 5#3,L5     ": 00:00 on the 3rd and last Friday of the month
     """
-    execution_date = context["dag_run"].logical_date
-    return execution_date.day == dom
+    if not cron:
+        return False
+
+    if not croniter.croniter.is_valid(cron):
+        raise ValueError("Provided cron syntax to match against current DAG run is invalid!")
+
+    return croniter.croniter.match(cron, context["dag_run"].logical_date, day_or=False)
 
 
 def get_config_endpoints(context) -> List[str]:
