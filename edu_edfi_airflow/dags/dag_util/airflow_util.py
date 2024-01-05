@@ -39,7 +39,7 @@ def get_context_variable(context, variable_name: str, default: object):
         return default
 
 
-def is_full_refresh(**context) -> bool:
+def is_full_refresh(context) -> bool:
     """
 
     :param context:
