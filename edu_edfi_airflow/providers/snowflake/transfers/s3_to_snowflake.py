@@ -1,6 +1,6 @@
-from typing import Any
+import os
 
-from typing import Optional
+from typing import Any, Optional
 
 from airflow.models import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
@@ -14,7 +14,7 @@ class S3ToSnowflakeOperator(BaseOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    template_fields = ('s3_destination_key',)
+    template_fields = ('s3_destination_key', 's3_destination_dir', 's3_destination_filename',)
 
     @apply_defaults
     def __init__(self,
@@ -24,7 +24,9 @@ class S3ToSnowflakeOperator(BaseOperator):
         resource: str,
         table_name: str,
 
-        s3_destination_key: str,
+        s3_destination_key: Optional[str] = None,
+        s3_destination_dir: Optional[str] = None,
+        s3_destination_filename: Optional[str] = None,
 
         snowflake_conn_id: str,
 
@@ -47,6 +49,8 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.table_name = table_name
 
         self.s3_destination_key = s3_destination_key
+        self.s3_destination_dir = s3_destination_dir
+        self.s3_destination_filename = s3_destination_filename
 
         self.ods_version = ods_version
         self.data_model_version = data_model_version
@@ -64,6 +68,14 @@ class S3ToSnowflakeOperator(BaseOperator):
         ### Retrieve the database and schema from the Snowflake hook.
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
         database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
+
+        ### Optionally set destination key by concatting separate args for dir and filename
+        if not self.s3_destination_key:
+            if not (self.s3_destination_dir and self.s3_destination_filename):
+                raise ValueError(
+                    f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
+                )
+            self.s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename)
 
         ### Retrieve the Ed-Fi, ODS, and data model versions if not provided.
         # (This needs to occur in execute to not call the API at every Airflow synchronize.)
