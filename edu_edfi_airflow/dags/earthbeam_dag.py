@@ -587,7 +587,7 @@ class EarthbeamDAG:
                 '{self.run_type}' AS run_type,
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
-                PARSE_JSON('{results}') AS result
+                PARSE_JSON($${results}$$) AS result
         """
 
         # Insert each row into the table, passing the values as parameters.
