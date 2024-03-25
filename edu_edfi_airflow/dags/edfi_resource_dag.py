@@ -50,6 +50,7 @@ class EdFiResourceDAG:
         tmp_dir  : str,
 
         multiyear: bool = False,
+        schedule_interval_full_refresh: Optional[str] = None,
 
         use_change_version: bool = True,
         change_version_table: str = '_meta_change_versions',
@@ -62,6 +63,7 @@ class EdFiResourceDAG:
         self.tenant_code = tenant_code
         self.api_year = api_year
         self.multiyear = multiyear
+        self.schedule_interval_full_refresh = schedule_interval_full_refresh  # Force full-refresh on a scheduled cadence
 
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
@@ -232,6 +234,9 @@ class EdFiResourceDAG:
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
+            user_defined_macros={
+                "is_scheduled_full_refresh": partial(airflow_util.run_matches_cron, cron=self.schedule_interval_full_refresh)
+            },
             **airflow_util.subset_kwargs_to_class(DAG, kwargs)  # Remove kwargs not expected in DAG.
         )
 
