@@ -10,7 +10,7 @@ from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.utils.decorators import apply_defaults
 
 from edfi_api_client import camel_to_snake
-from edu_edfi_airflow.dags.dag_util import airflow_util
+from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
