@@ -2,12 +2,12 @@ import os
 from functools import partial
 from typing import Optional
 
-from airflow import DAG
 from airflow.models.param import Param
 from airflow.operators.dummy import DummyOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
+from ea_airflow_util import EACustomDAG
 from ea_airflow_util import slack_callbacks, update_variable
 from edfi_api_client import camel_to_snake
 
@@ -54,7 +54,6 @@ class EdFiResourceDAG:
         use_change_version: bool = True,
         change_version_table: str = '_meta_change_versions',
 
-        slack_conn_id: str = None,
         dbt_incrementer_var: str = None,
 
         **kwargs
@@ -77,7 +76,7 @@ class EdFiResourceDAG:
         self.dbt_incrementer_var = dbt_incrementer_var
 
         # Initialize the DAG scaffolding for TaskGroup declaration.
-        self.dag = self.initialize_dag(**kwargs)
+        self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
         # Retrieve current and previous change versions to define an ingestion window.
         if self.use_change_version:
@@ -199,43 +198,6 @@ class EdFiResourceDAG:
 
 
     ### Internal methods that should probably not be called directly.
-    def initialize_dag(self,
-        dag_id: str,
-        schedule_interval: str,
-        default_args: dict,
-        **kwargs
-    ) -> DAG:
-        """
-
-        :param dag_id:
-        :param schedule_interval:
-        :param default_args:
-        :return:
-        """
-        # If a Slack connection has been defined, add the failure callback to the default_args.
-        if self.slack_conn_id:
-            slack_failure_callback = partial(slack_callbacks.slack_alert_failure, http_conn_id=self.slack_conn_id)
-            default_args['on_failure_callback'] = slack_failure_callback
-
-            # Define an SLA-miss callback as well.
-            slack_sla_miss_callback = partial(slack_callbacks.slack_alert_sla_miss, http_conn_id=self.slack_conn_id)
-        else:
-            slack_sla_miss_callback = None
-
-        # If a Slack connection is defined, send a callback in the event of a DAG failure.
-        return DAG(
-            dag_id=dag_id,
-            schedule_interval=schedule_interval,
-            default_args=default_args,
-            catchup=False,
-            params=self.params_dict,
-            render_template_as_native_obj=True,
-            max_active_runs=1,
-            sla_miss_callback=slack_sla_miss_callback,
-            **airflow_util.subset_kwargs_to_class(DAG, kwargs)  # Remove kwargs not expected in DAG.
-        )
-
-
     def build_change_version_task_group(self) -> TaskGroup:
         """
 
