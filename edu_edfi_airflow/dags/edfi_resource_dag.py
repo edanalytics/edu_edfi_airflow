@@ -64,7 +64,6 @@ class EdFiResourceDAG:
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
         self.snowflake_conn_id = snowflake_conn_id
-        self.slack_conn_id = slack_conn_id
 
         self.pool = pool
         self.tmp_dir = tmp_dir
