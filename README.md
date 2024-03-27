@@ -41,7 +41,7 @@ This functionality can be paired with the `endpoints` DAG-level config to run a 
 | change_version_table | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                          |
 | dbt_incrementer_var  | Optional Airflow variable to increment upon a finished run                                                                         |
 
-Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, schedule_interval`, `default_args`, etc.) can be passed as kwargs.
+Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
 
 -----
 
@@ -394,7 +394,7 @@ Set `force` to `True` in DAG-level configs or under a task-group's `lightbeam_kw
 | lightbeam_pool  | Optional Airflow pool against which all Lightbeam operations are applied (default `pool`)                      |
 | fast_cleanup    | Boolean flag for whether to remove local files immediately upon failure, or only after success (default False) |
 
-Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, schedule_interval`, `default_args`, etc.) can be passed as kwargs.
+Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
 
 -----
 
