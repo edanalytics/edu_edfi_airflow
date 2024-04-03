@@ -482,7 +482,7 @@ class EdFiResourceDAG:
                 snowflake_conn_id=self.snowflake_conn_id,
 
                 s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
-                xcom_return=(snake_resource, deletes),  # Force return structure for downstream XCom.
+                xcom_return=[(snake_resource, get_deletes, get_key_changes)],  # Force return structure for downstream XCom.
 
                 trigger_rule='all_success',
                 dag=self.dag

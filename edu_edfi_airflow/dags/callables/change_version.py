@@ -144,20 +144,16 @@ def update_change_versions(
     for task_id in kwargs['task'].upstream_task_ids:
 
         # Only log successful copies into Snowflake (skips will return None)
-        if not (xcom_value := kwargs['ti'].xcom_pull(task_id)):
+        if not (xcom_tuples := kwargs['ti'].xcom_pull(task_id)):
             continue
-        else:
-            resource, deletes = xcom_value
 
-        rows_to_insert.append([
-            tenant_code, api_year, resource, deletes,
-            kwargs["ds"], kwargs["ts"],
-            edfi_change_version, True
-        ])
+        for resource, deletes, key_changes in xcom_tuples:
+            rows_to_insert.append([
                 tenant_code, api_year, resource,
                 deletes, key_changes,
                 kwargs["ds"], kwargs["ts"],
                 edfi_change_version, True
+            ])
 
     if not rows_to_insert:
         raise AirflowSkipException(
