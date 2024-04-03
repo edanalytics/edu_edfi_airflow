@@ -461,7 +461,7 @@ class EdFiResourceDAG:
                 page_size=page_size,
                 num_retries=max_retries,
                 query_parameters=edfi_query_params,
-                min_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id, key=display_resource),
+                min_change_version=airflow_util.xcom_pull_template(self.previous_snowflake_cv_task_id, key=display_resource),
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 change_version_step_size=change_version_step_size,
 
