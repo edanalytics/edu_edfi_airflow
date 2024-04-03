@@ -1,3 +1,5 @@
+import logging
+
 from typing import List, Union
 
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
@@ -25,6 +27,9 @@ def insert_into_snowflake(
 
     # Retrieve the database and schema from the Snowflake hook.
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+
+    logging.info(f"Inserting the following values into table {database}.{schema}.{table_name} in columns {columns}:")
+    logging.info("\n".join(str(value) for value in values))
 
     snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
     snowflake_hook.insert_rows(
