@@ -104,7 +104,7 @@ def get_previous_change_versions(
 
     # Retrieve the previous max change versions for this tenant-year.
     qry_prior_max = f"""
-        select name, is_deletes, max(max_version) as max_version
+        select name, is_deletes, is_key_changes, max(max_version) as max_version
         from {database}.{schema}.{change_version_table}
         where tenant_code = '{tenant_code}'
             and api_year = {api_year}
@@ -118,8 +118,8 @@ def get_previous_change_versions(
         f"Collected prior change versions for {len(prior_change_versions)} endpoints."
     )
 
-    for snake_resource, is_deletes, max_version in prior_change_versions:
-        xcom_key = airflow_util.build_display_name(snake_resource, is_deletes)
+    for snake_resource, is_deletes, is_key_changes, max_version in prior_change_versions:
+        xcom_key = airflow_util.build_display_name(snake_resource, is_deletes=is_deletes, is_key_changes=is_key_changes)
         kwargs['ti'].xcom_push(key=xcom_key, value=max_version)
 
 
@@ -154,6 +154,10 @@ def update_change_versions(
             kwargs["ds"], kwargs["ts"],
             edfi_change_version, True
         ])
+                tenant_code, api_year, resource,
+                deletes, key_changes,
+                kwargs["ds"], kwargs["ts"],
+                edfi_change_version, True
 
     if not rows_to_insert:
         raise AirflowSkipException(
@@ -168,7 +172,8 @@ def update_change_versions(
         snowflake_conn_id=snowflake_conn_id,
         table_name=change_version_table,
         columns=[
-            "tenant_code", "api_year", "name", "is_deletes",
+            "tenant_code", "api_year", "name",
+            "is_deletes", "is_key_changes",
             "pull_date", "pull_timestamp",
             "max_version", "is_active"
         ],
