@@ -1,6 +1,6 @@
 import os
 from functools import partial
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from airflow import DAG
 from airflow.models.param import Param
@@ -13,7 +13,7 @@ from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.dags.callables import change_version
 from edu_edfi_airflow.dags.dag_util import airflow_util
-from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator
+from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator, BulkEdFiToS3Operator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
 
@@ -23,19 +23,6 @@ class EdFiResourceDAG:
     """
     newest_edfi_cv_task_id = "get_latest_edfi_change_version"  # Original name for historic run compatibility
     previous_snowflake_cv_task_id = "get_previous_change_versions_from_snowflake"
-
-    params_dict = {
-        "full_refresh": Param(
-            default=False,
-            type="boolean",
-            description="If true, deletes endpoint data in Snowflake before ingestion"
-        ),
-        "endpoints": Param(
-            default=[],
-            type="array",
-            description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
-        ),
-    }
 
     def __init__(self,
         *,
@@ -48,11 +35,16 @@ class EdFiResourceDAG:
 
         pool     : str,
         tmp_dir  : str,
-
         multiyear: bool = False,
-
         use_change_version: bool = True,
+
+        resource_configs: Optional[List[dict]] = None,
+        descriptor_configs: Optional[List[dict]] = None,
+
         change_version_table: str = '_meta_change_versions',
+        deletes_table: str = '_deletes',
+        key_changes_table: str = '_key_changes',
+        descriptors_table: str = '_descriptors',
 
         slack_conn_id: str = None,
         dbt_incrementer_var: str = None,
@@ -61,7 +53,6 @@ class EdFiResourceDAG:
     ) -> None:
         self.tenant_code = tenant_code
         self.api_year = api_year
-        self.multiyear = multiyear
 
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
@@ -70,14 +61,62 @@ class EdFiResourceDAG:
 
         self.pool = pool
         self.tmp_dir = tmp_dir
-
+        self.multiyear = multiyear
         self.use_change_version = use_change_version
+
         self.change_version_table = change_version_table
+        self.deletes_table = deletes_table
+        self.key_changes_table = key_changes_table
+        self.descriptors_table = descriptors_table
 
         self.dbt_incrementer_var = dbt_incrementer_var
 
-        # Initialize the DAG scaffolding for TaskGroup declaration.
-        self.dag = self.initialize_dag(**kwargs)
+
+        ### Parse endpoint configs into dictionaries if passed.
+        if resource_configs:
+            if isinstance(resource_configs, dict):
+                self.resource_configs = resource_configs
+            else:  # A list of resources has been passed without run-metadata
+                self.resource_configs = {endpoint: {"enabled": True, "namespace": ns, 'fetch_deletes': True} for endpoint, ns in resource_configs}
+
+            self.deletes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
+            self.key_changes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
+
+        else:  # Otherwise, add endpoints manually (backwards-compatible with current DAG init code).
+            self.resource_configs = {}
+            self.deletes_to_ingest = set()
+            self.key_changes_to_ingest = set()
+
+        if descriptor_configs:
+            if isinstance(resource_configs, dict):
+                self.descriptor_configs = descriptor_configs
+            else:  # A list of descriptors has been passed without run-metadata
+                self.descriptor_configs = {endpoint: {"enabled": True, "namespace": ns, 'fetch_deletes': False} for endpoint, ns in descriptor_configs}
+
+        else:  # Otherwise, add endpoints manually (backwards-compatible with current DAG init code).
+            self.descriptor_configs = {}
+
+        # Populate DAG params with defined resources and descriptors; default to empty-list (i.e., run all).
+        enabled_endpoints = [
+            resource for resource, config in {**self.resource_configs, **self.descriptor_configs}
+            if config.get('enabled')
+        ]
+
+        self.params_dict = {
+            "full_refresh": Param(
+                default=False,
+                type="boolean",
+                description="If true, deletes endpoint data in Snowflake before ingestion"
+            ),
+            "endpoints": Param(
+                default=sorted(enabled_endpoints),
+                type="array",
+                description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
+            ),
+        }
+
+        ### Initialize the DAG scaffolding for TaskGroup declaration.
+        self.dag = self.initialize_dag(params=self.params_dict, **kwargs)
 
         # Retrieve current and previous change versions to define an ingestion window.
         if self.use_change_version:
@@ -93,69 +132,24 @@ class EdFiResourceDAG:
         else:
             self.dbt_var_increment_operator = None
 
-        # Create nested task-groups for cleaner webserver UI
+        ### Create nested task-groups for cleaner webserver UI
         # (Make these lazy to only show populated TaskGroups in the UI.)
         self.resources_task_group = None
-        self.resource_deletes_task_group = None
         self.descriptors_task_group = None
+        self.resource_deletes_task_group = None
+        self.resource_key_changes_task_group = None
 
 
-    def add_resource(self,
-        resource: str,
-        namespace: str = 'ed-fi',
-        **kwargs
-    ):
-        if not self.resources_task_group:  # Initialize the task group if still undefined.
-            self.resources_task_group = TaskGroup(
-                group_id="Ed-Fi Resources",
-                prefix_group_id=False,
-                parent_group=None,
-                dag=self.dag
-            )
+    # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs`).
+    def add_resource(self, resource: str, **kwargs):
+        self.resource_configs[resource] = kwargs
 
-        self.build_edfi_to_snowflake_task_group(
-            resource, namespace,
-            parent_group=self.resources_task_group,
-            **kwargs
-        )
+    def add_descriptor(self, resource: str, **kwargs):
+        self.descriptor_configs[resource] = kwargs
 
-    def add_resource_deletes(self,
-        resource: str,
-        namespace: str = 'ed-fi',
-        **kwargs
-    ):
-        if not self.resource_deletes_task_group:  # Initialize the task group if still undefined.
-            self.resource_deletes_task_group = TaskGroup(
-                group_id="Ed-Fi Resource Deletes",
-                prefix_group_id=False,
-                parent_group=None,
-                dag=self.dag
-            )
-
-        self.build_edfi_to_snowflake_task_group(
-            resource, namespace, deletes=True, table="_deletes",
-            parent_group=self.resource_deletes_task_group,
-            **kwargs
-        )
-
-    def add_descriptor(self,
-        resource: str,
-        namespace: str = 'ed-fi',
-        **kwargs
-    ):
-        if not self.descriptors_task_group:  # Initialize the task group if still undefined.
-            self.descriptors_task_group = TaskGroup(
-                group_id="Ed-Fi Descriptors",
-                prefix_group_id=False,
-                parent_group=None,
-                dag=self.dag
-            )
-
-        self.build_edfi_to_snowflake_task_group(
-            resource, namespace, table="_descriptors",
-            parent_group=self.descriptors_task_group,
-            **kwargs
-        )
+    def add_resource_deletes(self, resource: str, **kwargs):
+        self.deletes_to_ingest.add(resource)
+        self.key_changes_to_ingest.add(resource)
 
     def chain_task_groups_into_dag(self):
         """
@@ -169,6 +163,46 @@ class EdFiResourceDAG:
 
         :return:
         """
+        ### Initialize resource and descriptor task groups if configs are defined.
+        # Resources
+        if self.resource_configs:
+            self.resources_task_group = TaskGroup(
+                group_id="Ed-Fi Resources",
+                prefix_group_id=False,
+                parent_group=None,
+                dag=self.dag
+            )
+
+            for resource, configs in self.resource_configs.items():
+                self.build_edfi_to_snowflake_task_group(resource, parent_group=self.resources_task_group, **kwargs)
+
+        # Descriptors
+        self.descriptors_task_group = self.build_bulk_edfi_to_snowflake_task_group(
+            group_id="Ed-Fi Descriptors",
+            endpoints=list(self.descriptor_configs.keys()),
+            configs=self.descriptor_configs,
+            table=self.descriptors_table
+        )
+
+        # Resource Deletes
+        self.resource_deletes_task_group = self.build_bulk_edfi_to_snowflake_task_group(
+            group_id="Ed-Fi Resource Deletes",
+            endpoints=self.deletes_to_ingest,
+            configs=self.resource_configs,
+            table=self.deletes_table,
+            get_deletes=True
+        )
+
+        # Resource Key-Changes
+        self.resource_key_changes_task_group = self.build_bulk_edfi_to_snowflake_task_group(
+            group_id="Ed-Fi Resource Key Changes",
+            endpoints=self.key_changes_to_ingest,
+            configs=self.resource_configs,
+            table=self.key_changes_table,
+            get_key_changes=True
+        )
+
+        ### Chain task groups into the DAG between CV operators and Airflow state operators.
         # Create a dummy sentinel to display the success of the endpoint taskgroups.
         dag_state_sentinel = DummyOperator(
             task_id='dag_state_sentinel',
@@ -176,7 +210,14 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-        for task_group in (self.resources_task_group, self.resource_deletes_task_group, self.descriptors_task_group):
+        task_groups_to_chain = [
+            self.resources_task_group,
+            self.descriptors_task_group,
+            self.resource_deletes_task_group,
+            self.resource_key_changes_task_group,
+        ]
+
+        for task_group in task_groups_to_chain:
 
             if not task_group:  # Ignore undefined task groups
                 continue
@@ -228,7 +269,6 @@ class EdFiResourceDAG:
             schedule_interval=schedule_interval,
             default_args=default_args,
             catchup=False,
-            params=self.params_dict,
             render_template_as_native_obj=True,
             max_active_runs=1,
             sla_miss_callback=slack_sla_miss_callback,
@@ -355,10 +395,10 @@ class EdFiResourceDAG:
         namespace: str = 'ed-fi',
 
         *,
-        deletes    : bool = False,
-        table      : Optional[str] = None,
-        pool       : Optional[str] = None,
-        page_size  : int = 500,
+        get_deletes: bool = False,
+        get_key_changes: bool = False,
+
+        page_size: int = 500,
         max_retries: int = 5,
         change_version_step_size: int = 50000,
 
@@ -366,15 +406,15 @@ class EdFiResourceDAG:
         **kwargs
     ) -> TaskGroup:
         """
-        Pulling an EdFi resource/descriptor requires knowing its camelCased name and namespace.
-        Deletes are optionally specified.
-        Specify `table` to overwrite the final Snowflake table location.
+        Pull a single Ed-Fi resource and write to S3.
+        Copy the data to its own table in Snowflake.
+
+        Note: Descriptors, deletes, and keyChanges use the BulkOperator instead.
 
         :param resource :
         :param namespace:
-        :param deletes  :
-        :param table    : Overwrite the table to output the rows to (exception case for descriptors).
-        :param pool     : Custom pool to use for this specific resource (overrides DAG-level pool).
+        :param get_deletes:
+        :param get_key_changes:
         :param page_size:
         :param max_retries:
         :param change_version_step_size:
@@ -382,34 +422,19 @@ class EdFiResourceDAG:
         :return:
         """
         # Snowflake tables and Airflow tasks use snake_cased resources for readability.
-        # Apply the deletes suffix for logging deletes across the Airflow DAG.
         snake_resource = camel_to_snake(resource)
-        display_resource = airflow_util.build_display_name(snake_resource, deletes)
 
         # Wrap the branch in a task group
         with TaskGroup(
-            group_id=display_resource,
+            group_id=snake_resource,
             prefix_group_id=False,
             parent_group=parent_group,
             dag=self.dag
         ) as resource_task_group:
 
-            ### EDFI3 CHANGE_VERSION LOGIC
-            if self.use_change_version:
-                max_change_version = airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id)
-                min_change_version = airflow_util.xcom_pull_template(
-                    self.previous_snowflake_cv_task_id,
-                    key=display_resource
-                )
-            else:
-                max_change_version = None
-                min_change_version = None
-
-
             ### EDFI TO S3
-            s3_destination_key = os.path.join(
-                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}",
-                f'{display_resource}.json'
+            s3_directory = os.path.join(
+                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
             )
 
             # For a multiyear ODS, we need to specify school year as an additional query parameter.
@@ -419,37 +444,39 @@ class EdFiResourceDAG:
                 edfi_query_params['schoolYear'] = self.api_year
 
             pull_edfi_to_s3 = EdFiToS3Operator(
-                task_id= f"pull_{display_resource}",
+                task_id=f"pull_{snake_resource}",
 
-                edfi_conn_id    = self.edfi_conn_id,
-                page_size       = page_size,
-                resource        = resource,
-                api_namespace   = namespace,
-                api_get_deletes = deletes,
-                api_retries     = max_retries,
-                
-                query_parameters= edfi_query_params,
-                min_change_version=min_change_version,
-                max_change_version=max_change_version,
+                edfi_conn_id=self.edfi_conn_id,
+                resource=resource,
+                namespace=namespace,
+
+                tmp_dir= self.tmp_dir,
+                s3_conn_id= self.s3_conn_id,
+                s3_destination_key= s3_directory,
+
+                get_deletes=get_deletes,
+                get_key_changes=get_key_changes,
+
+                page_size=page_size,
+                num_retries=max_retries,
+                query_parameters=edfi_query_params,
+                min_change_version_operator=self.newest_edfi_cv_task_id,
+                max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 change_version_step_size=change_version_step_size,
 
-                pool      = pool or self.pool,
-                tmp_dir   = self.tmp_dir,
-                s3_conn_id= self.s3_conn_id,
-                s3_destination_key= s3_destination_key,
-
+                pool=self.pool,
                 trigger_rule='all_success',
                 dag=self.dag
             )
 
             ### COPY FROM S3 TO SNOWFLAKE
             copy_s3_to_snowflake = S3ToSnowflakeOperator(
-                task_id=f"copy_into_snowflake_{display_resource}",
+                task_id=f"copy_into_snowflake_{snake_resource}",
 
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
                 resource=snake_resource,
-                table_name=table or snake_resource,  # Use the provided table name, or default to resource.
+                table_name=snake_resource,
 
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
@@ -464,3 +491,96 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 >> copy_s3_to_snowflake
 
         return resource_task_group
+
+    def build_bulk_edfi_to_snowflake_task_group(self,
+        endpoints: List[str],
+        configs: Dict[str, dict],
+        group_id: str,
+
+        *,
+        table: Optional[str] = None,
+        get_deletes: bool = False,
+        get_key_changes: bool = False,
+
+        max_retries: int = 5,
+        change_version_step_size: int = 50000,
+        **kwargs
+    ):
+        if not endpoints:
+            return None
+
+        # Wrap the branch in a task group
+        with TaskGroup(
+            group_id=group_id,
+            prefix_group_id=False,
+            parent_group=None,
+            dag=self.dag
+        ) as bulk_task_group:
+
+            ### EDFI TO S3
+            # Create a separate bulk subdirectory path to assist in copying.
+            if self.get_deletes:
+                bulk_subdir = 'bulk_deletes'
+            elif self.get_key_changes:
+                bulk_subdir = 'bulk_key_changes'
+            else:
+                bulk_subdir = 'bulk'
+
+            s3_directory = os.path.join(
+                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}", bulk_subdir
+            )
+
+            # For a multiyear ODS, we need to specify school year as an additional query parameter.
+            # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
+            edfi_query_params = {}
+            if self.multiyear:
+                edfi_query_params['schoolYear'] = self.api_year
+
+            pull_edfi_to_s3 = BulkEdFiToS3Operator(
+                task_id=f"pull_bulk_endpoints",
+
+                edfi_conn_id=self.edfi_conn_id,
+                resource=endpoints,
+                namespace=[configs[endpoint].get('namespace', 'ed-fi') for endpoint in endpoints],
+                page_size=[configs[endpoint].get('page_size', '500') for endpoint in endpoints],
+
+                get_deletes=get_deletes,
+                get_key_changes=get_key_changes,
+
+                tmp_dir=self.tmp_dir,
+                s3_conn_id=self.s3_conn_id,
+                s3_destination_dir=s3_directory,
+
+                num_retries=max_retries,
+                query_parameters=edfi_query_params,
+                min_change_version_operator=self.previous_snowflake_cv_task_id,
+                max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                change_version_step_size=change_version_step_size,
+
+                pool=self.pool,
+                trigger_rule='all_success',
+                dag=self.dag
+            )
+
+            ### COPY FROM S3 TO SNOWFLAKE
+            copy_s3_to_snowflake = S3ToSnowflakeOperator(
+                task_id=f"copy_into_snowflake_bulk_endpoints",
+
+                tenant_code=self.tenant_code,
+                api_year=self.api_year,
+                resource=[camel_to_snake(resource) for resource in endpoints],
+                table_name=table,
+
+                edfi_conn_id=self.edfi_conn_id,
+                snowflake_conn_id=self.snowflake_conn_id,
+
+                s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
+                xcom_return=lambda resource: (resource, get_deletes, get_key_changes),
+
+                trigger_rule='all_success',
+                dag=self.dag
+            )
+
+            pull_edfi_to_s3 >> copy_s3_to_snowflake
+
+        return bulk_task_group

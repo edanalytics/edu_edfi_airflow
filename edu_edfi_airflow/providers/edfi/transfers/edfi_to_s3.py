@@ -2,7 +2,7 @@ import json
 import logging
 import os
 
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional, Union
 
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
@@ -22,51 +22,55 @@ class EdFiToS3Operator(BaseOperator):
     Use a paged-get to retrieve a particular EdFi resource from the ODS.
     Save the results as JSON lines to `tmp_dir` on the server.
     Once pagination is complete, write the full results to S3.
+
+    Deletes and keyChanges are only used in the bulk operator.
     """
-    template_fields = ('s3_destination_key', 'query_parameters', 'min_change_version', 'max_change_version',)
+    template_fields = ('s3_destination_key', 'query_parameters', 'max_change_version',)
 
     @apply_defaults
     def __init__(self,
         edfi_conn_id: str,
         resource    : str,
+        namespace: str = 'ed-fi',
 
         *,
         tmp_dir   : str,
         s3_conn_id: str,
         s3_destination_key: str,
 
-        query_parameters  : Optional[dict] = None,
-        min_change_version: Optional[int ] = None,
-        max_change_version: Optional[int ] = None,
-        change_version_step_size: int = 50000,
+        get_deletes: bool = False,
+        get_key_changes: bool = False,
 
-        api_namespace  : str = 'ed-fi',  # Should these variables line up 1-to-1 with EdFiClient?
-        api_get_deletes: bool = False,
-        api_retries    : int = 5,
-        page_size      : int = None,
+        page_size: int = None,
+        num_retries: int = 5,
+        query_parameters  : Optional[dict] = None,
+        min_change_version_operator: Optional[str] = None,
+        max_change_version: Optional[int] = None,
+        change_version_step_size: int = 50000,
 
         **kwargs
     ) -> None:
         super(EdFiToS3Operator, self).__init__(**kwargs)
 
-        # EdFi variables
+        # Top-level variables
         self.edfi_conn_id = edfi_conn_id
         self.resource = resource
-
-        self.query_parameters   = query_parameters
-        self.min_change_version = min_change_version
-        self.max_change_version = max_change_version
-        self.change_version_step_size = change_version_step_size
-
-        self.api_namespace  = api_namespace
-        self.api_get_deletes= api_get_deletes
-        self.api_retries    = api_retries
-        self.page_size      = page_size
+        self.namespace = namespace
+        self.get_deletes = get_deletes
+        self.get_key_changes = get_key_changes
 
         # Storage variables
-        self.tmp_dir   = tmp_dir
-        self.s3_conn_id= s3_conn_id
-        self.s3_destination_key= s3_destination_key
+        self.tmp_dir = tmp_dir
+        self.s3_conn_id = s3_conn_id
+        self.s3_destination_key = s3_destination_key
+
+        # Endpoint-pagination variables
+        self.page_size = page_size
+        self.num_retries = num_retries
+        self.query_parameters = query_parameters
+        self.min_change_version_operator = min_change_version_operator
+        self.max_change_version = max_change_version
+        self.change_version_step_size = change_version_step_size
 
 
     def execute(self, context) -> str:
@@ -75,67 +79,96 @@ class EdFiToS3Operator(BaseOperator):
         :param context:
         :return:
         """
-        if airflow_util.is_full_refresh(context) and self.api_get_deletes:
-            raise AirflowSkipException(
-                "Skipping delete pull for full_refresh run."
-            )
+        if airflow_util.is_full_refresh(context) and (self.get_deletes or self.get_key_changes):
+            raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
 
         # If doing a resource-specific run, confirm resource is in the list.
         config_endpoints = airflow_util.get_config_endpoints(context)  # Returns `[]` if none explicitly specified.
         if config_endpoints and camel_to_snake(self.resource) not in config_endpoints:
-            raise AirflowSkipException(
-                "Endpoint not specified in DAG config `endpoints`."
+            raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
+
+        # Pull the latest change version for the resource, defaulting to 0 if not found.
+        display_resource = airflow_util.build_display_name(resource)
+        min_change_version = self.xcom_pull_min_change_version(display_resource)
+
+        logging.info(
+            "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
+                self.namespace, self.resource, min_change_version, self.max_change_version
             )
+        )
+
+        # Complete the pull and write to S3
+        full_s3_destination_key = os.path.join(self.s3_destination_key, f"{display_resource}.jsonl")
+
+        self.pull_edfi_to_s3(
+            resource=self.resource, namespace=self.namespace, page_size=self.page_size,
+            min_change_version=min_change_version, s3_destination_key=full_s3_destination_key,
+        )
+
+        return full_s3_destination_key
+
+
+    def xcom_pull_min_change_version(self, key: str, *, skip_on_unchanged: bool = True) -> int:
+        """
+        Logic to pull the min-change version from its upstream operator and check its validity.
+        """
+        if not (self.min_change_version_operator and self.max_change_version):
+            return None
+
+        min_change_version = context['ti'].xcom_pull(key=key, task_ids=self.min_change_version_operator)
 
         # Force min-change-version if no XCom was found.
-        if self.max_change_version and self.min_change_version is None:
-            self.min_change_version = 0
+        if not min_change_version:
+            min_change_version = 0
 
-        # Run sanity checks to make sure we aren't doing something wrong.
-        if self.min_change_version is not None and self.max_change_version is not None:
-            if self.min_change_version == self.max_change_version:
-                raise AirflowSkipException(
-                    "ODS is unchanged since previous pull."
-                )
-            elif self.max_change_version < self.min_change_version:
-                raise AirflowFailException(
-                    "Apparent out-of-sequence run: current change version is smaller than previous!"
-                )
+        # Run change-version sanity checks to make sure we aren't doing something wrong.
+        if min_change_version == max_change_version:
+            logging.info("ODS is unchanged since previous pull.")
+            if skip_on_unchanged:
+                raise AirflowSkipException
 
-            logging.info(
-                "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
-                    self.api_namespace, self.resource, self.min_change_version, self.max_change_version
-                )
+        if max_change_version < min_change_version:
+            raise AirflowFailException(
+                "Apparent out-of-sequence run: current change version is smaller than previous! Run a full-refresh of this resource to resolve!"
             )
-        
+
+        return min_change_version
+
+    def pull_edfi_to_s3(self,
+        *,
+        resource: str,
+        namespace: str,
+        page_size: int,
+        min_change_version: int,
+        s3_destination_key: str,
+        skip_on_zero_rows: bool = True
+    ):
+        """
+        Break out EdFi-to-S3 logic to allow code-duplication in bulk version of operator.
+        """
         ### Connect to EdFi and write resource data to a temp file.
         # Establish a hook to the ODS
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         # Prepare the EdFiEndpoint for the resource.
         resource_endpoint = edfi_conn.resource(
-            self.resource, namespace=self.api_namespace, get_deletes=self.api_get_deletes, params=self.query_parameters,
-            min_change_version=self.min_change_version, max_change_version=self.max_change_version
+            resource, namespace=namespace, params=self.query_parameters,
+            get_deletes=self.get_deletes, get_key_changes=self.get_key_changes,
+            min_change_version=min_change_version, max_change_version=self.max_change_version
         )
-
-        # # Fail immediately if the endpoint is forbidden.
-        # _response = resource_endpoint.ping()
-        # if not _response.ok:
-        #     raise Exception(f"Unable to connect to `{self.resource}`! {_response.status_code}: {_response.reason}")
 
         # Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
-        tmp_file = os.path.join(self.tmp_dir, self.s3_destination_key)
+        tmp_file = os.path.join(self.tmp_dir, s3_destination_key)
         total_rows = 0
 
         try:
             # Turn off change version stepping if min and max change versions have not been defined.
-            step_change_version = (self.min_change_version is not None and self.max_change_version is not None)
+            step_change_version = (min_change_version is not None and self.max_change_version is not None)
 
             paged_iter = resource_endpoint.get_pages(
-                page_size=self.page_size,
+                page_size=page_size,
                 step_change_version=step_change_version, change_version_step_size=self.change_version_step_size,
-                reverse_paging=(not self.api_get_deletes),  # Reverse_paging is true for resources and false for deletes
                 retry_on_failure=True, max_retries=self.api_retries
             )
 
@@ -156,21 +189,25 @@ class EdFiToS3Operator(BaseOperator):
         try:
             expected_rows = resource_endpoint.total_count()
             if total_rows != expected_rows:
-                logging.warning(f"Expected {expected_rows} rows for `{self.resource}`.")
+                logging.warning(f"Expected {expected_rows} rows for `{resource}`.")
             else:
                 logging.info("Number of collected rows matches expected count in the ODS.")
 
         except Exception:
-            logging.warning(f"Unable to access expected number of rows for `{self.resource}`.")
+            logging.warning(f"Unable to access expected number of rows for `{resource}`.")
 
         finally:
-            logging.info(f"{total_rows} rows were returned for `{self.resource}`.")
+            logging.info(f"{total_rows} rows were returned for `{resource}`.")
 
         # Raise a Skip if no data was collected.
         if total_rows == 0:
             logging.info(f"No results returned for `{self.resource}`")
             self.delete_path(tmp_file)
-            raise AirflowSkipException
+
+            if skip_on_zero_rows:
+                raise AirflowSkipException
+            else:
+                return None
 
         ### Connect to S3 and push
         try:
@@ -179,17 +216,13 @@ class EdFiToS3Operator(BaseOperator):
 
             s3_hook.load_file(
                 filename=tmp_file,
-
                 bucket_name=s3_bucket,
-                key=self.s3_destination_key,
-
+                key=s3_destination_key,
                 encrypt=True,
                 replace=True
             )
         finally:
             self.delete_path(tmp_file)
-
-        return self.s3_destination_key
 
 
     @staticmethod
@@ -209,3 +242,68 @@ class EdFiToS3Operator(BaseOperator):
             json.dumps(row).encode('utf8') + b'\n'
             for row in rows
         )
+
+
+class BulkEdFiToS3Operator(EdFiToS3Operator):
+    """
+    Inherits from EdFiToS3Operator to reduce code-duplication.
+
+    Establish a connection to the EdFi ODS using an Airflow Connection.
+    Default to pulling the EdFi API configs from the connection if not explicitly provided.
+
+    Use a paged-get to retrieve a list of resources from the ODS.
+    Save the results as JSON lines to `tmp_dir` on the server.
+    Once pagination is complete, write the full results to S3.
+    """
+    @apply_defaults
+    def __init__(self, *args, **kwargs) -> None:
+        super(BulkEdFiToS3Operator, self).__init__(*args, **kwargs)
+
+        # Force potential string columns into lists for zipping in execute.
+        if not isinstance(self.resource, (list, tuple)):
+            raise AirflowFailException("Bulk operators require lists of resources to be passed.")
+
+        if isinstance(self.namespace, str):
+            self.namespace = [self.namespace] * len(self.resource)
+
+        if isinstance(self.page_size, int):
+            self.page_size = [self.page_size] * len(self.resource)
+
+
+    def execute(self, context) -> str:
+        """
+
+        :param context:
+        :return:
+        """
+        if airflow_util.is_full_refresh(context) and (self.get_deletes or self.get_key_changes):
+            raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
+
+        config_endpoints = airflow_util.get_config_endpoints(context)  # Returns `[]` if none explicitly specified.
+
+        for resource, namespace, page_size in zip(self.resource, self.namespace, self.page_size):
+
+            # If doing a resource-specific run, confirm resource is in the list.
+            if config_endpoints and camel_to_snake(resource) not in config_endpoints:
+                logging.info(f"Endpoint {resource} not specified in DAG config endpoints.")
+                continue
+
+            display_resource = airflow_util.build_display_name(resource, is_deletes=self.api_get_deletes, is_key_changes=self.api_get_key_changes)
+            min_change_version = self.xcom_pull_min_change_version(display_resource, skip_on_unchanged=False)
+
+            logging.info(
+                "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
+                    namespace, resource, min_change_version, self.max_change_version
+                )
+            )
+
+            # Complete the pull and write to S3
+            full_s3_destination_key = os.path.join(self.s3_destination_key, f"{display_resource}.jsonl")
+
+            self.pull_edfi_to_s3(
+                resource=resource, namespace=namespace, page_size=page_size,
+                min_change_version=min_change_version, s3_destination_key=full_s3_destination_key,
+                skip_on_zero_rows=False  # Do not raise a skip-exception if no data was ingested.
+            )
+
+        return self.s3_destination_key
