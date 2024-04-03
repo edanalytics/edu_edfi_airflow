@@ -11,6 +11,8 @@ def build_display_name(resource: str, is_deletes: bool = False, is_key_changes: 
     """
     Universal helper method for building the display name of a resource.
     """
+    resource = camel_to_snake(resource)
+
     if is_deletes:
         return f"{resource}_deletes"
     elif is_key_changes:
