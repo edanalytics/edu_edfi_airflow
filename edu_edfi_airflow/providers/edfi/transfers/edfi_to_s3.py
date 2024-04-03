@@ -113,7 +113,10 @@ class EdFiToS3Operator(BaseOperator):
         )
 
         # Complete the pull and write to S3
+        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+
         self.pull_edfi_to_s3(
+            edfi_conn=edfi_conn,
             resource=self.resource, namespace=self.namespace, page_size=self.page_size,
             min_change_version=self.min_change_version, max_change_version=self.max_change_version,
             s3_destination_key=self.s3_destination_key
@@ -150,6 +153,7 @@ class EdFiToS3Operator(BaseOperator):
 
     def pull_edfi_to_s3(self,
         *,
+        edfi_conn: 'Connection',
         resource: str,
         namespace: str,
         page_size: int,
@@ -162,9 +166,6 @@ class EdFiToS3Operator(BaseOperator):
         Break out EdFi-to-S3 logic to allow code-duplication in bulk version of operator.
         """
         ### Connect to EdFi and write resource data to a temp file.
-        # Establish a hook to the ODS
-        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
-
         # Prepare the EdFiEndpoint for the resource.
         if max_change_version and not min_change_version:
             min_change_version = 0
@@ -332,12 +333,13 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             )
 
             # Complete the pull and write to S3
-            s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource))
+            edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
             self.pull_edfi_to_s3(
+                edfi_conn=edfi_conn,
                 resource=resource, namespace=namespace, page_size=page_size,
                 min_change_version=min_change_version, max_change_version=self.max_change_version,
-                s3_destination_key=s3_destination_key,
+                s3_destination_key=os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource)),
                 skip_on_zero_rows=False  # Do not raise a skip-exception if no data was ingested.
             )
 
