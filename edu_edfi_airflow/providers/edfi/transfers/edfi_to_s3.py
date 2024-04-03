@@ -322,7 +322,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
                 continue
 
             # Retrieve the min_change_version for this resource specifically.
-            min_change_version = self.min_change_version(resource)
+            min_change_version = self.min_change_version(context, resource)
             self.check_change_version_window_validity(min_change_version, self.max_change_version, skip_on_unchanged=False)
 
             logging.info(
