@@ -106,12 +106,6 @@ class EdFiToS3Operator(BaseOperator):
         # Check the validity of min and max change-versions.
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
-        logging.info(
-            "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
-                self.namespace, self.resource, self.min_change_version, self.max_change_version
-            )
-        )
-
         # Complete the pull and write to S3
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
@@ -169,6 +163,11 @@ class EdFiToS3Operator(BaseOperator):
         # Prepare the EdFiEndpoint for the resource.
         if max_change_version and not min_change_version:
             min_change_version = 0
+
+        logging.info(
+            "Pulling records for `{}/{}` for change versions `{}` to `{}`."\
+            .format(namespace, resource, min_change_version, max_change_version)
+        )
 
         resource_endpoint = edfi_conn.resource(
             resource, namespace=namespace, params=self.query_parameters,
@@ -325,12 +324,6 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             # Retrieve the min_change_version for this resource specifically.
             min_change_version = self.min_change_version(context, resource)
             self.check_change_version_window_validity(min_change_version, self.max_change_version, skip_on_unchanged=False)
-
-            logging.info(
-                "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
-                    namespace, resource, min_change_version, self.max_change_version
-                )
-            )
 
             # Complete the pull and write to S3
             edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
