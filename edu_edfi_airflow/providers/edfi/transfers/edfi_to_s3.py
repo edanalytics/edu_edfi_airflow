@@ -25,7 +25,7 @@ class EdFiToS3Operator(BaseOperator):
 
     Deletes and keyChanges are only used in the bulk operator.
     """
-    template_fields = ('s3_destination_key', 'query_parameters', 'max_change_version',)
+    template_fields = ('s3_destination_key', 'query_parameters', 'min_change_version', 'max_change_version',)
 
     @apply_defaults
     def __init__(self,
@@ -44,7 +44,7 @@ class EdFiToS3Operator(BaseOperator):
         page_size: int = None,
         num_retries: int = 5,
         query_parameters  : Optional[dict] = None,
-        min_change_version_operator: Optional[str] = None,
+        min_change_version: Optional[int] = None,
         max_change_version: Optional[int] = None,
         change_version_step_size: int = 50000,
 
@@ -68,7 +68,7 @@ class EdFiToS3Operator(BaseOperator):
         self.page_size = page_size
         self.num_retries = num_retries
         self.query_parameters = query_parameters
-        self.min_change_version_operator = min_change_version_operator
+        self.min_change_version = min_change_version
         self.max_change_version = max_change_version
         self.change_version_step_size = change_version_step_size
 
@@ -87,35 +87,35 @@ class EdFiToS3Operator(BaseOperator):
         if config_endpoints and camel_to_snake(self.resource) not in config_endpoints:
             raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
 
-        # Pull the latest change version for the resource, defaulting to 0 if not found.
-        display_resource = airflow_util.build_display_name(resource)
-        min_change_version = self.xcom_pull_min_change_version(display_resource)
+        # Check the validity of min and max change-versions.
+        self.min_change_version = self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         logging.info(
             "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
-                self.namespace, self.resource, min_change_version, self.max_change_version
+                self.namespace, self.resource, self.min_change_version, self.max_change_version
             )
         )
 
         # Complete the pull and write to S3
-        full_s3_destination_key = os.path.join(self.s3_destination_key, f"{display_resource}.jsonl")
-
         self.pull_edfi_to_s3(
             resource=self.resource, namespace=self.namespace, page_size=self.page_size,
-            min_change_version=min_change_version, s3_destination_key=full_s3_destination_key,
+            min_change_version=self.min_change_version, max_change_version=self.max_change_version,
+            s3_destination_key=self.s3_destination_key
         )
 
-        return full_s3_destination_key
+        return self.s3_destination_key
 
-
-    def xcom_pull_min_change_version(self, key: str, *, skip_on_unchanged: bool = True) -> int:
+    @staticmethod
+    def check_change_version_window_validity(
+        min_change_version: Optional[int],
+        max_change_version: Optional[int],
+        skip_on_unchanged: bool = True
+    ) -> Optional[int]:
         """
         Logic to pull the min-change version from its upstream operator and check its validity.
         """
-        if not (self.min_change_version_operator and self.max_change_version):
+        if not (min_change_version and max_change_version):
             return None
-
-        min_change_version = context['ti'].xcom_pull(key=key, task_ids=self.min_change_version_operator)
 
         # Force min-change-version if no XCom was found.
         if not min_change_version:
@@ -132,14 +132,15 @@ class EdFiToS3Operator(BaseOperator):
                 "Apparent out-of-sequence run: current change version is smaller than previous! Run a full-refresh of this resource to resolve!"
             )
 
-        return min_change_version
+        return min_change_version  # `min_change_version` can be updated in this function.
 
     def pull_edfi_to_s3(self,
         *,
         resource: str,
         namespace: str,
         page_size: int,
-        min_change_version: int,
+        min_change_version: Optional[int],
+        max_change_version: Optional[int],
         s3_destination_key: str,
         skip_on_zero_rows: bool = True
     ):
@@ -154,7 +155,7 @@ class EdFiToS3Operator(BaseOperator):
         resource_endpoint = edfi_conn.resource(
             resource, namespace=namespace, params=self.query_parameters,
             get_deletes=self.get_deletes, get_key_changes=self.get_key_changes,
-            min_change_version=min_change_version, max_change_version=self.max_change_version
+            min_change_version=min_change_version, max_change_version=max_change_version
         )
 
         # Iterate the ODS, paginating across offset and change version steps.
@@ -164,7 +165,7 @@ class EdFiToS3Operator(BaseOperator):
 
         try:
             # Turn off change version stepping if min and max change versions have not been defined.
-            step_change_version = (min_change_version is not None and self.max_change_version is not None)
+            step_change_version = (min_change_version is not None and max_change_version is not None)
 
             paged_iter = resource_endpoint.get_pages(
                 page_size=page_size,
@@ -269,6 +270,10 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         if isinstance(self.page_size, int):
             self.page_size = [self.page_size] * len(self.resource)
 
+        # Assert min_change_version is a lambda (since it will differ by each resource).
+        if self.min_change_version and not callable(self.min_change_version):
+            raise AirflowFailException("Bulk operators require a callable for argument `min_change_version`.")
+
 
     def execute(self, context) -> str:
         """
@@ -288,8 +293,10 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
                 logging.info(f"Endpoint {resource} not specified in DAG config endpoints.")
                 continue
 
-            display_resource = airflow_util.build_display_name(resource, is_deletes=self.api_get_deletes, is_key_changes=self.api_get_key_changes)
-            min_change_version = self.xcom_pull_min_change_version(display_resource, skip_on_unchanged=False)
+            # Retrieve the min_change_version for this resource specifically.
+            display_resource = airflow_util.build_display_name(resource, is_deletes=self.get_deletes, is_key_changes=self.get_key_changes)
+            min_change_version = self.min_change_version(context, display_resource)
+            min_change_version = self.check_change_version_window_validity(min_change_version, self.max_change_version, skip_on_unchanged=False)
 
             logging.info(
                 "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
@@ -302,7 +309,8 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
 
             self.pull_edfi_to_s3(
                 resource=resource, namespace=namespace, page_size=page_size,
-                min_change_version=min_change_version, s3_destination_key=full_s3_destination_key,
+                min_change_version=min_change_version, max_change_version=self.max_change_version,
+                s3_destination_key=full_s3_destination_key,
                 skip_on_zero_rows=False  # Do not raise a skip-exception if no data was ingested.
             )
 

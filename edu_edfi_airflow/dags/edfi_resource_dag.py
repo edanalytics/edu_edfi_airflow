@@ -1,6 +1,6 @@
 import os
 from functools import partial
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from airflow import DAG
 from airflow.models.param import Param
@@ -14,7 +14,7 @@ from edfi_api_client import camel_to_snake
 from edu_edfi_airflow.dags.callables import change_version
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator, BulkEdFiToS3Operator
-from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
+from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator, BulkS3ToSnowflakeOperator
 
 
 class EdFiResourceDAG:
@@ -174,7 +174,7 @@ class EdFiResourceDAG:
             )
 
             for resource, configs in self.resource_configs.items():
-                self.build_edfi_to_snowflake_task_group(resource, parent_group=self.resources_task_group, **kwargs)
+                self.build_edfi_to_snowflake_task_group(resource, parent_group=self.resources_task_group)
 
         # Descriptors
         self.descriptors_task_group = self.build_bulk_edfi_to_snowflake_task_group(
@@ -423,6 +423,7 @@ class EdFiResourceDAG:
         """
         # Snowflake tables and Airflow tasks use snake_cased resources for readability.
         snake_resource = camel_to_snake(resource)
+        display_resource = airflow_util.build_display_name(resource, is_deletes=get_deletes, is_key_changes=get_key_changes)
 
         # Wrap the branch in a task group
         with TaskGroup(
@@ -433,8 +434,8 @@ class EdFiResourceDAG:
         ) as resource_task_group:
 
             ### EDFI TO S3
-            s3_directory = os.path.join(
-                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
+            s3_destination_key = os.path.join(
+                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}", f"{display_resource}.jsonl"
             )
 
             # For a multiyear ODS, we need to specify school year as an additional query parameter.
@@ -452,7 +453,7 @@ class EdFiResourceDAG:
 
                 tmp_dir= self.tmp_dir,
                 s3_conn_id= self.s3_conn_id,
-                s3_destination_key= s3_directory,
+                s3_destination_key= s3_destination_key,
 
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
@@ -460,7 +461,7 @@ class EdFiResourceDAG:
                 page_size=page_size,
                 num_retries=max_retries,
                 query_parameters=edfi_query_params,
-                min_change_version_operator=self.newest_edfi_cv_task_id,
+                min_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id, key=display_resource),
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 change_version_step_size=change_version_step_size,
 
@@ -542,7 +543,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 resource=endpoints,
                 namespace=[configs[endpoint].get('namespace', 'ed-fi') for endpoint in endpoints],
-                page_size=[configs[endpoint].get('page_size', '500') for endpoint in endpoints],
+                page_size=[configs[endpoint].get('page_size', 500) for endpoint in endpoints],
 
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
@@ -553,7 +554,7 @@ class EdFiResourceDAG:
 
                 num_retries=max_retries,
                 query_parameters=edfi_query_params,
-                min_change_version_operator=self.previous_snowflake_cv_task_id,
+                min_change_version = lambda context, key: context['ti'].xcom_pull(key=key, task_ids=self.previous_snowflake_cv_task_id),
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 change_version_step_size=change_version_step_size,
 
