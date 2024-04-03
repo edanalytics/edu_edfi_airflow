@@ -572,7 +572,7 @@ class EdFiResourceDAG:
             )
 
             ### COPY FROM S3 TO SNOWFLAKE
-            copy_s3_to_snowflake = S3ToSnowflakeOperator(
+            copy_s3_to_snowflake = BulkS3ToSnowflakeOperator(
                 task_id=f"{cleaned_group_id}__copy_into_snowflake_bulk_endpoints",
 
                 tenant_code=self.tenant_code,
