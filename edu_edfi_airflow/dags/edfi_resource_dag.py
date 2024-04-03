@@ -577,7 +577,7 @@ class EdFiResourceDAG:
 
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
-                resource=[camel_to_snake(resource) for resource in endpoints],
+                resource=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
                 table_name=table,
 
                 edfi_conn_id=self.edfi_conn_id,

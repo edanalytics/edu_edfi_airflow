@@ -119,11 +119,7 @@ class EdFiToS3Operator(BaseOperator):
         return self.s3_destination_key
 
     @staticmethod
-    def check_change_version_window_validity(
-        min_change_version: Optional[int],
-        max_change_version: Optional[int],
-        skip_on_unchanged: bool = True
-    ):
+    def check_change_version_window_validity(min_change_version: Optional[int], max_change_version: Optional[int]):
         """
         Logic to pull the min-change version from its upstream operator and check its validity.
         """
@@ -137,8 +133,7 @@ class EdFiToS3Operator(BaseOperator):
         # Run change-version sanity checks to make sure we aren't doing something wrong.
         if min_change_version == max_change_version:
             logging.info("ODS is unchanged since previous pull.")
-            if skip_on_unchanged:
-                raise AirflowSkipException
+            raise AirflowSkipException
 
         if max_change_version < min_change_version:
             raise AirflowFailException(
@@ -153,8 +148,7 @@ class EdFiToS3Operator(BaseOperator):
         page_size: int,
         min_change_version: Optional[int],
         max_change_version: Optional[int],
-        s3_destination_key: str,
-        skip_on_zero_rows: bool = True
+        s3_destination_key: str
     ):
         """
         Break out EdFi-to-S3 logic to allow code-duplication in bulk version of operator.
@@ -221,11 +215,7 @@ class EdFiToS3Operator(BaseOperator):
         if total_rows == 0:
             logging.info(f"No results returned for `{self.resource}`")
             self.delete_path(tmp_file)
-
-            if skip_on_zero_rows:
-                raise AirflowSkipException
-            else:
-                return None
+            raise AirflowSkipException
 
         ### Connect to S3 and push
         try:
@@ -313,6 +303,9 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
 
         config_endpoints = airflow_util.get_config_endpoints(context)  # Returns `[]` if none explicitly specified.
+        successful_endpoints = []
+
+        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         for resource, namespace, page_size in zip(self.resource, self.namespace, self.page_size):
 
@@ -321,19 +314,27 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
                 logging.info(f"Endpoint {resource} not specified in DAG config endpoints.")
                 continue
 
-            # Retrieve the min_change_version for this resource specifically.
-            min_change_version = self.min_change_version(context, resource)
-            self.check_change_version_window_validity(min_change_version, self.max_change_version, skip_on_unchanged=False)
+            try:
+                # Retrieve the min_change_version for this resource specifically.
+                min_change_version = self.min_change_version(context, resource)
+                self.check_change_version_window_validity(min_change_version, self.max_change_version)
 
-            # Complete the pull and write to S3
-            edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+                # Complete the pull and write to S3
+                self.pull_edfi_to_s3(
+                    edfi_conn=edfi_conn,
+                    resource=resource, namespace=namespace, page_size=page_size,
+                    min_change_version=min_change_version, max_change_version=self.max_change_version,
+                    s3_destination_key=os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource))
+                )
+                successful_endpoints.append(camel_to_snake(resource))  # Force to snake-case for subsequent Snowflake copy.
 
-            self.pull_edfi_to_s3(
-                edfi_conn=edfi_conn,
-                resource=resource, namespace=namespace, page_size=page_size,
-                min_change_version=min_change_version, max_change_version=self.max_change_version,
-                s3_destination_key=os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource)),
-                skip_on_zero_rows=False  # Do not raise a skip-exception if no data was ingested.
-            )
+            except AirflowSkipException:
+                continue
 
-        return self.s3_destination_dir
+        # Note: this return-type differs from that of the parent operator.
+        # We need to know which endpoints succeeded to limit the copies completed in the next step.
+        if not successful_endpoints:
+            logging.info("No new data was ingested for any endpoints.")
+            raise AirflowSkipException
+
+        return successful_endpoints
