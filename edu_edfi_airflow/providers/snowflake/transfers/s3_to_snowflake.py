@@ -77,7 +77,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.set_edfi_attributes()
 
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
-        self.run_sql_queries(name=self.resource, s3_key=self.s3_destination_key, **context)
+        self.run_sql_queries(name=self.resource, s3_key=self.s3_destination_key, full_refresh=airflow_util.is_full_refresh(context))
 
         return self.xcom_return
 
@@ -102,7 +102,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                 f"Arguments `ods_version` and `data_model_version` could not be retrieved and must be provided."
             )
 
-    def run_sql_queries(self, name: str, s3_key: str, **context):
+    def run_sql_queries(self, name: str, s3_key: str, full_refresh: bool = False):
         """
 
         """
@@ -145,15 +145,10 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         ### Commit the update queries to Snowflake.
         # Incremental runs are only available in EdFi 3+.
-        if self.full_refresh or airflow_util.is_full_refresh(context):
-            snowflake_hook.run(
-                sql=[qry_delete, qry_copy_into],
-                autocommit=False
-            )
+        if self.full_refresh or full_refresh:
+            snowflake_hook.run(sql=[qry_delete, qry_copy_into], autocommit=False)
         else:
-            snowflake_hook.run(
-                sql=qry_copy_into
-            )
+            snowflake_hook.run(sql=qry_copy_into)
 
 
 class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
@@ -180,9 +175,16 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         :param context:
         :return:
         """
-        ### Optionally set destination key by concatting separate args for dir and filename
-        if not self.s3_destination_dir:
-            raise ValueError(f"Bulk operators require argument `s3_destination_dir` to be specified.")
+        ### Force destination_dir and destination_filename arguments to be used.
+        if self.s3_destination_key or not (self.s3_destination_dir and self.s3_destination_filename):
+            raise ValueError(
+                "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
+            )
+
+        if not callable(self.s3_destination_filename):
+            raise ValueError(
+                "Bulk operators require a callable for argument `s3_destination_filename`."
+            )
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
         self.set_edfi_attributes()
@@ -191,7 +193,8 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         xcom_returns = []
 
         for resource in self.resource:
-            self.run_sql_queries(name=resource, s3_key=self.s3_destination_key, **context)
+            s3_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource))
+            self.run_sql_queries(name=resource, s3_key=s3_key, full_refresh=airflow_util.is_full_refresh(context))
 
             if self.xcom_return:
                 xcom_returns.append(self.xcom_return(resource))

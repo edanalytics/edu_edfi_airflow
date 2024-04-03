@@ -98,7 +98,8 @@ class EdFiResourceDAG:
 
         # Populate DAG params with defined resources and descriptors; default to empty-list (i.e., run all).
         enabled_endpoints = [
-            resource for resource, config in {**self.resource_configs, **self.descriptor_configs}
+            camel_to_snake(endpoint)
+            for endpoint, config in {**self.resource_configs, **self.descriptor_configs}
             if config.get('enabled')
         ]
 
@@ -427,7 +428,7 @@ class EdFiResourceDAG:
 
         # Wrap the branch in a task group
         with TaskGroup(
-            group_id=snake_resource,
+            group_id=display_resource,
             prefix_group_id=False,
             parent_group=parent_group,
             dag=self.dag
@@ -435,7 +436,8 @@ class EdFiResourceDAG:
 
             ### EDFI TO S3
             s3_destination_key = os.path.join(
-                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}", f"{display_resource}.jsonl"
+                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}",
+                f"{display_resource}.jsonl"
             )
 
             # For a multiyear ODS, we need to specify school year as an additional query parameter.
@@ -445,7 +447,7 @@ class EdFiResourceDAG:
                 edfi_query_params['schoolYear'] = self.api_year
 
             pull_edfi_to_s3 = EdFiToS3Operator(
-                task_id=f"pull_{snake_resource}",
+                task_id=f"pull_{display_resource}",
 
                 edfi_conn_id=self.edfi_conn_id,
                 resource=resource,
@@ -472,7 +474,7 @@ class EdFiResourceDAG:
 
             ### COPY FROM S3 TO SNOWFLAKE
             copy_s3_to_snowflake = S3ToSnowflakeOperator(
-                task_id=f"copy_into_snowflake_{snake_resource}",
+                task_id=f"copy_into_snowflake_{display_resource}",
 
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
@@ -519,16 +521,12 @@ class EdFiResourceDAG:
         ) as bulk_task_group:
 
             ### EDFI TO S3
-            # Create a separate bulk subdirectory path to assist in copying.
-            if self.get_deletes:
-                bulk_subdir = 'bulk_deletes'
-            elif self.get_key_changes:
-                bulk_subdir = 'bulk_key_changes'
-            else:
-                bulk_subdir = 'bulk'
+            s3_destination_directory = os.path.join(
+                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
+            )
 
-            s3_directory = os.path.join(
-                self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}", bulk_subdir
+            s3_destination_filename_lambda = lambda resource: "{}.jsonl".format(
+                airflow_util.build_display_name(resource, is_deletes=get_deletes, is_key_changes=get_key_changes)
             )
 
             # For a multiyear ODS, we need to specify school year as an additional query parameter.
@@ -536,6 +534,13 @@ class EdFiResourceDAG:
             edfi_query_params = {}
             if self.multiyear:
                 edfi_query_params['schoolYear'] = self.api_year
+
+            # Build a lambda to retrieve the min-change-version from XComs
+            # This allows no knowledge of resource or path in the operator.
+            min_change_version_lambda = lambda context, resource: context['ti'].xcom_pull(
+                key=airflow_util.build_display_name(resource, is_deletes=get_deletes, is_key_changes=get_key_changes),
+                task_ids=self.previous_snowflake_cv_task_id
+            )
 
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
                 task_id=f"pull_bulk_endpoints",
@@ -550,11 +555,12 @@ class EdFiResourceDAG:
 
                 tmp_dir=self.tmp_dir,
                 s3_conn_id=self.s3_conn_id,
-                s3_destination_dir=s3_directory,
+                s3_destination_dir=s3_destination_directory,
+                s3_destination_filename=s3_destination_filename_lambda,
 
                 num_retries=max_retries,
                 query_parameters=edfi_query_params,
-                min_change_version = lambda context, key: context['ti'].xcom_pull(key=key, task_ids=self.previous_snowflake_cv_task_id),
+                min_change_version = min_change_version_lambda,
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 change_version_step_size=change_version_step_size,
 
@@ -575,8 +581,10 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
-                s3_destination_key=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id),
-                xcom_return=lambda resource: (resource, get_deletes, get_key_changes),
+                s3_destination_dir=s3_destination_directory,
+                s3_destination_filename=s3_destination_filename_lambda,
+
+                xcom_return=lambda resource: (camel_to_snake(resource), get_deletes, get_key_changes),
 
                 trigger_rule='all_success',
                 dag=self.dag

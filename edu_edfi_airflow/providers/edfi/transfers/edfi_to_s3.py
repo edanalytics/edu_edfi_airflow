@@ -25,7 +25,10 @@ class EdFiToS3Operator(BaseOperator):
 
     Deletes and keyChanges are only used in the bulk operator.
     """
-    template_fields = ('s3_destination_key', 'query_parameters', 'min_change_version', 'max_change_version',)
+    template_fields = (
+        's3_destination_key', 's3_destination_dir', 's3_destination_filename',
+        'query_parameters', 'min_change_version', 'max_change_version',
+    )
 
     @apply_defaults
     def __init__(self,
@@ -36,7 +39,9 @@ class EdFiToS3Operator(BaseOperator):
         *,
         tmp_dir   : str,
         s3_conn_id: str,
-        s3_destination_key: str,
+        s3_destination_key: Optional[str] = None,
+        s3_destination_dir: Optional[str] = None,
+        s3_destination_filename: Optional[str] = None,
 
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -63,6 +68,8 @@ class EdFiToS3Operator(BaseOperator):
         self.tmp_dir = tmp_dir
         self.s3_conn_id = s3_conn_id
         self.s3_destination_key = s3_destination_key
+        self.s3_destination_dir = s3_destination_dir
+        self.s3_destination_filename = s3_destination_filename
 
         # Endpoint-pagination variables
         self.page_size = page_size
@@ -79,6 +86,7 @@ class EdFiToS3Operator(BaseOperator):
         :param context:
         :return:
         """
+        # Skip deletes/key-changes if a full-refresh.
         if airflow_util.is_full_refresh(context) and (self.get_deletes or self.get_key_changes):
             raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
 
@@ -87,8 +95,16 @@ class EdFiToS3Operator(BaseOperator):
         if config_endpoints and camel_to_snake(self.resource) not in config_endpoints:
             raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
 
+        # Optionally set destination key by concatting separate args for dir and filename
+        if not self.s3_destination_key:
+            if not (self.s3_destination_dir and self.s3_destination_filename):
+                raise ValueError(
+                    f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
+                )
+            self.s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename)
+
         # Check the validity of min and max change-versions.
-        self.min_change_version = self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
+        self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         logging.info(
             "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
@@ -110,7 +126,7 @@ class EdFiToS3Operator(BaseOperator):
         min_change_version: Optional[int],
         max_change_version: Optional[int],
         skip_on_unchanged: bool = True
-    ) -> Optional[int]:
+    ):
         """
         Logic to pull the min-change version from its upstream operator and check its validity.
         """
@@ -132,8 +148,6 @@ class EdFiToS3Operator(BaseOperator):
                 "Apparent out-of-sequence run: current change version is smaller than previous! Run a full-refresh of this resource to resolve!"
             )
 
-        return min_change_version  # `min_change_version` can be updated in this function.
-
     def pull_edfi_to_s3(self,
         *,
         resource: str,
@@ -152,6 +166,9 @@ class EdFiToS3Operator(BaseOperator):
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         # Prepare the EdFiEndpoint for the resource.
+        if max_change_version and not min_change_version:
+            min_change_version = 0
+
         resource_endpoint = edfi_conn.resource(
             resource, namespace=namespace, params=self.query_parameters,
             get_deletes=self.get_deletes, get_key_changes=self.get_key_changes,
@@ -274,6 +291,17 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         if self.min_change_version and not callable(self.min_change_version):
             raise AirflowFailException("Bulk operators require a callable for argument `min_change_version`.")
 
+        # Force destination_dir and destination_filename arguments to be used.
+        if self.s3_destination_key or not (self.s3_destination_dir and self.s3_destination_filename):
+            raise ValueError(
+                "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
+            )
+
+        if not callable(self.s3_destination_filename):
+            raise ValueError(
+                "Bulk operators require a callable for argument `s3_destination_filename`."
+            )
+
 
     def execute(self, context) -> str:
         """
@@ -294,9 +322,8 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
                 continue
 
             # Retrieve the min_change_version for this resource specifically.
-            display_resource = airflow_util.build_display_name(resource, is_deletes=self.get_deletes, is_key_changes=self.get_key_changes)
-            min_change_version = self.min_change_version(context, display_resource)
-            min_change_version = self.check_change_version_window_validity(min_change_version, self.max_change_version, skip_on_unchanged=False)
+            min_change_version = self.min_change_version(resource)
+            self.check_change_version_window_validity(min_change_version, self.max_change_version, skip_on_unchanged=False)
 
             logging.info(
                 "Pulling records for `{}/{}` for change versions `{}` to `{}`.".format(
@@ -305,13 +332,13 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             )
 
             # Complete the pull and write to S3
-            full_s3_destination_key = os.path.join(self.s3_destination_key, f"{display_resource}.jsonl")
+            s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource))
 
             self.pull_edfi_to_s3(
                 resource=resource, namespace=namespace, page_size=page_size,
                 min_change_version=min_change_version, max_change_version=self.max_change_version,
-                s3_destination_key=full_s3_destination_key,
+                s3_destination_key=s3_destination_key,
                 skip_on_zero_rows=False  # Do not raise a skip-exception if no data was ingested.
             )
 
-        return self.s3_destination_key
+        return self.s3_destination_dir
