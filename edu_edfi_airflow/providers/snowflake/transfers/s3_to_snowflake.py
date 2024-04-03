@@ -159,7 +159,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
 
     @apply_defaults
     def __init__(self, *args, **kwargs) -> None:
-        super(S3ToSnowflakeOperator, self).__init__(*args, **kwargs)
+        super(BulkS3ToSnowflakeOperator, self).__init__(*args, **kwargs)
 
         # Force potential string columns into lists for zipping in execute.
         if not isinstance(self.resource, (list, tuple)):
