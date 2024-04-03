@@ -187,7 +187,7 @@ class EdFiToS3Operator(BaseOperator):
             paged_iter = resource_endpoint.get_pages(
                 page_size=page_size,
                 step_change_version=step_change_version, change_version_step_size=self.change_version_step_size,
-                retry_on_failure=True, max_retries=self.api_retries
+                retry_on_failure=True, max_retries=self.num_retries
             )
 
             # Output each page of results as JSONL strings to the output file.
