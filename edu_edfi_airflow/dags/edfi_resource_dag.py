@@ -520,6 +520,8 @@ class EdFiResourceDAG:
             dag=self.dag
         ) as bulk_task_group:
 
+            cleaned_group_id = group_id.replace(' ', "_").lower()
+
             ### EDFI TO S3
             s3_destination_directory = os.path.join(
                 self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
@@ -543,7 +545,7 @@ class EdFiResourceDAG:
             )
 
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
-                task_id=f"pull_bulk_endpoints",
+                task_id=f"{cleaned_group_id}__pull_bulk_endpoints",
 
                 edfi_conn_id=self.edfi_conn_id,
                 resource=endpoints,
@@ -571,7 +573,7 @@ class EdFiResourceDAG:
 
             ### COPY FROM S3 TO SNOWFLAKE
             copy_s3_to_snowflake = S3ToSnowflakeOperator(
-                task_id=f"copy_into_snowflake_bulk_endpoints",
+                task_id=f"{cleaned_group_id}__copy_into_snowflake_bulk_endpoints",
 
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
