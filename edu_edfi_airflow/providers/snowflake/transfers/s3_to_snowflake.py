@@ -161,12 +161,8 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
     def __init__(self, *args, **kwargs) -> None:
         super(BulkS3ToSnowflakeOperator, self).__init__(*args, **kwargs)
 
-        # Force potential string columns into lists for zipping in execute.
-        if not isinstance(self.resource, (list, tuple)):
-            raise AirflowFailException("Bulk operators require lists of resources to be passed.")
-
         if self.xcom_return and not callable(self.xcom_return):
-            raise AirflowFailException("Bulk operators require a callable for argument `xcom_return`.")
+            raise ValueError("Bulk operators require a callable for argument `xcom_return`.")
 
 
     def execute(self, context):
@@ -175,7 +171,11 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         :param context:
         :return:
         """
-        ### Force destination_dir and destination_filename arguments to be used.
+        # Force potential string columns into lists for zipping in execute.
+        if not isinstance(self.resource, (list, tuple)):
+            raise ValueError("Bulk operators require lists of resources to be passed.")
+
+        # Force destination_dir and destination_filename arguments to be used.
         if self.s3_destination_key or not (self.s3_destination_dir and self.s3_destination_filename):
             raise ValueError(
                 "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
