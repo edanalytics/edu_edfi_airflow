@@ -188,7 +188,7 @@ class EdFiResourceDAG:
         # Resource Deletes
         self.resource_deletes_task_group = self.build_bulk_edfi_to_snowflake_task_group(
             group_id="Ed-Fi Resource Deletes",
-            endpoints=self.deletes_to_ingest,
+            endpoints=list(self.deletes_to_ingest),
             configs=self.resource_configs,
             table=self.deletes_table,
             get_deletes=True
@@ -197,7 +197,7 @@ class EdFiResourceDAG:
         # Resource Key-Changes
         self.resource_key_changes_task_group = self.build_bulk_edfi_to_snowflake_task_group(
             group_id="Ed-Fi Resource Key Changes",
-            endpoints=self.key_changes_to_ingest,
+            endpoints=list(self.key_changes_to_ingest),
             configs=self.resource_configs,
             table=self.key_changes_table,
             get_key_changes=True
