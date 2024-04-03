@@ -109,7 +109,7 @@ def get_previous_change_versions(
         where tenant_code = '{tenant_code}'
             and api_year = {api_year}
             and is_active
-        group by 1, 2
+        group by all
     """
 
     ### Retrieve previous endpoint-level change versions and push as XComs.
