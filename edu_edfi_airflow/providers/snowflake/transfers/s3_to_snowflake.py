@@ -14,7 +14,7 @@ class S3ToSnowflakeOperator(BaseOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    template_fields = ('s3_destination_key', 's3_destination_dir', 's3_destination_filename',)
+    template_fields = ('resource', 's3_destination_key', 's3_destination_dir', 's3_destination_filename',)
 
     @apply_defaults
     def __init__(self,
@@ -155,8 +155,6 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    template_fields = ('s3_destination_key', 's3_destination_dir', 's3_destination_filename',)
-
     @apply_defaults
     def __init__(self, *args, **kwargs) -> None:
         super(BulkS3ToSnowflakeOperator, self).__init__(*args, **kwargs)
