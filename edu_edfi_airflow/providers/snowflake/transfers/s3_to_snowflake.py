@@ -77,7 +77,10 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.set_edfi_attributes()
 
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
-        self.run_sql_queries(name=self.resource, s3_key=self.s3_destination_key, full_refresh=airflow_util.is_full_refresh(context))
+        self.run_sql_queries(
+            name=self.resource, table=self.table_name,
+            s3_key=self.s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
+        )
 
         return self.xcom_return
 
@@ -102,7 +105,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                 f"Arguments `ods_version` and `data_model_version` could not be retrieved and must be provided."
             )
 
-    def run_sql_queries(self, name: str, s3_key: str, full_refresh: bool = False):
+    def run_sql_queries(self, name: str, table: str, s3_key: str, full_refresh: bool = False):
         """
 
         """
@@ -112,7 +115,7 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         ### Build the SQL queries to be passed into `Hook.run()`.
         qry_delete = f"""
-            DELETE FROM {database}.{schema}.{self.table_name}
+            DELETE FROM {database}.{schema}.{table}
             WHERE tenant_code = '{self.tenant_code}'
             AND api_year = '{self.api_year}'
             AND name = '{name}'
@@ -123,7 +126,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         ts_regex = "\\\\d{8}T\\\\d{6}"
 
         qry_copy_into = f"""
-            COPY INTO {database}.{schema}.{self.table_name}
+            COPY INTO {database}.{schema}.{table}
                 (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
             FROM (
                 SELECT
@@ -173,6 +176,9 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         if not isinstance(self.resource, (list, tuple)):
             raise ValueError("Bulk operators require lists of resources to be passed.")
 
+        if isinstance(self.table_name, str):
+            self.table_name = [self.table_name] * len(self.resource)
+
         # Force destination_dir and destination_filename arguments to be used.
         if self.s3_destination_key or not (self.s3_destination_dir and self.s3_destination_filename):
             raise ValueError(
@@ -190,9 +196,12 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         xcom_returns = []
 
-        for resource in self.resource:
+        for resource, table in zip(self.resource, self.table_name):
             s3_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource))
-            self.run_sql_queries(name=resource, s3_key=s3_key, full_refresh=airflow_util.is_full_refresh(context))
+            self.run_sql_queries(
+                name=resource, table=table,
+                s3_key=s3_key, full_refresh=airflow_util.is_full_refresh(context)
+            )
 
             if self.xcom_return:
                 xcom_returns.append(self.xcom_return(resource))
