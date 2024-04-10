@@ -213,7 +213,7 @@ class EdFiToS3Operator(BaseOperator):
 
         # Raise a Skip if no data was collected.
         if total_rows == 0:
-            logging.info(f"No results returned for `{self.resource}`")
+            logging.info(f"No results returned for `{resource}`")
             self.delete_path(tmp_file)
             raise AirflowSkipException
 
