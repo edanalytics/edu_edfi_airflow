@@ -27,20 +27,21 @@ This functionality can be paired with the `endpoints` DAG-level config to run a 
 <details>
 <summary>Arguments:</summary>
 
-| Argument             | Description                                                                                                                        |
-|:---------------------|:-----------------------------------------------------------------------------------------------------------------------------------|
-| tenant_code          | ODS-tenant representation to be saved in Snowflake tables                                                                          |
-| api_year             | ODS API-year to be saved in Snowflake tables                                                                                       |
-| edfi_conn_id         | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                           |
-| s3_conn_id           | Airflow connection with S3 bucket defined under `schema`                                                                           |
-| snowflake_conn_id    | Airflow connection with Snowflake credentials, database, and schema defined                                                        |
-| pool                 | Airflow pool to assign EdFi-to-S3 pulls for this DAG (designed to prevent the ODS from being overwhelmed)                          |
-| tmp_dir              | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3                            |
-| multiyear            | Boolean flag for whether the ODS has multiple years of data within one API year (defaults to `False`; dispreferred implementation) |
-| use_change_version   | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                           |
-| change_version_table | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                          |
-| slack_conn_id        | Optional Airflow connection with Slack webhook credentials (default None)                                                          |
-| dbt_incrementer_var  | Optional Airflow variable to increment upon a finished run                                                                         |
+| Argument                       | Description                                                                                                                        |
+|:-------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------|
+| tenant_code                    | ODS-tenant representation to be saved in Snowflake tables                                                                          |
+| api_year                       | ODS API-year to be saved in Snowflake tables                                                                                       |
+| edfi_conn_id                   | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                           |
+| s3_conn_id                     | Airflow connection with S3 bucket defined under `schema`                                                                           |
+| snowflake_conn_id              | Airflow connection with Snowflake credentials, database, and schema defined                                                        |
+| pool                           | Airflow pool to assign EdFi-to-S3 pulls for this DAG (designed to prevent the ODS from being overwhelmed)                          |
+| tmp_dir                        | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3                            |
+| multiyear                      | Boolean flag for whether the ODS has multiple years of data within one API year (defaults to `False`; dispreferred implementation) |
+| use_change_version             | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                           |
+| change_version_table           | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                          |
+| slack_conn_id                  | Optional Airflow connection with Slack webhook credentials (default None)                                                          |
+| dbt_incrementer_var            | Optional Airflow variable to increment upon a finished run                                                                         |
+| schedule_interval_full_refresh | Optional CRON schedule to automatically trigger a full-refresh run (defaults to `None`)                                            |
 
 Additional Airflow DAG parameters (e.g. `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
 

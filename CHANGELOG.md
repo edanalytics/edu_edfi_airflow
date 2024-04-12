@@ -1,3 +1,7 @@
+# edu_edfi_airflow v0.2.5
+## New features
+- Add optional argument `schedule_interval_full_refresh` to specify a CRON syntax for full-refresh Ed-Fi DAG runs.
+
 # edu_edfi_airflow v0.2.2
 ## New features
 - Add optional argument `pool` to `EdFiResourceDAG.build_edfi_to_snowflake_task_group()` to override DAG-level pool when ingesting high-impact resources.
