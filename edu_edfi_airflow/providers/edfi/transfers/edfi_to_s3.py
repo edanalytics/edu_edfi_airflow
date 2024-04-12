@@ -68,10 +68,6 @@ class EdFiToS3Operator(BaseOperator):
         self.s3_conn_id= s3_conn_id
         self.s3_destination_key= s3_destination_key
 
-        # Force min-change-version if no XCom was found.
-        if self.max_change_version and self.min_change_version is None:
-            self.min_change_version = 0
-
 
     def execute(self, context) -> str:
         """
@@ -90,6 +86,10 @@ class EdFiToS3Operator(BaseOperator):
             raise AirflowSkipException(
                 "Endpoint not specified in DAG config `endpoints`."
             )
+
+        # Force min-change-version if no XCom was found.
+        if self.max_change_version and self.min_change_version is None:
+            self.min_change_version = 0
 
         # Run sanity checks to make sure we aren't doing something wrong.
         if self.min_change_version is not None and self.max_change_version is not None:
