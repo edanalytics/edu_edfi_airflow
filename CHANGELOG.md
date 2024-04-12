@@ -1,6 +1,10 @@
 # edu_edfi_airflow v0.2.5
+## New features
+- Add optional argument `schedule_interval_full_refresh` to specify a CRON syntax for full-refresh Ed-Fi DAG runs.
+
 ## Fixes
 - Update Earthbeam DAG logging copy statement to prevent character-escaping issues during copy.
+
 
 # edu_edfi_airflow v0.2.4
 ## New features
