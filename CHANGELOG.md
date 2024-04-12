@@ -1,3 +1,7 @@
+# edu_edfi_airflow v0.2.5
+## Fixes
+- Update Earthbeam DAG logging copy statement to prevent character-escaping issues during copy.
+
 # edu_edfi_airflow v0.2.4
 ## New features
 - Add alternative arguments for setting `s3_destination_key` in `S3ToSnowflakeOperator`: `s3_destination_dir` and `s3_destination_filename`.
