@@ -166,16 +166,12 @@ class EdFiResourceDAG:
         """
         ### Initialize resource and descriptor task groups if configs are defined.
         # Resources
-        if self.resource_configs:
-            self.resources_task_group = TaskGroup(
-                group_id="Ed-Fi Resources",
-                prefix_group_id=False,
-                parent_group=None,
-                dag=self.dag
-            )
-
-            for resource, configs in self.resource_configs.items():
-                self.build_edfi_to_snowflake_task_group(resource, parent_group=self.resources_task_group)
+        self.resources_task_group = self.build_bulk_edfi_to_snowflake_task_group(
+            group_id = "Ed-Fi Resources",
+            endpoints=list(self.resource_configs.keys()),
+            configs=self.resource_configs,
+            table=list(map(camel_to_snake, self.resource_configs.keys())),
+        )
 
         # Descriptors
         self.descriptors_task_group = self.build_bulk_edfi_to_snowflake_task_group(
