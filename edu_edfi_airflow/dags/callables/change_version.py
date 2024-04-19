@@ -108,7 +108,7 @@ def get_previous_change_versions(
     if is_deletes:
         filter_clause = "is_deletes"
     elif is_key_changes:
-        filter_clause += "is_key_changes"
+        filter_clause = "is_key_changes"
     else:
         filter_clause = "TRUE"
 

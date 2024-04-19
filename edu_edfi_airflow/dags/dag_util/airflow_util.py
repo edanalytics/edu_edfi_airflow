@@ -61,7 +61,7 @@ def xcom_pull_template(
     if not isinstance(task_ids, str):
         task_ids_string = "['{}']".format("','".join(task_ids))
     else:
-        task_ids_string = "'{task_ids}'"
+        task_ids_string = f"'{task_ids}'"
 
     xcom_string = f"{prefix} ti.xcom_pull(task_ids={task_ids_string}, key='{key}') {suffix}"
 
