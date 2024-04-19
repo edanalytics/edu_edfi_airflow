@@ -610,7 +610,7 @@ class EdFiResourceDAG:
                     trigger_rule='all_success',
                     dag=self.dag
                 )
-                .extend_kwargs(
+                .expand_kwargs(
                     resource=get_cv_operator.output.keys(),
                     namespace=[
                         configs.get(endpoint, {}).get('namespace', self.DEFAULT_NAMESPACE)
