@@ -473,7 +473,7 @@ class EdFiResourceDAG:
                     tmp_dir=self.tmp_dir,
                     s3_conn_id=self.s3_conn_id,
                     s3_destination_dir=self.s3_destination_directory,
-                    s3_destination_filename=f"{display_resource}.jsonl"
+                    s3_destination_filename=f"{display_resource}.jsonl",
                     
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
