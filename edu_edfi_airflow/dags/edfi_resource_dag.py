@@ -485,7 +485,7 @@ class EdFiResourceDAG:
                     page_size=endpoint_configs.get('page_size', self.DEFAULT_PAGE_SIZE),
                     num_retries=endpoint_configs.get('num_retries', self.DEFAULT_MAX_RETRIES),
                     change_version_step_size=endpoint_configs.get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-                    query_parameters={**endpoint_configs.get('params', {}), **self.default_params}
+                    query_parameters={**endpoint_configs.get('params', {}), **self.default_params},
 
                     pool=self.pool,
                     trigger_rule='all_success',
@@ -716,7 +716,7 @@ class EdFiResourceDAG:
                 s3_destination_filename=[
                     "{}.jsonl".format(airflow_util.build_display_resource(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
                     for endpoint in endpoints        
-                ]
+                ],
                 
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
