@@ -267,7 +267,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         :return:
         """
         # Force potential string columns into lists for zipping in execute.
-        if not isinstance(self.resource, (list, tuple)):
+        if isinstance(self.resource, str):
             raise AirflowFailException("Bulk operators require lists of resources to be passed.")
 
         if isinstance(self.namespace, str):
@@ -295,7 +295,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
                 "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
             )
 
-        if not isinstance(self.s3_destination_filename, list):
+        if isinstance(self.s3_destination_filename, str):
             raise ValueError(
                 "Bulk operators require lists of filenames to be passed."
             )

@@ -165,7 +165,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         :return:
         """
         # Force potential string columns into lists for zipping in execute.
-        if not isinstance(self.resource, (list, tuple)):
+        if isinstance(self.resource, str):
             raise ValueError("Bulk operators require lists of resources to be passed.")
 
         if isinstance(self.table_name, str):
@@ -177,7 +177,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                 "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
             )
         
-        if not isinstance(self.s3_destination_filename, list):
+        if isinstance(self.s3_destination_filename, str):
             raise ValueError(
                 "Bulk operators require argument `s3_destination_filename` to be a list."
             )
