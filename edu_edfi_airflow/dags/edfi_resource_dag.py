@@ -40,7 +40,7 @@ class EdFiResourceDAG:
         - Loop over each endpoint in a single task.
 
     All task groups receive a list of (namespace, endpoint) tuples as input.
-    The latest change versions for these endpoints are retrieved from Snowflake and XCom-pushed with display_resource keys (see airflow_util.build_display_resource).
+    The latest change versions for these endpoints are retrieved from Snowflake and XCom-pushed with display_resource keys (see airflow_util.build_display_name).
     
     These are referenced in EdFiToS3 operators, and ingestion from Ed-Fi is attempted for each.
     All that succeed are passed onward to the S3ToSnowflake operators.
@@ -633,7 +633,7 @@ class EdFiResourceDAG:
                         for endpoint in get_cv_operator.output.keys()
                     ],
                     s3_destination_filename=[
-                        "{}.jsonl".format(airflow_util.build_display_resource(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
+                        "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
                         for endpoint in get_cv_operator.output.keys()        
                     ],
                     min_change_version=get_cv_operator.output.values(),
@@ -726,7 +726,7 @@ class EdFiResourceDAG:
                 s3_conn_id=self.s3_conn_id,
                 s3_destination_dir=self.s3_destination_directory,
                 s3_destination_filename=[
-                    "{}.jsonl".format(airflow_util.build_display_resource(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
+                    "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
                     for endpoint in endpoints        
                 ],
                 
