@@ -499,13 +499,22 @@ class EdFiResourceDAG:
                 task_id=f"{cleaned_group_id}__copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
-                resource=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
-                table_name=table or airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
+                resource=airflow_util.xcom_pull_template(
+                    [operator.task_id for operator in pull_operators_list],
+                    prefix="dict(", suffix=").keys()"
+                ),
+                table_name=table or airflow_util.xcom_pull_template(
+                    [operator.task_id for operator in pull_operators_list],
+                    prefix="dict(", suffix=").keys()"
+                ),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
                 s3_destination_dir=self.s3_destination_directory,
-                s3_destination_filename=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").values()"),
+                s3_destination_filename=airflow_util.xcom_pull_template(
+                    [operator.task_id for operator in pull_operators_list],
+                    prefix="dict(", suffix=").values()"
+                ),
 
                 trigger_rule='all_success',
                 dag=self.dag
@@ -517,7 +526,10 @@ class EdFiResourceDAG:
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             update_cv_operator = self.build_change_version_update_operator(
                 task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
+                endpoints=airflow_util.xcom_pull_template(
+                    [operator.task_id for operator in pull_operators_list],
+                    prefix="dict(", suffix=").keys()"
+                ),
                 is_deletes=get_deletes,
                 is_key_changes=get_key_changes
             )
