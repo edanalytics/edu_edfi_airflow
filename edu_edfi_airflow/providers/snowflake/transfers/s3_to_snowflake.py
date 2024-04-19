@@ -158,14 +158,6 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    @apply_defaults
-    def __init__(self, *args, **kwargs) -> None:
-        super(BulkS3ToSnowflakeOperator, self).__init__(*args, **kwargs)
-
-        if self.xcom_return and not callable(self.xcom_return):
-            raise ValueError("Bulk operators require a callable for argument `xcom_return`.")
-
-
     def execute(self, context):
         """
 
