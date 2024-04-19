@@ -1,5 +1,7 @@
 import logging
 
+from typing import Dict, List, Tuple, Optional
+
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
@@ -8,7 +10,7 @@ from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
-def get_newest_edfi_change_version(edfi_conn_id: str, **kwargs):
+def get_newest_edfi_change_version(edfi_conn_id: str, **kwargs) -> int:
     """
 
     :return:
@@ -39,14 +41,8 @@ def reset_change_versions(
     **kwargs
 ) -> None:
     # Airflow-skip if run not marked for a full-refresh.
-    if airflow_util.is_full_refresh(kwargs):
-        logging.info(
-            "Full refresh: marking previous pulls inactive."
-        )
-    else:
-        raise AirflowSkipException(
-            f"Full refresh not specified. Change version table `{change_version_table}` unchanged."
-        )
+    if not airflow_util.is_full_refresh(kwargs):
+        raise AirflowSkipException(f"Full refresh not specified. Change version table `{change_version_table}` unchanged.")
 
     ### Prepare the SQL query.
     # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
@@ -61,66 +57,101 @@ def reset_change_versions(
     """
 
     # Filter only to inactive endpoints to those specified in DAG-configs, if defined.
-    if config_endpoints := airflow_util.get_config_endpoints(kwargs):
+    if config_endpoints := airflow_util.get_context_variable(kwargs, 'endpoints', default=[]):
         qry_mark_inactive += "    and name in ('{}')".format("', '".join(config_endpoints))
 
     ### Connect to Snowflake and execute the query.
+    logging.info("Full refresh: marking previous pulls inactive.")
     SnowflakeHook(snowflake_conn_id).run(qry_mark_inactive)
-
-    # No XComs are pushed, so all downstream XCom-pulls will fail and default to 0.
 
 
 def get_previous_change_versions(
-    tenant_code : str,
-    api_year    : int,
+    tenant_code: str,
+    api_year: int,
+    endpoints: List[Tuple[str, str]],
 
     *,
     snowflake_conn_id: str,
     change_version_table: str,
 
-    **kwargs
+    edfi_conn_id: Optional[str] = None,
+    max_change_version: Optional[int] = None,
+
+    is_deletes: bool = False,
+    is_key_changes: bool = False,
+
+    **context
 ) -> None:
     """
-        We separate getting the most recent EdFi change version into a separate function.
-        We need pulls to be consistent by change version for each run.
-        Otherwise, the raw schema will passively drift across resources around versions.
+    We separate getting the most recent EdFi change version into a separate function.
+    We need pulls to be consistent by change version for each run.
+    Otherwise, the raw schema will passively drift across resources around versions.
 
-        With every pull from EdFi 3+ to Snowflake, the change-version table is updated for the resource.
-        The change version documents the timestamp of the last pull.
+    With every pull from EdFi 3+ to Snowflake, the change-version table is updated for the resource.
+    The change version documents the timestamp of the last pull.
 
-        This operator retrieves the most recent versions found in Snowflake for all resources.
-        Use this and the most recent change version from EdFi to build an ingestion window.
-        At the end of the ingest, the change version table is updated with the most recent version found in EdFi.
+    This operator retrieves the most recent versions found in Snowflake for all resources.
+    Use this and the most recent change version from EdFi to build an ingestion window.
+    At the end of the ingest, the change version table is updated with the most recent version found in EdFi.
 
-        If a full refresh is being completed, all change versions for this tenant-year have been set to inactive.
+    If a full refresh is being completed, all change versions for this tenant-year have been set to inactive.
+
+    If an Ed-Fi connection and max_change_version are specified, each endpoint is checked for deltas and only updates are returned.
     """
-    logging.info(
-        "Retrieving max previously-ingested change versions from Snowflake."
-    )
+    logging.info("Retrieving max previously-ingested change versions from Snowflake.")
 
     ### Prepare the SQL query.
     # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
     # Retrieve the previous max change versions for this tenant-year.
+    if is_deletes:
+        filter_clause = "is_deletes"
+    elif is_key_changes:
+        filter_clause += "is_key_changes"
+    else:
+        filter_clause = "TRUE"
+
     qry_prior_max = f"""
-        select name, is_deletes, is_key_changes, max(max_version) as max_version
+        select name, max(max_version) as max_version
         from {database}.{schema}.{change_version_table}
         where tenant_code = '{tenant_code}'
             and api_year = {api_year}
             and is_active
+            and {filter_clause}
         group by all
     """
 
-    ### Retrieve previous endpoint-level change versions and push as XComs.
-    prior_change_versions = SnowflakeHook(snowflake_conn_id).get_records(qry_prior_max)
+    prior_change_versions = dict(SnowflakeHook(snowflake_conn_id).get_records(qry_prior_max))
     logging.info(
         f"Collected prior change versions for {len(prior_change_versions)} endpoints."
     )
 
-    for snake_resource, is_deletes, is_key_changes, max_version in prior_change_versions:
-        xcom_key = airflow_util.build_display_name(snake_resource, is_deletes=is_deletes, is_key_changes=is_key_changes)
-        kwargs['ti'].xcom_push(key=xcom_key, value=max_version)
+    ### Retrieve previous endpoint-level change versions and push as an XCom.
+    return_dict = {}
+
+    # Only initialize the Ed-Fi connection once if there is a max-change-version to compare against.
+    if edfi_conn_id:
+        edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
+
+    for namespace, endpoint in endpoints:
+        last_max_version = prior_change_versions.get(endpoint, 0)
+
+        # If Ed-Fi Conn is attached, only add to XCom if there are new rows to ingest.
+        if edfi_conn_id and max_change_version is not None:
+            resource = edfi_conn.resource(
+                endpoint, namespace=namespace,
+                is_deletes=is_deletes, is_key_changes=is_key_changes,
+                min_change_version=last_max_version,
+                max_change_version=max_change_version
+            )
+
+            if not resource.total_count():
+                continue
+
+        return_dict[endpoint] = last_max_version
+
+    return return_dict
 
 
 def update_change_versions(
@@ -130,8 +161,11 @@ def update_change_versions(
     *,
     snowflake_conn_id: str,
     change_version_table: str,
-
+    
     edfi_change_version: int,
+    endpoints: List[str],
+    is_deletes: bool,
+    is_key_changes: bool,
 
     **kwargs
 ):
@@ -141,28 +175,20 @@ def update_change_versions(
     """
     rows_to_insert = []
 
-    for task_id in kwargs['task'].upstream_task_ids:
-
-        # Only log successful copies into Snowflake (skips will return None)
-        if not (xcom_tuples := kwargs['ti'].xcom_pull(task_id)):
-            continue
-
-        for resource, deletes, key_changes in xcom_tuples:
-            rows_to_insert.append([
-                tenant_code, api_year, resource,
-                deletes, key_changes,
-                kwargs["ds"], kwargs["ts"],
-                edfi_change_version, True
-            ])
+    for endpoint in endpoints:
+        rows_to_insert.append([
+            tenant_code, api_year, endpoint,
+            is_deletes, is_key_changes,
+            kwargs["ds"], kwargs["ts"],
+            edfi_change_version, True
+        ])
 
     if not rows_to_insert:
         raise AirflowSkipException(
             "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
         )
-    else:
-        logging.info(
-            f"Collected updated change versions for {len(rows_to_insert)} endpoints."
-        )
+    
+    logging.info(f"Collected updated change versions for {len(rows_to_insert)} endpoints.")
 
     insert_into_snowflake(
         snowflake_conn_id=snowflake_conn_id,

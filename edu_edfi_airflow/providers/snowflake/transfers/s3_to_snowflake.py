@@ -14,7 +14,7 @@ class S3ToSnowflakeOperator(BaseOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    template_fields = ('resource', 's3_destination_key', 's3_destination_dir', 's3_destination_filename',)
+    template_fields = ('resource', 'table_name', 's3_destination_key', 's3_destination_dir', 's3_destination_filename',)
 
     @apply_defaults
     def __init__(self,
@@ -114,13 +114,6 @@ class S3ToSnowflakeOperator(BaseOperator):
         database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
 
         ### Build the SQL queries to be passed into `Hook.run()`.
-        qry_delete = f"""
-            DELETE FROM {database}.{schema}.{table}
-            WHERE tenant_code = '{self.tenant_code}'
-            AND api_year = '{self.api_year}'
-            AND name = '{name}'
-        """
-
         # Brackets in regex conflict with string formatting.
         date_regex = "\\\\d{8}"
         ts_regex = "\\\\d{8}T\\\\d{6}"
@@ -149,7 +142,14 @@ class S3ToSnowflakeOperator(BaseOperator):
         ### Commit the update queries to Snowflake.
         # Incremental runs are only available in EdFi 3+.
         if self.full_refresh or full_refresh:
+            qry_delete = f"""
+                DELETE FROM {database}.{schema}.{table}
+                WHERE tenant_code = '{self.tenant_code}'
+                AND api_year = '{self.api_year}'
+                AND name = '{name}'
+            """
             snowflake_hook.run(sql=[qry_delete, qry_copy_into], autocommit=False)
+        
         else:
             snowflake_hook.run(sql=qry_copy_into)
 
@@ -184,10 +184,10 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
             raise ValueError(
                 "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
             )
-
-        if not callable(self.s3_destination_filename):
+        
+        if not isinstance(self.s3_destination_filename, list):
             raise ValueError(
-                "Bulk operators require a callable for argument `s3_destination_filename`."
+                "Bulk operators require argument `s3_destination_filename` to be a list."
             )
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
@@ -196,8 +196,8 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         xcom_returns = []
 
-        for resource, table in zip(self.resource, self.table_name):
-            s3_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename(resource))
+        for resource, table, s3_destination_filename in zip(self.resource, self.table_name, self.s3_destination_filename):
+            s3_key = os.path.join(self.s3_destination_dir, s3_destination_filename)
             self.run_sql_queries(
                 name=resource, table=table,
                 s3_key=s3_key, full_refresh=airflow_util.is_full_refresh(context)
