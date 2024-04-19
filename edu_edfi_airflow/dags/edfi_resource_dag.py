@@ -588,7 +588,7 @@ class EdFiResourceDAG:
             ### EDFI TO S3
             pull_edfi_to_s3 = (EdFiToS3Operator
                 .partial(
-                    task_id=f"{cleaned_group_id}__pull_dynamic_endpoints",
+                    task_id=f"{cleaned_group_id}__pull_dynamic_endpoints_to_s3",
 
                     edfi_conn_id=self.edfi_conn_id,
 
@@ -717,7 +717,7 @@ class EdFiResourceDAG:
 
             ### EDFI TO S3: Output Dict[endpoint, filename] with all successful tasks
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
-                task_id=f"pull_all_endpoints_to_s3",
+                task_id=f"{cleaned_group_id}__pull_all_endpoints_to_s3",
 
                 edfi_conn_id=self.edfi_conn_id,
                 resource=endpoints,
