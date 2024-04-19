@@ -516,7 +516,7 @@ class EdFiResourceDAG:
                     prefix="dict(", suffix=").values()"
                 ),
 
-                trigger_rule='all_success',
+                trigger_rule='all_done',
                 dag=self.dag
             )
 
@@ -653,7 +653,7 @@ class EdFiResourceDAG:
                 s3_destination_dir=self.s3_destination_directory,
                 s3_destination_filename=dict(pull_edfi_to_s3.output).values(),
 
-                trigger_rule='all_success',
+                trigger_rule='all_done',
                 dag=self.dag
             )
 
@@ -778,7 +778,7 @@ class EdFiResourceDAG:
                 s3_destination_dir=self.s3_destination_directory,
                 s3_destination_filename=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".values()"),
 
-                trigger_rule='all_success',
+                trigger_rule='all_done',
                 dag=self.dag
             )
 
