@@ -477,7 +477,7 @@ class EdFiResourceDAG:
                     
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
-                    min_change_version=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"[{endpoint}]"),
+                    min_change_version=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"['{endpoint}']"),
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                     # Optional config-specified run-attributes (overridden by those in configs)
@@ -721,7 +721,7 @@ class EdFiResourceDAG:
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
                 min_change_version=[
-                    airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"[{endpoint}]")
+                    airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"['{endpoint}']")
                     for endpoint in endpoints
                 ],
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
