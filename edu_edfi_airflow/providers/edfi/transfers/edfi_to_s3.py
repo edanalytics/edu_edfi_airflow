@@ -301,8 +301,8 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         
         return_dict = {}
 
-        for resource, namespace, page_size, num_retries, change_version_step_size, query_parameters, s3_destination_filename \
-            in zip(self.resource, self.namespace, self.page_size, self.num_retries, self.change_version_step_size, self.query_parameters, self.s3_destination_filename):
+        for resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, s3_destination_filename \
+            in zip(self.resource, self.min_change_version, self.namespace, self.page_size, self.num_retries, self.change_version_step_size, self.query_parameters, self.s3_destination_filename):
 
             # If doing a resource-specific run, confirm resource is in the list.
             if config_endpoints and resource not in config_endpoints:
@@ -311,7 +311,6 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
 
             try:
                 # Retrieve the min_change_version for this resource specifically.
-                min_change_version = self.min_change_version(context, resource)
                 self.check_change_version_window_validity(min_change_version, self.max_change_version)
 
                 # Complete the pull and write to S3
