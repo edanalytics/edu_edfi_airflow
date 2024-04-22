@@ -2,6 +2,7 @@ import os
 
 from typing import Any, Optional
 
+from airflow.exceptions import AirflowSkipException
 from airflow.models import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.utils.decorators import apply_defaults
@@ -164,6 +165,9 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         :param context:
         :return:
         """
+        if not self.resource:
+            raise AirflowSkipException("There are endpoints to copy to Snowflake!")
+
         # Force potential string columns into lists for zipping in execute.
         if isinstance(self.resource, str):
             raise ValueError("Bulk operators require lists of resources to be passed.")

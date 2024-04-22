@@ -180,6 +180,9 @@ def update_change_versions(
 
     :return:
     """
+    if not endpoints:
+        raise AirflowSkipException("There are no endpoints with change versions to update in Snowflake.")
+
     rows_to_insert = []
 
     for endpoint in endpoints:
