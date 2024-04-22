@@ -588,13 +588,16 @@ class EdFiResourceDAG:
             cleaned_group_id = group_id.replace(' ', "_").lower()
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS
-            get_cv_operator = self.build_change_version_get_operator(
-                task_id=f"{cleaned_group_id}__get_last_change_versions",
-                endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes,
-                return_only_deltas=True  # For dynamic mapping, only process endpoints with new data to ingest.
-            )
+            if self.use_change_version:
+                get_cv_operator = self.build_change_version_get_operator(
+                    task_id=f"{cleaned_group_id}__get_last_change_versions",
+                    endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
+                    is_deletes=get_deletes,
+                    is_key_changes=get_key_changes,
+                    return_only_deltas=True  # For dynamic mapping, only process endpoints with new data to ingest.
+                )
+            else:
+                get_cv_operator = None
 
             ### EDFI TO S3
             pull_edfi_to_s3 = (EdFiToS3Operator
@@ -669,14 +672,21 @@ class EdFiResourceDAG:
             )
 
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
-            update_cv_operator = self.build_change_version_update_operator(
-                task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                endpoints=dict(pull_edfi_to_s3.output).keys(),
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes
-            )
+            if self.use_change_version:
+                update_cv_operator = self.build_change_version_update_operator(
+                    task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
+                    endpoints=dict(pull_edfi_to_s3.output).keys(),
+                    is_deletes=get_deletes,
+                    is_key_changes=get_key_changes
+                )
+            else:
+                update_cv_operator = None
 
-            copy_s3_to_snowflake >> update_cv_operator
+        ### Chain tasks into final task-group
+        if get_cv_operator and update_cv_operator:
+            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
+        else:
+            pull_edfi_to_s3 >> copy_s3_to_snowflake
 
         return dynamic_task_group
     
@@ -810,7 +820,7 @@ class EdFiResourceDAG:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            if self.use_change_version:
+            if get_cv_operator and update_cv_operator:
                 get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
             else:
                 pull_edfi_to_s3 >> copy_s3_to_snowflake
