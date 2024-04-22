@@ -54,6 +54,7 @@ def reset_change_versions(
             set is_active = FALSE
         where tenant_code = '{tenant_code}'
         and api_year = {api_year}
+        and is_active
     """
 
     # Filter only to inactive endpoints to those specified in DAG-configs, if defined.
