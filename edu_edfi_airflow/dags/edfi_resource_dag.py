@@ -614,18 +614,13 @@ class EdFiResourceDAG:
                     get_key_changes=get_key_changes,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
-                    # Optional config-specified run-attributes (overridden by those in configs)
-                    page_size=self.DEFAULT_PAGE_SIZE,
-                    num_retries=self.DEFAULT_MAX_RETRIES,
-                    change_version_step_size=self.DEFAULT_CHANGE_VERSION_STEP_SIZE,
-                    query_parameters={'schoolYear': self.api_year} if self.multiyear else {},  # For a multiyear ODS, we need to specify school year as an additional query parameter.
-
                     pool=self.pool,
                     trigger_rule='none_skipped',
                     dag=self.dag
                 )
                 .expand_kwargs(
-                    resource=get_cv_operator.output.keys(),
+                    resource=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=".keys()"),
+                    min_change_version=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=".values()"),
                     namespace=[
                         configs.get(endpoint, {}).get('namespace', self.DEFAULT_NAMESPACE)
                         for endpoint in get_cv_operator.output.keys()
@@ -650,7 +645,6 @@ class EdFiResourceDAG:
                         "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
                         for endpoint in get_cv_operator.output.keys()        
                     ],
-                    min_change_version=get_cv_operator.output.values(),
                 )
             )
 
@@ -659,13 +653,13 @@ class EdFiResourceDAG:
                 task_id=f"{cleaned_group_id}__copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
-                resource=dict(pull_edfi_to_s3.output).keys(),
-                table_name=table or dict(pull_edfi_to_s3.output).keys(),
+                resource=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
+                table_name=table or airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
                 s3_destination_dir=self.s3_destination_directory,
-                s3_destination_filename=dict(pull_edfi_to_s3.output).values(),
+                s3_destination_filename=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".values()"),
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -675,7 +669,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                    endpoints=dict(pull_edfi_to_s3.output).keys(),
+                    endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
                     is_deletes=get_deletes,
                     is_key_changes=get_key_changes
                 )
