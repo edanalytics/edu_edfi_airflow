@@ -210,8 +210,8 @@ class EdFiResourceDAG:
         self.resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi Resources",
             endpoints=list(self.resource_configs.keys()),
-            configs=self.resource_configs,
-            table=list(self.resource_configs.keys()),
+            configs=self.resource_configs
+            # Tables are built dynamically from the names of the endpoints.
         )
 
         # Descriptors
