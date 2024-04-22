@@ -185,7 +185,7 @@ def update_change_versions(
             "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
         )
     
-    logging.info(f"Collected updated change versions for {len(rows_to_insert)} endpoints.")
+    logging.info(f"Collected updated change versions for {len(endpoints)} endpoints.")
     rows_to_insert = []
 
     for endpoint in endpoints:
