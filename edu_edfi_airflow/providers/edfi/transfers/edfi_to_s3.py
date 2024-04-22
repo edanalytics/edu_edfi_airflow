@@ -87,7 +87,7 @@ class EdFiToS3Operator(BaseOperator):
         :return:
         """
         # If doing a resource-specific run, confirm resource is in the list.
-        config_endpoints = airflow_util.get_context_variable(context, 'endpoints', default=[])
+        config_endpoints = airflow_util.get_config_endpoints(context)
         if config_endpoints and self.resource not in config_endpoints:
             raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
 
@@ -296,7 +296,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             )
 
         # Begin actual processing of defined endpoints.
-        config_endpoints = airflow_util.get_context_variable(context, 'endpoints', default=[])
+        config_endpoints = airflow_util.get_config_endpoints(context)
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
         
         return_dict = {}

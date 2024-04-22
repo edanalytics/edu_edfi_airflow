@@ -1,8 +1,8 @@
-import inspect
-
 from typing import List, Tuple, Union
 
 from airflow.models import Connection
+
+from edfi_api_client import camel_to_snake
 
 
 def build_display_name(resource: str, is_deletes: bool = False, is_key_changes: bool = False) -> str:
@@ -44,6 +44,17 @@ def is_full_refresh(context) -> bool:
     :return:
     """
     return get_context_variable(context, 'full_refresh', default=False)
+
+
+def get_config_endpoints(context) -> List[str]:
+    """
+
+    :param context:
+    :return:
+    """
+    # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
+    raw_endpoints = get_context_variable(context, 'endpoints', default=[])
+    return list(map(camel_to_snake, raw_endpoints))
 
 
 def xcom_pull_template(
