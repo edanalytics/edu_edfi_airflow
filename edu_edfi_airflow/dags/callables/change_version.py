@@ -155,6 +155,9 @@ def get_previous_change_versions(
 
         return_dict[endpoint] = last_max_version
 
+    if not return_dict:
+        raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
+
     return return_dict
 
 
