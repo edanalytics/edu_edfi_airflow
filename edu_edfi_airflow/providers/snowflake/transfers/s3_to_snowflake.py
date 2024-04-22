@@ -166,7 +166,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         :return:
         """
         if not self.resource:
-            raise AirflowSkipException("There are endpoints to copy to Snowflake!")
+            raise AirflowSkipException("There are no endpoints to copy to Snowflake. Skipping task...")
 
         # Force potential string columns into lists for zipping in execute.
         if isinstance(self.resource, str):
