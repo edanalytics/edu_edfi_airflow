@@ -450,12 +450,15 @@ class EdFiResourceDAG:
             cleaned_group_id = group_id.replace(' ', "_").lower()
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
-            get_cv_operator = self.build_change_version_get_operator(
-                task_id=f"{cleaned_group_id}__get_last_change_versions_from_snowflake",
-                endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes,
-            )
+            if self.use_change_version:
+                get_cv_operator = self.build_change_version_get_operator(
+                    task_id=f"{cleaned_group_id}__get_last_change_versions_from_snowflake",
+                    endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
+                    is_deletes=get_deletes,
+                    is_key_changes=get_key_changes,
+                )
+            else:
+                get_cv_operator = None
 
             ### EDFI TO S3: Output Tuple[endpoint, filename] per successful task
             pull_operators_list = []
@@ -477,7 +480,7 @@ class EdFiResourceDAG:
                     
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
-                    min_change_version=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"['{endpoint}']"),
+                    min_change_version=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"['{endpoint}']") if get_cv_operator else None,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                     # Optional config-specified run-attributes (overridden by those in configs)
@@ -520,21 +523,29 @@ class EdFiResourceDAG:
                 dag=self.dag
             )
 
-            for operator in pull_operators_list:
-                get_cv_operator >> operator >> copy_s3_to_snowflake
-
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
-            update_cv_operator = self.build_change_version_update_operator(
-                task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                endpoints=airflow_util.xcom_pull_template(
-                    [operator.task_id for operator in pull_operators_list],
-                    prefix="dict(", suffix=").keys()"
-                ),
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes
-            )
+            if self.use_change_version:
+                update_cv_operator = self.build_change_version_update_operator(
+                    task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
+                    endpoints=airflow_util.xcom_pull_template(
+                        [operator.task_id for operator in pull_operators_list],
+                        prefix="dict(", suffix=").keys()"
+                    ),
+                    is_deletes=get_deletes,
+                    is_key_changes=get_key_changes
+                )
+            else:
+                update_cv_operator = None
 
-            copy_s3_to_snowflake >> update_cv_operator
+            ### Chain tasks into final task-group
+            for operator in pull_operators_list:
+                if get_cv_operator:
+                    get_cv_operator >> operator >> copy_s3_to_snowflake
+                else:
+                    operator >> copy_s3_to_snowflake
+
+            if update_cv_operator:
+                copy_s3_to_snowflake >> update_cv_operator
 
         return default_task_group
 
@@ -708,12 +719,20 @@ class EdFiResourceDAG:
             cleaned_group_id = group_id.replace(' ', "_").lower()
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
-            get_cv_operator = self.build_change_version_get_operator(
-                task_id=f"{cleaned_group_id}__get_last_change_versions",
-                endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes,
-            )
+            if self.use_change_version:
+                get_cv_operator = self.build_change_version_get_operator(
+                    task_id=f"{cleaned_group_id}__get_last_change_versions",
+                    endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
+                    is_deletes=get_deletes,
+                    is_key_changes=get_key_changes,
+                )
+                min_change_versions = [
+                    airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"['{endpoint}']")
+                    for endpoint in endpoints
+                ]
+            else:
+                get_cv_operator = None
+                min_change_versions = None
 
             ### EDFI TO S3: Output Dict[endpoint, filename] with all successful tasks
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
@@ -732,10 +751,7 @@ class EdFiResourceDAG:
                 
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
-                min_change_version=[
-                    airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"['{endpoint}']")
-                    for endpoint in endpoints
-                ],
+                min_change_version=min_change_versions,
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                 # Optional config-specified run-attributes (overridden by those in configs)
@@ -783,13 +799,20 @@ class EdFiResourceDAG:
             )
 
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
-            update_cv_operator = self.build_change_version_update_operator(
-                task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes
-            )
+            if self.use_change_version:
+                update_cv_operator = self.build_change_version_update_operator(
+                    task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
+                    endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
+                    is_deletes=get_deletes,
+                    is_key_changes=get_key_changes
+                )
+            else:
+                update_cv_operator = None
 
-            copy_s3_to_snowflake >> update_cv_operator
+            ### Chain tasks into final task-group
+            if self.use_change_version:
+                get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
+            else:
+                pull_edfi_to_s3 >> copy_s3_to_snowflake
 
         return bulk_task_group
