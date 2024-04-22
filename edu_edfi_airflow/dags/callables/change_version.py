@@ -181,8 +181,11 @@ def update_change_versions(
     :return:
     """
     if not endpoints:
-        raise AirflowSkipException("There are no endpoints with change versions to update in Snowflake.")
-
+        raise AirflowSkipException(
+            "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
+        )
+    
+    logging.info(f"Collected updated change versions for {len(rows_to_insert)} endpoints.")
     rows_to_insert = []
 
     for endpoint in endpoints:
@@ -192,13 +195,6 @@ def update_change_versions(
             kwargs["ds"], kwargs["ts"],
             edfi_change_version, True
         ])
-
-    if not rows_to_insert:
-        raise AirflowSkipException(
-            "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
-        )
-    
-    logging.info(f"Collected updated change versions for {len(rows_to_insert)} endpoints.")
 
     insert_into_snowflake(
         snowflake_conn_id=snowflake_conn_id,

@@ -376,7 +376,7 @@ class EdFiResourceDAG:
                 'is_key_changes': is_key_changes,
             },
             provide_context=True,
-            trigger_rule='none_failed',
+            trigger_rule='all_success',
             dag=self.dag
         )
 
