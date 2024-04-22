@@ -281,9 +281,8 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         if isinstance(self.query_parameters, dict):
             self.query_parameters = [self.query_parameters] * len(self.resource)
 
-        # Assert min_change_version is a lambda (since it will differ by each resource).
-        if self.min_change_version and not callable(self.min_change_version):
-            raise AirflowFailException("Bulk operators require a callable for argument `min_change_version`.")
+        if isinstance(self.min_change_version, (int, type(None))):
+            self.min_change_version = [self.min_change_version] * len(self.resource)
 
         # Force destination_dir and destination_filename arguments to be used.
         if self.s3_destination_key or not (self.s3_destination_dir and self.s3_destination_filename):
@@ -293,7 +292,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
 
         if isinstance(self.s3_destination_filename, str):
             raise ValueError(
-                "Bulk operators require lists of filenames to be passed."
+                "Bulk operators require a list to be passed in argument `s3_destination_filename`."
             )
 
         # Begin actual processing of defined endpoints.
