@@ -488,7 +488,7 @@ class EdFiResourceDAG:
                     query_parameters={**endpoint_configs.get('params', {}), **self.default_params},
 
                     pool=self.pool,
-                    trigger_rule='all_success',
+                    trigger_rule='none_skipped',
                     dag=self.dag
                 )
 
@@ -607,7 +607,7 @@ class EdFiResourceDAG:
                     query_parameters={'schoolYear': self.api_year} if self.multiyear else {},  # For a multiyear ODS, we need to specify school year as an additional query parameter.
 
                     pool=self.pool,
-                    trigger_rule='all_success',
+                    trigger_rule='none_skipped',
                     dag=self.dag
                 )
                 .expand_kwargs(
@@ -761,7 +761,7 @@ class EdFiResourceDAG:
                 ],
 
                 pool=self.pool,
-                trigger_rule='all_success',
+                trigger_rule='none_skipped',
                 dag=self.dag
             )
 

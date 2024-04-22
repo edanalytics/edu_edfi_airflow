@@ -86,10 +86,6 @@ class EdFiToS3Operator(BaseOperator):
         :param context:
         :return:
         """
-        # Skip deletes/key-changes if a full-refresh.
-        if airflow_util.is_full_refresh(context) and (self.get_deletes or self.get_key_changes):
-            raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
-
         # If doing a resource-specific run, confirm resource is in the list.
         config_endpoints = airflow_util.get_context_variable(context, 'endpoints', default=[])
         if config_endpoints and self.resource not in config_endpoints:
@@ -301,9 +297,6 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             )
 
         # Begin actual processing of defined endpoints.
-        if airflow_util.is_full_refresh(context) and (self.get_deletes or self.get_key_changes):
-            raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
-
         config_endpoints = airflow_util.get_context_variable(context, 'endpoints', default=[])
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
         

@@ -98,6 +98,10 @@ def get_previous_change_versions(
 
     If an Ed-Fi connection and max_change_version are specified, each endpoint is checked for deltas and only updates are returned.
     """
+    # Skip deletes/key-changes if a full-refresh.
+    if airflow_util.is_full_refresh(context) and (is_deletes or is_key_changes):
+        raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
+
     logging.info("Retrieving max previously-ingested change versions from Snowflake.")
 
     ### Prepare the SQL query.
