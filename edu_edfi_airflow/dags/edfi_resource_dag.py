@@ -616,26 +616,16 @@ class EdFiResourceDAG:
                     dag=self.dag
                 )
                 .expand_kwargs(
-                    resource=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=".keys()"),
-                    min_change_version=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=".values()"),
-                    namespace=get_cv_operator.output.map(
-                        lambda endpoint: self.endpoint_configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE)
-                    ),
-                    page_size=get_cv_operator.output.map(
-                        lambda endpoint: self.endpoint_configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE)
-                    ),
-                    num_retries=get_cv_operator.output.map(
-                        lambda endpoint: self.endpoint_configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES)
-                    ),
-                    change_version_step_size=get_cv_operator.output.map(
-                        lambda endpoint: self.endpoint_configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE)
-                    ),
-                    query_parameters=get_cv_operator.output.map(
-                        lambda endpoint: {**self.endpoint_configs[endpoint].get('params', {}), **self.default_params}
-                    ),
-                    s3_destination_filename=get_cv_operator.output.map(
-                        lambda endpoint: "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
-                    ),
+                    get_cv_operator.output.map(lambda endpoint: {
+                        'resource': endpoint,
+                        'min_change_version': airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=f"['{endpoint}']"),
+                        'namespace': self.endpoint_configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
+                        'page_size': self.endpoint_configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
+                        'num_retries': self.endpoint_configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
+                        'change_version_step_size': self.endpoint_configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
+                        'query_parameters': {**self.endpoint_configs[endpoint].get('params', {}), **self.default_params},
+                        's3_destination_filename': "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes)),
+                    })
                 )
             )
 
