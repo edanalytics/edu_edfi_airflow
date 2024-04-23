@@ -101,6 +101,7 @@ class EdFiResourceDAG:
         ### Parse optional config objects (improved performance over adding resources manually)
         self.resource_configs = self.parse_endpoint_configs(resource_configs)
         self.descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
+        self.endpoint_configs = {**self.resource_configs, **self.descriptor_configs}
 
         # Only collect deletes and key-changes for resources
         self.deletes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
@@ -108,7 +109,7 @@ class EdFiResourceDAG:
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         enabled_endpoints = [
-            endpoint for endpoint, config in {**self.resource_configs, **self.descriptor_configs}.items()
+            endpoint for endpoint, config in self.endpoint_configs.items()
             if config.get('enabled')
         ]
 
@@ -617,30 +618,24 @@ class EdFiResourceDAG:
                 .expand_kwargs(
                     resource=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=".keys()"),
                     min_change_version=airflow_util.xcom_pull_template(get_cv_operator.task_id, suffix=".values()"),
-                    namespace=[
-                        configs.get(endpoint, {}).get('namespace', self.DEFAULT_NAMESPACE)
-                        for endpoint in get_cv_operator.output.keys()
-                    ],
-                    page_size=[
-                        configs.get(endpoint, {}).get('page_size', self.DEFAULT_PAGE_SIZE)
-                        for endpoint in get_cv_operator.output.keys()
-                    ],
-                    num_retries=[
-                        configs.get(endpoint, {}).get('num_retries', self.DEFAULT_MAX_RETRIES)
-                        for endpoint in get_cv_operator.output.keys()
-                    ],
-                    change_version_step_size=[
-                        configs.get(endpoint, {}).get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE)
-                        for endpoint in get_cv_operator.output.keys()
-                    ],
-                    query_parameters=[
-                        {**configs.get(endpoint, {}).get('params', {}), **self.default_params}
-                        for endpoint in get_cv_operator.output.keys()
-                    ],
-                    s3_destination_filename=[
-                        "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
-                        for endpoint in get_cv_operator.output.keys()        
-                    ],
+                    namespace=get_cv_operator.output.map(
+                        lambda endpoint: self.endpoint_configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE)
+                    ),
+                    page_size=get_cv_operator.output.map(
+                        lambda endpoint: self.endpoint_configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE)
+                    ),
+                    num_retries=get_cv_operator.output.map(
+                        lambda endpoint: self.endpoint_configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES)
+                    ),
+                    change_version_step_size=get_cv_operator.output.map(
+                        lambda endpoint: self.endpoint_configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE)
+                    ),
+                    query_parameters=get_cv_operator.output.map(
+                        lambda endpoint: {**self.endpoint_configs[endpoint].get('params', {}), **self.default_params}
+                    ),
+                    s3_destination_filename=get_cv_operator.output.map(
+                        lambda endpoint: "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
+                    ),
                 )
             )
 
@@ -649,13 +644,13 @@ class EdFiResourceDAG:
                 task_id=f"{cleaned_group_id}__copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
-                resource=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
-                table_name=table or airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
+                resource=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
+                table_name=table or airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=".)keys()"),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
                 s3_destination_dir=self.s3_destination_directory,
-                s3_destination_filename=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".values()"),
+                s3_destination_filename=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").values()"),
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -665,7 +660,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                    endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, suffix=".keys()"),
+                    endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
                     is_deletes=get_deletes,
                     is_key_changes=get_key_changes
                 )
