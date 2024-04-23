@@ -496,7 +496,7 @@ class EdFiResourceDAG:
 
             ### COPY FROM S3 TO SNOWFLAKE
             map_xcom_attribute_by_index = lambda idx: airflow_util.xcom_pull_template(
-                [operator.task_id for operator in pull_operators_list], suffix=f" | map(attribute={idx})"
+                [operator.task_id for operator in pull_operators_list], suffix=f" | map(attribute={idx}) | list"
             )
 
             copy_s3_to_snowflake = BulkS3ToSnowflakeOperator(
@@ -624,17 +624,21 @@ class EdFiResourceDAG:
             )
 
             ### COPY FROM S3 TO SNOWFLAKE
+            map_xcom_attribute_by_index = lambda idx: airflow_util.xcom_pull_template(
+                pull_edfi_to_s3.task_id, suffix=f" | map(attribute={idx}) | list"
+            )
+
             copy_s3_to_snowflake = BulkS3ToSnowflakeOperator(
                 task_id=f"{cleaned_group_id}__copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
-                resource=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
-                table_name=table or airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=".)keys()"),
+                resource=map_xcom_attribute_by_index(0),
+                table_name=table or map_xcom_attribute_by_index(0),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
                 s3_destination_dir=self.s3_destination_directory,
-                s3_destination_filename=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").values()"),
+                s3_destination_filename=map_xcom_attribute_by_index(1),
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -643,7 +647,7 @@ class EdFiResourceDAG:
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             update_cv_operator = self.build_change_version_update_operator(
                 task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
+                endpoints=map_xcom_attribute_by_index(0),
                 is_deletes=get_deletes,
                 is_key_changes=get_key_changes
             )
@@ -756,7 +760,7 @@ class EdFiResourceDAG:
 
             ### COPY FROM S3 TO SNOWFLAKE
             map_xcom_attribute_by_index = lambda idx: airflow_util.xcom_pull_template(
-                pull_edfi_to_s3.task_id, suffix=f" | map(attribute={idx})"
+                pull_edfi_to_s3.task_id, suffix=f" | map(attribute={idx}) | list"
             )
 
             copy_s3_to_snowflake = BulkS3ToSnowflakeOperator(
