@@ -101,7 +101,6 @@ class EdFiResourceDAG:
         ### Parse optional config objects (improved performance over adding resources manually)
         self.resource_configs = self.parse_endpoint_configs(resource_configs)
         self.descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
-        self.endpoint_configs = {**self.resource_configs, **self.descriptor_configs}
 
         # Only collect deletes and key-changes for resources
         self.deletes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
@@ -109,7 +108,7 @@ class EdFiResourceDAG:
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         enabled_endpoints = [
-            endpoint for endpoint, config in self.endpoint_configs.items()
+            endpoint for endpoint, config in {**self.resource_configs, **self.descriptor_configs}.items()
             if config.get('enabled')
         ]
 
@@ -613,11 +612,11 @@ class EdFiResourceDAG:
                     get_cv_operator.output.map(lambda endpoint__last_cv: {
                         'resource': endpoint__last_cv[0],
                         'min_change_version': endpoint__last_cv[1],
-                        'namespace': self.endpoint_configs[endpoint__last_cv[0]].get('namespace', self.DEFAULT_NAMESPACE),
-                        'page_size': self.endpoint_configs[endpoint__last_cv[0]].get('page_size', self.DEFAULT_PAGE_SIZE),
-                        'num_retries': self.endpoint_configs[endpoint__last_cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
-                        'change_version_step_size': self.endpoint_configs[endpoint__last_cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-                        'query_parameters': {**self.endpoint_configs[endpoint__last_cv[0]].get('params', {}), **self.default_params},
+                        'namespace': configs[endpoint__last_cv[0]].get('namespace', self.DEFAULT_NAMESPACE),
+                        'page_size': configs[endpoint__last_cv[0]].get('page_size', self.DEFAULT_PAGE_SIZE),
+                        'num_retries': configs[endpoint__last_cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
+                        'change_version_step_size': configs[endpoint__last_cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
+                        'query_parameters': {**configs[endpoint__last_cv[0]].get('params', {}), **self.default_params},
                         's3_destination_filename': "{}.jsonl".format(airflow_util.build_display_name(endpoint__last_cv[0], is_deletes=get_deletes, is_key_changes=get_key_changes)),
                     })
                 )
