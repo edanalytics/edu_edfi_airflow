@@ -611,6 +611,7 @@ class EdFiResourceDAG:
                     get_key_changes=get_key_changes,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
+                    sla=None,  # "SLAs are unsupported with mapped tasks."
                     pool=self.pool,
                     trigger_rule='none_skipped',
                     dag=self.dag
