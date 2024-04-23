@@ -640,7 +640,7 @@ class EdFiResourceDAG:
                 s3_destination_dir=self.s3_destination_directory,
                 s3_destination_filename=map_xcom_attribute_by_index(1),
 
-                trigger_rule='all_done',
+                trigger_rule='none_skipped',
                 dag=self.dag
             )
 
