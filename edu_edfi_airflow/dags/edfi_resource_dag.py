@@ -651,8 +651,8 @@ class EdFiResourceDAG:
                 is_key_changes=get_key_changes
             )
 
-        ### Chain tasks into final task-group
-        get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
+            ### Chain tasks into final task-group
+            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
 
         return dynamic_task_group
     
