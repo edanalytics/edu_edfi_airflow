@@ -299,7 +299,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         config_endpoints = airflow_util.get_config_endpoints(context)
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
         
-        return_dict = {}
+        return_tuples = []
 
         for resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, s3_destination_filename \
             in zip(self.resource, self.min_change_version, self.namespace, self.page_size, self.num_retries, self.change_version_step_size, self.query_parameters, self.s3_destination_filename):
@@ -323,15 +323,15 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
                     min_change_version=min_change_version, max_change_version=self.max_change_version,
                     query_parameters=query_parameters, s3_destination_key=s3_destination_key
                 )
-                return_dict[resource] = s3_destination_key
+                return_tuples.append((resource, s3_destination_key))
 
             except AirflowSkipException:
                 continue
 
         # Note: this return-type differs from that of the parent operator.
         # We need to know which endpoints succeeded to limit the copies completed in the next step.
-        if not return_dict:
+        if not return_tuples:
             logging.info("No new data was ingested for any endpoints.")
             raise AirflowSkipException
 
-        return return_dict
+        return return_tuples
