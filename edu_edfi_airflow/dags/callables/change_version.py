@@ -133,7 +133,7 @@ def get_previous_change_versions(
     )
 
     ### Retrieve previous endpoint-level change versions and push as an XCom.
-    return_dict = {}
+    return_tuples = []
 
     # Only initialize the Ed-Fi connection once if there is a max-change-version to compare against.
     if edfi_conn_id:
@@ -154,12 +154,12 @@ def get_previous_change_versions(
             if not resource.total_count():
                 continue
 
-        return_dict[endpoint] = last_max_version
+        return_tuples.append((endpoint, last_max_version))
 
-    if not return_dict:
+    if not return_tuples:
         raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
 
-    return return_dict
+    return return_tuples
 
 
 def update_change_versions(
