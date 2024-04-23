@@ -1,5 +1,4 @@
 import os
-from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
 
 from airflow import DAG
@@ -15,7 +14,7 @@ from edfi_api_client import camel_to_snake
 from edu_edfi_airflow.dags.callables import change_version
 from edu_edfi_airflow.dags.dag_util import airflow_util
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator, BulkEdFiToS3Operator
-from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator, BulkS3ToSnowflakeOperator
+from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkS3ToSnowflakeOperator
 
 
 class EdFiResourceDAG:
@@ -39,12 +38,9 @@ class EdFiResourceDAG:
         "Bulk" TaskGroup
         - Loop over each endpoint in a single task.
 
-    All task groups receive a list of (namespace, endpoint) tuples as input.
-    The latest change versions for these endpoints are retrieved from Snowflake and XCom-pushed with display_resource keys (see airflow_util.build_display_name).
-    
+    All task groups receive a list of (endpoint, last_change_version) tuples as input.
     These are referenced in EdFiToS3 operators, and ingestion from Ed-Fi is attempted for each.
-    All that succeed are passed onward to the S3ToSnowflake operators.
-    The same list is passed to the update Snowflake change-version operator, which updates the metadata table after the COPY-queries are complete.
+    All that succeed are passed onward as a {endpoint: filename} dictionary to the S3ToSnowflake and UpdateSnowflakeCV operators.
     """
     DEFAULT_NAMESPACE: str = 'ed-fi'
     DEFAULT_PAGE_SIZE: int = 500
@@ -52,7 +48,7 @@ class EdFiResourceDAG:
     DEFAULT_MAX_RETRIES: int = 5
 
     newest_edfi_cv_task_id = "get_latest_edfi_change_version"  # Original name for historic run compatibility
-    previous_snowflake_cv_task_id = "get_previous_change_versions_from_snowflake"
+
 
     def __init__(self,
         *,
@@ -116,7 +112,7 @@ class EdFiResourceDAG:
             if config.get('enabled')
         ]
 
-        self.params_dict = {
+        dag_params = {
             "full_refresh": Param(
                 default=False,
                 type="boolean",
@@ -129,7 +125,7 @@ class EdFiResourceDAG:
             ),
         }
 
-        self.dag = EACustomDAG(params=self.params_dict, **kwargs)
+        self.dag = EACustomDAG(params=dag_params, **kwargs)
 
         ### Create nested task-groups for cleaner webserver UI
         # (Make these lazy to only show populated TaskGroups in the UI.)
