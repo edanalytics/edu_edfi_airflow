@@ -582,19 +582,20 @@ class EdFiResourceDAG:
             dag=self.dag
         ) as dynamic_task_group:
 
+            # Dynamic runs only make sense in the context of change-versions.
+            if not self.use_change_version:
+                raise ValueError("Dynamic run-type requires `use_change_version to be True`.")
+
             cleaned_group_id = group_id.replace(' ', "_").lower()
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS
-            if self.use_change_version:
-                get_cv_operator = self.build_change_version_get_operator(
-                    task_id=f"{cleaned_group_id}__get_last_change_versions",
-                    endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
-                    is_deletes=get_deletes,
-                    is_key_changes=get_key_changes,
-                    return_only_deltas=True  # For dynamic mapping, only process endpoints with new data to ingest.
-                )
-            else:
-                get_cv_operator = None
+            get_cv_operator = self.build_change_version_get_operator(
+                task_id=f"{cleaned_group_id}__get_last_change_versions",
+                endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
+                is_deletes=get_deletes,
+                is_key_changes=get_key_changes,
+                return_only_deltas=True  # For dynamic mapping, only process endpoints with new data to ingest.
+            )
 
             ### EDFI TO S3
             pull_edfi_to_s3 = (EdFiToS3Operator
@@ -648,21 +649,15 @@ class EdFiResourceDAG:
             )
 
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
-            if self.use_change_version:
-                update_cv_operator = self.build_change_version_update_operator(
-                    task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
-                    endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
-                    is_deletes=get_deletes,
-                    is_key_changes=get_key_changes
-                )
-            else:
-                update_cv_operator = None
+            update_cv_operator = self.build_change_version_update_operator(
+                task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
+                endpoints=airflow_util.xcom_pull_template(pull_edfi_to_s3.task_id, prefix="dict(", suffix=").keys()"),
+                is_deletes=get_deletes,
+                is_key_changes=get_key_changes
+            )
 
         ### Chain tasks into final task-group
-        if get_cv_operator and update_cv_operator:
-            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
-        else:
-            pull_edfi_to_s3 >> copy_s3_to_snowflake
+        get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
 
         return dynamic_task_group
     
