@@ -30,7 +30,7 @@ def insert_into_snowflake(
 
     logging_string = (
         f"Inserting the following values into table `{database}.{schema}.{table_name}` in columns {columns}:\n"
-        "\n".join(str(value) for value in values)
+        ("\n".join(str(value) for value in values))  # Wrap in parentheses to avoid joining the first line into the new-line.
     )
     logging.info(logging_string)
 
