@@ -153,8 +153,8 @@ class EdFiToS3Operator(BaseOperator):
         ### Connect to EdFi and write resource data to a temp file.
         # Prepare the EdFiEndpoint for the resource.
         logging.info(
-            "    Pulling records for `{}/{}` for change versions `{}` to `{}`."\
-            .format(namespace, resource, min_change_version, max_change_version)
+            "    Pulling records for `{}/{}` for change versions `{}` to `{}`. (page_size: {}; CV step size: {})"\
+            .format(namespace, resource, min_change_version, max_change_version, page_size, change_version_step_size)
         )
 
         resource_endpoint = edfi_conn.resource(
