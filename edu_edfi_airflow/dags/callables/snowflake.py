@@ -28,10 +28,9 @@ def insert_into_snowflake(
     # Retrieve the database and schema from the Snowflake hook.
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
-    logging_string = (
-        f"Inserting the following values into table `{database}.{schema}.{table_name}` in columns {columns}:\n" +
-        "\n".join(str(value) for value in values)  # Wrap in parentheses to avoid joining the first line into the new-line.
-    )
+    logging_string = f"Inserting the following values into table `{database}.{schema}.{table_name}`\nColumns: {columns}\n"
+    for idx, value in enumerate(values, start=1):
+        logging_string.append(f"{idx}. {value}\n")
     logging.info(logging_string)
 
     snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
