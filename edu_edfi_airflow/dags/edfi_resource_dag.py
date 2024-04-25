@@ -753,7 +753,7 @@ class EdFiResourceDAG:
                 ],
 
                 pool=self.pool,
-                trigger_rule='none_skipped',
+                trigger_rule='all_done',
                 dag=self.dag
             )
 
