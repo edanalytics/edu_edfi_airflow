@@ -111,9 +111,9 @@ def get_previous_change_versions(
 
     # Retrieve the previous max change versions for this tenant-year.
     if get_deletes:
-        filter_clause = "get_deletes"
+        filter_clause = "is_deletes"
     elif get_key_changes:
-        filter_clause = "get_key_changes"
+        filter_clause = "is_key_changes"
     else:
         filter_clause = "TRUE"
 
