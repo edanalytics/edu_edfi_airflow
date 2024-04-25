@@ -153,7 +153,7 @@ class EdFiToS3Operator(BaseOperator):
         ### Connect to EdFi and write resource data to a temp file.
         # Prepare the EdFiEndpoint for the resource.
         logging.info(
-            "Pulling records for `{}/{}` for change versions `{}` to `{}`."\
+            "    Pulling records for `{}/{}` for change versions `{}` to `{}`."\
             .format(namespace, resource, min_change_version, max_change_version)
         )
 
@@ -195,19 +195,19 @@ class EdFiToS3Operator(BaseOperator):
         try:
             expected_rows = resource_endpoint.total_count()
             if total_rows != expected_rows:
-                logging.warning(f"Expected {expected_rows} rows for `{resource}`.")
+                logging.warning(f"    Expected {expected_rows} rows for `{resource}`.")
             else:
-                logging.info("Number of collected rows matches expected count in the ODS.")
+                logging.info("    Number of collected rows matches expected count in the ODS.")
 
         except Exception:
-            logging.warning(f"Unable to access expected number of rows for `{resource}`.")
+            logging.warning(f"    Unable to access expected number of rows for `{resource}`.")
 
         finally:
-            logging.info(f"{total_rows} rows were returned for `{resource}`.")
+            logging.info(f"    {total_rows} rows were returned for `{resource}`.")
 
         # Raise a Skip if no data was collected.
         if total_rows == 0:
-            logging.info(f"No results returned for `{resource}`")
+            logging.info(f"    No results returned for `{resource}`")
             self.delete_path(tmp_file)
             raise AirflowSkipException
 
@@ -228,7 +228,7 @@ class EdFiToS3Operator(BaseOperator):
 
     @staticmethod
     def delete_path(path: str):
-        logging.info(f"Removing temporary files written to `{path}`")
+        logging.info(f"    Removing temporary files written to `{path}`")
         try:
             os.remove(path)
         except FileNotFoundError:
@@ -319,7 +319,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
 
             # If doing a resource-specific run, confirm resource is in the list.
             if config_endpoints and resource not in config_endpoints:
-                logging.info(f"Endpoint {resource} not specified in DAG config endpoints.")
+                logging.info(f"    Endpoint {resource} not specified in DAG config endpoints. Skipping...")
                 continue
 
             try:
@@ -344,7 +344,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         # Note: this return-type differs from that of the parent operator.
         # We need to know which endpoints succeeded to limit the copies completed in the next step.
         if not return_tuples:
-            logging.info("No new data was ingested for any endpoints.")
+            logging.info("No new data was ingested for any endpoints. Raising a skip exception...")
             raise AirflowSkipException
 
         return return_tuples

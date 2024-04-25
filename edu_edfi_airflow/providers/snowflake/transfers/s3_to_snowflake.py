@@ -1,3 +1,4 @@
+import logging
 import os
 
 from typing import Any, Optional
@@ -192,7 +193,9 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         xcom_returns = []
 
-        for resource, table, s3_destination_filename in zip(self.resource, self.table_name, self.s3_destination_filename):
+        for idx, (resource, table, s3_destination_filename) in enumerate(zip(self.resource, self.table_name, self.s3_destination_filename)):
+            logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
+
             s3_key = os.path.join(self.s3_destination_dir, s3_destination_filename)
             self.run_sql_queries(
                 name=resource, table=table,
