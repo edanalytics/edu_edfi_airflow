@@ -322,8 +322,8 @@ class EdFiResourceDAG:
     def build_change_version_get_operator(self,
         task_id: str,
         endpoints: List[Tuple[str, str]],
-        is_deletes: bool = False,
-        is_key_changes: bool = False,
+        get_deletes: bool = False,
+        get_key_changes: bool = False,
         return_only_deltas: bool = False
     ) -> PythonOperator:
         op_kwargs = {
@@ -332,8 +332,8 @@ class EdFiResourceDAG:
             'endpoints': endpoints,
             'snowflake_conn_id': self.snowflake_conn_id,
             'change_version_table': self.change_version_table,
-            'is_deletes': is_deletes,
-            'is_key_changes': is_key_changes,
+            'get_deletes': get_deletes,
+            'get_key_changes': get_key_changes,
         }
 
         # If Ed-Fi connection is provided, total-count checks will be made for each endpoint.
@@ -351,7 +351,7 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-    def build_change_version_update_operator(self, task_id: str, endpoints: List[str], is_deletes: bool, is_key_changes: bool) -> PythonOperator:
+    def build_change_version_update_operator(self, task_id: str, endpoints: List[str], get_deletes: bool, get_key_changes: bool) -> PythonOperator:
         """
 
         :return:
@@ -368,8 +368,8 @@ class EdFiResourceDAG:
                 
                 'edfi_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 'endpoints': endpoints,
-                'is_deletes': is_deletes,
-                'is_key_changes': is_key_changes,
+                'get_deletes': get_deletes,
+                'get_key_changes': get_key_changes,
             },
             provide_context=True,
             trigger_rule='all_success',
@@ -450,8 +450,8 @@ class EdFiResourceDAG:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"{cleaned_group_id}__get_last_change_versions_from_snowflake",
                     endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
-                    is_deletes=get_deletes,
-                    is_key_changes=get_key_changes,
+                    get_deletes=get_deletes,
+                    get_key_changes=get_key_changes,
                 )
             else:
                 get_cv_operator = None
@@ -460,7 +460,7 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
-                display_resource = airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes)
+                display_resource = airflow_util.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes)
                 endpoint_configs = configs.get(endpoint, {})
 
                 pull_edfi_to_s3 = EdFiToS3Operator(
@@ -519,8 +519,8 @@ class EdFiResourceDAG:
                 update_cv_operator = self.build_change_version_update_operator(
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
-                    is_deletes=get_deletes,
-                    is_key_changes=get_key_changes
+                    get_deletes=get_deletes,
+                    get_key_changes=get_key_changes
                 )
             else:
                 update_cv_operator = None
@@ -583,8 +583,8 @@ class EdFiResourceDAG:
             get_cv_operator = self.build_change_version_get_operator(
                 task_id=f"{cleaned_group_id}__get_last_change_versions",
                 endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes,
+                get_deletes=get_deletes,
+                get_key_changes=get_key_changes,
                 return_only_deltas=True  # For dynamic mapping, only process endpoints with new data to ingest.
             )
 
@@ -617,7 +617,7 @@ class EdFiResourceDAG:
                         'num_retries': configs[endpoint__last_cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
                         'change_version_step_size': configs[endpoint__last_cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
                         'query_parameters': {**configs[endpoint__last_cv[0]].get('params', {}), **self.default_params},
-                        's3_destination_filename': "{}.jsonl".format(airflow_util.build_display_name(endpoint__last_cv[0], is_deletes=get_deletes, is_key_changes=get_key_changes)),
+                        's3_destination_filename': "{}.jsonl".format(airflow_util.build_display_name(endpoint__last_cv[0], get_deletes=get_deletes, get_key_changes=get_key_changes)),
                     })
                 )
             )
@@ -647,8 +647,8 @@ class EdFiResourceDAG:
             update_cv_operator = self.build_change_version_update_operator(
                 task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                 endpoints=map_xcom_attribute_by_index(0),
-                is_deletes=get_deletes,
-                is_key_changes=get_key_changes
+                get_deletes=get_deletes,
+                get_key_changes=get_key_changes
             )
 
             ### Chain tasks into final task-group
@@ -699,8 +699,8 @@ class EdFiResourceDAG:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"{cleaned_group_id}__get_last_change_versions",
                     endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
-                    is_deletes=get_deletes,
-                    is_key_changes=get_key_changes,
+                    get_deletes=get_deletes,
+                    get_key_changes=get_key_changes,
                 )
                 min_change_versions = [
                     airflow_util.xcom_pull_template(get_cv_operator.task_id, prefix="dict(", suffix=f")['{endpoint}']")
@@ -721,7 +721,7 @@ class EdFiResourceDAG:
                 s3_conn_id=self.s3_conn_id,
                 s3_destination_dir=self.s3_destination_directory,
                 s3_destination_filename=[
-                    "{}.jsonl".format(airflow_util.build_display_name(endpoint, is_deletes=get_deletes, is_key_changes=get_key_changes))
+                    "{}.jsonl".format(airflow_util.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes))
                     for endpoint in endpoints        
                 ],
                 
@@ -783,8 +783,8 @@ class EdFiResourceDAG:
                 update_cv_operator = self.build_change_version_update_operator(
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
-                    is_deletes=get_deletes,
-                    is_key_changes=get_key_changes
+                    get_deletes=get_deletes,
+                    get_key_changes=get_key_changes
                 )
             else:
                 update_cv_operator = None

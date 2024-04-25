@@ -78,8 +78,8 @@ def get_previous_change_versions(
     edfi_conn_id: Optional[str] = None,
     max_change_version: Optional[int] = None,
 
-    is_deletes: bool = False,
-    is_key_changes: bool = False,
+    get_deletes: bool = False,
+    get_key_changes: bool = False,
 
     **context
 ) -> None:
@@ -100,7 +100,7 @@ def get_previous_change_versions(
     If an Ed-Fi connection and max_change_version are specified, each endpoint is checked for deltas and only updates are returned.
     """
     # Skip deletes/key-changes if a full-refresh.
-    if airflow_util.is_full_refresh(context) and (is_deletes or is_key_changes):
+    if airflow_util.is_full_refresh(context) and (get_deletes or get_key_changes):
         raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
 
     logging.info("Retrieving max previously-ingested change versions from Snowflake.")
@@ -110,10 +110,10 @@ def get_previous_change_versions(
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
     # Retrieve the previous max change versions for this tenant-year.
-    if is_deletes:
-        filter_clause = "is_deletes"
-    elif is_key_changes:
-        filter_clause = "is_key_changes"
+    if get_deletes:
+        filter_clause = "get_deletes"
+    elif get_key_changes:
+        filter_clause = "get_key_changes"
     else:
         filter_clause = "TRUE"
 
@@ -146,7 +146,7 @@ def get_previous_change_versions(
         if edfi_conn_id and max_change_version is not None:
             resource = edfi_conn.resource(
                 endpoint, namespace=namespace,
-                is_deletes=is_deletes, is_key_changes=is_key_changes,
+                get_deletes=get_deletes, get_key_changes=get_key_changes,
                 min_change_version=last_max_version,
                 max_change_version=max_change_version
             )
@@ -172,8 +172,8 @@ def update_change_versions(
     
     edfi_change_version: int,
     endpoints: List[str],
-    is_deletes: bool,
-    is_key_changes: bool,
+    get_deletes: bool,
+    get_key_changes: bool,
 
     **kwargs
 ):
@@ -192,7 +192,7 @@ def update_change_versions(
     for endpoint in endpoints:
         rows_to_insert.append([
             tenant_code, api_year, endpoint,
-            is_deletes, is_key_changes,
+            get_deletes, get_key_changes,
             kwargs["ds"], kwargs["ts"],
             edfi_change_version, True
         ])

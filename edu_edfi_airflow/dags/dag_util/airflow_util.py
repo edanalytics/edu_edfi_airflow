@@ -5,13 +5,13 @@ from airflow.models import Connection
 from edfi_api_client import camel_to_snake
 
 
-def build_display_name(resource: str, is_deletes: bool = False, is_key_changes: bool = False) -> str:
+def build_display_name(resource: str, get_deletes: bool = False, get_key_changes: bool = False) -> str:
     """
     Universal helper method for building the display name of a resource.
     """
-    if is_deletes:
+    if get_deletes:
         return f"{resource}_deletes"
-    elif is_key_changes:
+    elif get_key_changes:
         return f"{resource}_key_changes"
     else:
         return resource
