@@ -313,7 +313,8 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             self.s3_destination_filename,
         ]
 
-        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, s3_destination_filename) in enumerate(zip(*zip_arguments)):
+        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, s3_destination_filename) \
+            in enumerate(zip(*zip_arguments), start=1):
 
             logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
 
