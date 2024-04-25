@@ -298,11 +298,24 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         # Begin actual processing of defined endpoints.
         config_endpoints = airflow_util.get_config_endpoints(context)
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
-        
+
         return_tuples = []
 
-        for resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, s3_destination_filename \
-            in zip(self.resource, self.min_change_version, self.namespace, self.page_size, self.num_retries, self.change_version_step_size, self.query_parameters, self.s3_destination_filename):
+        # Presume all argument lists are equal length, and iterate each endpoint. Only add to the return in successful pulls.
+        zip_arguments = [
+            self.resource,
+            self.min_change_version,
+            self.namespace,
+            self.page_size,
+            self.num_retries,
+            self.change_version_step_size,
+            self.query_parameters,
+            self.s3_destination_filename,
+        ]
+
+        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, s3_destination_filename) in enumerate(zip(zip_arguments)):
+
+            logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
 
             # If doing a resource-specific run, confirm resource is in the list.
             if config_endpoints and resource not in config_endpoints:
