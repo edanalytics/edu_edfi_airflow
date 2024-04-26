@@ -39,8 +39,9 @@ This functionality can be paired with the `endpoints` DAG-level config to run a 
 | multiyear            | Boolean flag for whether the ODS has multiple years of data within one API year (defaults to `False`; dispreferred implementation) |
 | use_change_version   | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                           |
 | change_version_table | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                          |
+| slack_conn_id        | Optional Airflow connection with Slack webhook credentials (default None)                                                          |
 | dbt_incrementer_var  | Optional Airflow variable to increment upon a finished run                                                                         |
-| run_type             | Specifies the run-type for the Ed-Fi task groups in the DAG (default 'default')
+| run_type             | Specifies the run-type for the Ed-Fi task groups in the DAG (default 'default')                                                    |
 
 Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
 

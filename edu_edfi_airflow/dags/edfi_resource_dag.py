@@ -61,8 +61,9 @@ class EdFiResourceDAG:
         pool     : str,
         tmp_dir  : str,
         multiyear: bool = False,
-        use_change_version: bool = True,
+        schedule_interval_full_refresh: Optional[str] = None,
 
+        use_change_version: bool = True,
         run_type: str = "default",
         resource_configs: Optional[List[dict]] = None,
         descriptor_configs: Optional[List[dict]] = None,
@@ -89,6 +90,7 @@ class EdFiResourceDAG:
         self.pool = pool
         self.tmp_dir = tmp_dir
         self.multiyear = multiyear
+        self.schedule_interval_full_refresh = schedule_interval_full_refresh  # Force full-refresh on a scheduled cadence
 
         self.change_version_table = change_version_table
         self.deletes_table = deletes_table
