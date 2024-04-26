@@ -41,15 +41,35 @@ This functionality can be paired with the `endpoints` DAG-level config to run a 
 | change_version_table | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                          |
 | slack_conn_id        | Optional Airflow connection with Slack webhook credentials (default None)                                                          |
 | dbt_incrementer_var  | Optional Airflow variable to increment upon a finished run                                                                         |
+| run_type             | Specifies the run-type for the Ed-Fi task groups in the DAG (default 'default')
 
 Additional Airflow DAG parameters (e.g. `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
-
 -----
 
 </details>
 
+The `run_type` argument determines the task-logic used when ingesting data from Ed-Fi to S3.
 
-Default instantiation of these in our `int_edfi_project_template` come in the following YAML structure:
+- `default`: one task is created for each endpoint (default behavior)
+- `bulk`: one task is created, and each endpoint is looped-over within this task
+- `dynamic`: one dynamically-mapped task is created for each endpoint **with new data to ingest**
+
+No matter the approach, copies from S3 to Snowflake always occur in bulk to reduce Snowflake connection-time. Dynamic runs can only be used when `use_change_version` is true.
+
+Dynamic and bulk task groups trade visibility for performance: both drastically reduce the number of tasks run each day, but more digging in the Airflow UI is required to identify failures.
+Here are some recommendations for when to use each run-type:
+
+| run_type | DAG count | data volume |
+|----------|-----------|-------------|
+| default  | low       | low         |
+| bulk     | high      | low         |
+| dynamic  | high      | high        |
+
+
+<details>
+<summary>Example DAG-factory YAML instantiation:</summary>
+
+Default instantiation of these in our `edu_project_template` come in the following YAML structure:
 ```yaml
 edfi_resource_dags__default_args: &default_dag_args
   default_args: *default_task_args
@@ -86,6 +106,8 @@ edfi_resource_dags:
       schedule_interval: null
       <<: *edfi_resource_dags__default_args
 ```
+
+</details>
 
 -----
 
