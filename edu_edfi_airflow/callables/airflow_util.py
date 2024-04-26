@@ -1,18 +1,18 @@
-import inspect
-
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from airflow.models import Connection
 
 from edfi_api_client import camel_to_snake
 
 
-def build_display_name(resource: str, is_deletes: bool = False) -> str:
+def build_display_name(resource: str, get_deletes: bool = False, get_key_changes: bool = False) -> str:
     """
     Universal helper method for building the display name of a resource.
     """
-    if is_deletes:
+    if get_deletes:
         return f"{resource}_deletes"
+    elif get_key_changes:
+        return f"{resource}_key_changes"
     else:
         return resource
 
@@ -58,8 +58,10 @@ def get_config_endpoints(context) -> List[str]:
 
 
 def xcom_pull_template(
-    task_ids: str,
-    key: str = 'return_value'
+    task_ids: Union[str, List[str]],
+    key: str = 'return_value',
+    prefix: str = "",
+    suffix: str = ""
 ) -> str:
     """
     Generate a Jinja template to pull a particular xcom key from a task_id
@@ -67,7 +69,12 @@ def xcom_pull_template(
     :param key: The key to retrieve. Default: return_value
     :return: A formatted Jinja string for the xcom pull
     """
-    xcom_string = f"ti.xcom_pull(task_ids='{task_ids}', key='{key}')"
+    if not isinstance(task_ids, str):
+        task_ids_string = "['{}']".format("','".join(task_ids))
+    else:
+        task_ids_string = f"'{task_ids}'"
+
+    xcom_string = f"{prefix} ti.xcom_pull(task_ids={task_ids_string}, key='{key}') {suffix}"
 
     return '{{ ' + xcom_string + ' }}'
 
@@ -93,19 +100,3 @@ def get_snowflake_params_from_conn(
 
     except KeyError:
         raise undefined_snowflake_error
-
-
-def subset_kwargs_to_class(class_: object, kwargs: dict) -> dict:
-    """
-    Helper function to remove unexpected arguments from kwargs,
-    based on the actual arguments of the class.
-
-    :param class_:
-    :param kwargs:
-    :return:
-    """
-    class_parameters = list(inspect.signature(class_).parameters.keys())
-    return {
-        arg: val for arg, val in kwargs.items()
-        if arg in class_parameters
-    }
