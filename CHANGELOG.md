@@ -8,13 +8,10 @@
   - "bulk": One `BulkEdFiToS3Operator` task in which all endpoints are looped over in one callable
   - "dynamic": One dynamically-mapped `EdFiToS3Operator` task per resource with deltas to ingest
 
-
 ## Under the hood
 - Copies from S3 to Snowflake in `EdFiResourceDAG` are now completed in a single bulk task (instead of one per endpoint)
-- `EdFiResourceDAG` now inherits from `ea_airflow_util` DAG factory `EACustomDAG`
+- `EdFiResourceDAG` and `EarthbeamDAG` now inherit from `ea_airflow_util` DAG factory `EACustomDAG`
 - Streamline XCom passing between tasks in `EdFiResourceDAG`
-
-## Fixes
 
 
 # edu_edfi_airflow v0.2.4

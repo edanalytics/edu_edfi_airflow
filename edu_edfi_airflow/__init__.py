@@ -4,4 +4,4 @@ from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, L
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator
 
-from edu_edfi_airflow.dags.dag_util import airflow_util as util
+from edu_edfi_airflow.callables import airflow_util as util

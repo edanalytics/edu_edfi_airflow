@@ -9,10 +9,11 @@ from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
 import edfi_api_client
+from ea_airflow_util import EACustomDAG
 from ea_airflow_util import slack_callbacks
 
-from edu_edfi_airflow.dags.callables.s3 import local_filepath_to_s3, remove_filepaths
-from edu_edfi_airflow.dags.dag_util import airflow_util
+from edu_edfi_airflow.callables.s3 import local_filepath_to_s3, remove_filepaths
+from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
@@ -45,7 +46,6 @@ class EarthbeamDAG:
         pool: str = 'default_pool',
         earthmover_pool: Optional[str] = None,
         lightbeam_pool: Optional[str] = None,
-        slack_conn_id: Optional[str] = None,
 
         fast_cleanup: bool = False,
 
@@ -59,49 +59,10 @@ class EarthbeamDAG:
         self.pool = pool
         self.earthmover_pool = earthmover_pool or self.pool
         self.lightbeam_pool = lightbeam_pool or self.pool
-        self.slack_conn_id = slack_conn_id
 
         self.fast_cleanup = fast_cleanup
 
-        self.dag = self.initialize_dag(**kwargs)
-
-
-    def initialize_dag(self,
-        dag_id: str,
-        schedule_interval: str,
-        default_args: dict,
-        **kwargs
-    ):
-        """
-
-        :param dag_id:
-        :param schedule_interval:
-        :param default_args:
-        :param kwargs:
-        :return:
-        """
-        # If a Slack connection has been defined, add the failure callback to the default_args.
-        if self.slack_conn_id:
-            slack_failure_callback = partial(slack_callbacks.slack_alert_failure, http_conn_id=self.slack_conn_id)
-            default_args['on_failure_callback'] = slack_failure_callback
-
-            # Define an SLA-miss callback as well.
-            slack_sla_miss_callback = partial(slack_callbacks.slack_alert_sla_miss, http_conn_id=self.slack_conn_id)
-        else:
-            slack_sla_miss_callback = None
-
-        # If a Slack connection is defined, send a callback in the event of a DAG failure.
-        return DAG(
-            dag_id=dag_id,
-            schedule_interval=schedule_interval,
-            default_args=default_args,
-            catchup=False,
-            params=self.params_dict,
-            render_template_as_native_obj=True,
-            max_active_runs=1,
-            sla_miss_callback=slack_sla_miss_callback,
-            **kwargs
-        )
+        self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
 
     def build_local_raw_dir(self, tenant_code: str, api_year: int, grain_update: Optional[str] = None) -> str:

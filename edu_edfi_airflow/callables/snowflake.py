@@ -4,7 +4,7 @@ from typing import List, Union
 
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
-from edu_edfi_airflow.dags.dag_util import airflow_util
+from edu_edfi_airflow.callables import airflow_util
 
 
 def insert_into_snowflake(

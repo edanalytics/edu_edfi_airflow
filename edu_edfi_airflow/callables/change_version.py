@@ -5,8 +5,8 @@ from typing import Dict, List, Tuple, Optional
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
-from edu_edfi_airflow.dags.callables.snowflake import insert_into_snowflake
-from edu_edfi_airflow.dags.dag_util import airflow_util
+from edu_edfi_airflow.callables.snowflake import insert_into_snowflake
+from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 

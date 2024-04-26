@@ -1,7 +1,6 @@
 import os
 from typing import Dict, List, Optional, Tuple, Union
 
-from airflow import DAG
 from airflow.models.param import Param
 from airflow.operators.dummy import DummyOperator
 from airflow.operators.python import PythonOperator
