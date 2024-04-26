@@ -11,6 +11,8 @@
 
 ## Under the hood
 - Copies from S3 to Snowflake in `EdFiResourceDAG` are now completed in a single bulk task (instead of one per endpoint)
+- `EdFiResourceDAG` now inherits from `ea_airflow_util` DAG factory `EACustomDAG`
+- Streamline XCom passing between tasks in `EdFiResourceDAG`
 
 ## Fixes
 
