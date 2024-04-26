@@ -1,6 +1,17 @@
 # edu_edfi_airflow v0.3.0
-## Fixes
-- Update `EdFiResourceDAG` and `EarthbeamDAG` to use `ea_airflow_util`'s `EACustomDAG` factory class.
+## New features
+- Add `/keyChanges` ingestion for resource endpoints
+- Add new method for `EdFiResourceDAG` endpoint instantiation using `resource_configs` and `descriptor_configs` arguments in init
+  - The prior methods `EdFiResourceDAG.{add_resource, add_descriptor, add_resource_deletes}` are deprecated in favor of this more performant approach.
+- Refactor `EdFiToS3Operator` taskgroup into three options (determined by `run_type` argument):
+  - "default": One `EdFiToS3Operator` task per resource/deletes/keyChanges endpoint
+  - "bulk": One `BulkEdFiToS3Operator` task in which all endpoints are looped over in one callable
+  - "dynamic": One dynamically-mapped `EdFiToS3Operator` task per resource with deltas to ingest
+
+## Under the hood
+- Copies from S3 to Snowflake in `EdFiResourceDAG` are now completed in a single bulk task (instead of one per endpoint)
+- `EdFiResourceDAG` and `EarthbeamDAG` now inherit from `ea_airflow_util` DAG factory `EACustomDAG`
+- Streamline XCom passing between tasks in `EdFiResourceDAG`
 
 
 # edu_edfi_airflow v0.2.4
