@@ -134,6 +134,7 @@ def get_previous_change_versions(
 
     ### Retrieve previous endpoint-level change versions and push as an XCom.
     return_tuples = []
+    failed_total_counts = []  # Track which endpoints failed total-count gets in condition block.
 
     # Only initialize the Ed-Fi connection once if there is a max-change-version to compare against.
     if edfi_conn_id:
@@ -160,10 +161,18 @@ def get_previous_change_versions(
                 logging.warning(
                     f"Unable to retrieve record count for endpoint: {namespace}/{endpoint}"
                 )
+                failed_total_counts.append(endpoint)  # Still return the tuples, but mark as failed in the UI.
                 continue
 
         return_tuples.append((endpoint, last_max_version))
         logging.info(f"{namespace}/{endpoint}: {last_max_version}")
+
+    # Always push the xcom, but raise an AirflowFailException if any of the TotalCount gets failed.
+    if failed_total_counts:
+        context['ti'].xcom_push(key='return_value', value=return_tuples)
+        raise AirflowFailException(
+            f"Failed getting delta row count for one or more endpoints: {failed_total_counts}"
+        )
 
     if not return_tuples:
         raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
