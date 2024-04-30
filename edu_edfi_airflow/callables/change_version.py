@@ -144,17 +144,26 @@ def get_previous_change_versions(
 
         # If Ed-Fi Conn is attached, only add to XCom if there are new rows to ingest.
         if edfi_conn_id and max_change_version is not None:
-            resource = edfi_conn.resource(
-                endpoint, namespace=namespace,
-                get_deletes=get_deletes, get_key_changes=get_key_changes,
-                min_change_version=last_max_version,
-                max_change_version=max_change_version
-            )
 
-            if not resource.total_count():
+            try:
+                resource = edfi_conn.resource(
+                    endpoint, namespace=namespace,
+                    get_deletes=get_deletes, get_key_changes=get_key_changes,
+                    min_change_version=last_max_version,
+                    max_change_version=max_change_version
+                )
+
+                if not resource.total_count():
+                    continue
+            
+            except Exception:
+                logging.warning(
+                    f"Unable to retrieve record count for endpoint: {namespace}/{endpoint}"
+                )
                 continue
 
         return_tuples.append((endpoint, last_max_version))
+        logging.info(f"{namespace}/{endpoint}: {last_max_version}")
 
     if not return_tuples:
         raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
