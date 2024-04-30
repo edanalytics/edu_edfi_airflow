@@ -63,6 +63,7 @@ class EdFiResourceDAG:
         schedule_interval_full_refresh: Optional[str] = None,
 
         use_change_version: bool = True,
+        get_key_changes: bool = False,
         run_type: str = "default",
         resource_configs: Optional[List[dict]] = None,
         descriptor_configs: Optional[List[dict]] = None,
@@ -78,6 +79,7 @@ class EdFiResourceDAG:
     ) -> None:
         self.run_type = run_type
         self.use_change_version = use_change_version
+        self.get_key_changes = get_key_changes
 
         self.tenant_code = tenant_code
         self.api_year = api_year
@@ -227,14 +229,17 @@ class EdFiResourceDAG:
             get_deletes=True
         )
 
-        # Resource Key-Changes
-        self.resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
-            group_id="Ed-Fi Resource Key Changes",
-            endpoints=list(self.key_changes_to_ingest),
-            configs=self.resource_configs,
-            table=self.key_changes_table,
-            get_key_changes=True
-        )
+        # Resource Key-Changes (only applicable in Ed-Fi v6.x and up)
+        if self.get_key_changes:
+            self.resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
+                group_id="Ed-Fi Resource Key Changes",
+                endpoints=list(self.key_changes_to_ingest),
+                configs=self.resource_configs,
+                table=self.key_changes_table,
+                get_key_changes=True
+            )
+        else:
+            self.resource_key_changes_task_group = None
 
         ### Chain task groups into the DAG between CV operators and Airflow state operators.
         # Retrieve current and previous change versions to define an ingestion window.
