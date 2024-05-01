@@ -139,8 +139,16 @@ def fail_if_any_task_failed(**context):
         if ti.state == "failed":
             raise AirflowFailException("One or more tasks in the DAG failed.")
 
-def chain_tasks(*tasks)
+
+def chain_tasks(*tasks):
     """
     Alias of airflow's built-in chain, but remove Nones if present.
+    Note: this recurses only one level.
     """
-    chain(filter(None, tasks))
+    chain(recursive_filter(None, tasks))
+
+def recursive_filter(func, iterable):
+    if isinstance(iterable, (list, tuple)):
+        return list(filter(lambda x: recursive_filter(func, x), iterable))
+    else:
+        return list(func(iterable))

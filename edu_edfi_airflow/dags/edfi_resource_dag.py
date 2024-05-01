@@ -248,20 +248,12 @@ class EdFiResourceDAG:
             self.resource_deletes_task_group,
             self.resource_key_changes_task_group,
         ]
-        task_groups_to_chain = list(filter(None, task_groups_to_chain))  # Remove Nones from the list.
-
-        # Create a dummy sentinel to display the success of the endpoint taskgroups.
-        dag_state_sentinel = PythonOperator(
-            task_id='dag_state_sentinel',
-            python_callable=airflow_util.fail_if_any_task_failed,
-            trigger_rule='all_done',
-            dag=self.dag
-        )
 
         # Retrieve current and previous change versions to define an ingestion window.
         if self.use_change_version:
             cv_task_group: TaskGroup = self.build_change_version_task_group()
-            cv_task_group >> task_groups_to_chain
+        else:
+            cv_task_group = None
 
         # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
@@ -275,9 +267,19 @@ class EdFiResourceDAG:
                 trigger_rule='one_success',
                 dag=self.dag
             )
-            task_groups_to_chain >> dbt_var_increment_operator >> dag_state_sentinel  # Apply dag-sentinel as last task
         else:
-            task_groups_to_chain >> dag_state_sentinel  # Apply dag-sentinel as last task
+            dbt_var_increment_operator = None
+
+        # Create a dummy sentinel to display the success of the endpoint taskgroups.
+        dag_state_sentinel = PythonOperator(
+            task_id='dag_state_sentinel',
+            python_callable=airflow_util.fail_if_any_task_failed,
+            trigger_rule='all_done',
+            dag=self.dag
+        )
+
+        # Chain tasks and taskgroups into the DAG
+        airflow_util.chain_tasks(cv_task_group, task_groups_to_chain, dbt_var_increment_operator, dag_state_sentinel)
 
 
     ### Internal methods that should not be called directly.
