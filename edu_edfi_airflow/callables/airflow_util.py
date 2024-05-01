@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 from airflow.exceptions import AirflowFailException
 from airflow.models import Connection
+from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
 
@@ -137,3 +138,9 @@ def fail_if_any_task_failed(**context):
     for ti in context["dag_run"].get_task_instances():
         if ti.state == "failed":
             raise AirflowFailException("One or more tasks in the DAG failed.")
+
+def chain_tasks(*tasks)
+    """
+    Alias of airflow's built-in chain, but remove Nones if present.
+    """
+    chain(filter(None, tasks))

@@ -503,10 +503,7 @@ class EdFiResourceDAG:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            if get_cv_operator and update_cv_operator:
-                get_cv_operator >> pull_operators_list >> copy_s3_to_snowflake >> update_cv_operator
-            else:
-                pull_operators_list >> copy_s3_to_snowflake
+            airflow_util.chain_tasks(get_cv_operator, pull_operators_list, copy_s3_to_snowflake, update_cv_operator)
 
         return default_task_group
 
@@ -625,7 +622,7 @@ class EdFiResourceDAG:
             )
 
             ### Chain tasks into final task-group
-            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
+            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_s3, copy_s3_to_snowflake, update_cv_operator)
 
         return dynamic_task_group
     
@@ -763,9 +760,6 @@ class EdFiResourceDAG:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            if get_cv_operator and update_cv_operator:
-                get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
-            else:
-                pull_edfi_to_s3 >> copy_s3_to_snowflake
+            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_s3, copy_s3_to_snowflake, update_cv_operator)
 
         return bulk_task_group
