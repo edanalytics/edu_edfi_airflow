@@ -265,7 +265,16 @@ class EdFiResourceDAG:
 
         # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
-            dbt_var_increment_operator: PythonOperator = self.build_dbt_var_increment_operator()
+            dbt_var_increment_operator = PythonOperator(
+                task_id='increment_dbt_variable',
+                python_callable=update_variable,
+                op_kwargs={
+                    'var': self.dbt_incrementer_var,
+                    'value': lambda x: int(x) + 1,
+                },
+                trigger_rule='one_success',
+                dag=self.dag
+            )
             task_groups_to_chain >> dbt_var_increment_operator >> dag_state_sentinel  # Apply dag-sentinel as last task
         else:
             task_groups_to_chain >> dag_state_sentinel  # Apply dag-sentinel as last task
@@ -369,21 +378,6 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-    def build_dbt_var_increment_operator(self):
-        """
-
-        :return:
-        """
-        return PythonOperator(
-            task_id='increment_dbt_variable',
-            python_callable=update_variable,
-            op_kwargs={
-                'var': self.dbt_incrementer_var,
-                'value': lambda x: int(x) + 1,
-            },
-            trigger_rule='one_success',
-            dag=self.dag
-        )
 
     def build_default_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
