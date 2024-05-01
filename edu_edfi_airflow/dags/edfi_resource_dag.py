@@ -241,8 +241,8 @@ class EdFiResourceDAG:
         else:
             self.resource_key_changes_task_group = None
 
-        ### Chain task groups into the DAG between CV operators and Airflow state operators.
-        task_groups_to_chain = [
+        ### Chain Ed-Fi task groups into the DAG between CV operators and Airflow state operators.
+        edfi_task_groups = [
             self.resources_task_group,
             self.descriptors_task_group,
             self.resource_deletes_task_group,
@@ -279,7 +279,7 @@ class EdFiResourceDAG:
         )
 
         # Chain tasks and taskgroups into the DAG
-        airflow_util.chain_tasks(cv_task_group, task_groups_to_chain, dbt_var_increment_operator, dag_state_sentinel)
+        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, dbt_var_increment_operator, dag_state_sentinel)
 
 
     ### Internal methods that should not be called directly.
