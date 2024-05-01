@@ -505,28 +505,15 @@ class EdFiResourceDAG:
             ### TASKGROUP STATE_SENTINEL
             taskgroup_state_sentinel = DummyOperator(
                 task_id=F"{cleaned_group_id}__state_sentinel",
-                trigger_rule='none_failed',
+                trigger_rule='all_success',
                 dag=self.dag
             )
 
             ### Chain tasks into final task-group
-            for operator in pull_operators_list:
-                if get_cv_operator:
-                    get_cv_operator >> operator >> copy_s3_to_snowflake
-                else:
-                    operator >> copy_s3_to_snowflake
-
-            if update_cv_operator:
-                copy_s3_to_snowflake >> update_cv_operator
-
-            # Add sentinel to all tasks
-            pull_operators_list >> taskgroup_state_sentinel
-            copy_s3_to_snowflake >> taskgroup_state_sentinel
-
-            if get_cv_operator:
-                get_cv_operator >> taskgroup_state_sentinel
-            if update_cv_operator:
-                update_cv_operator >> taskgroup_state_sentinel
+            if get_cv_operator and update_cv_operator:
+                get_cv_operator >> pull_operators_list >> copy_s3_to_snowflake >> update_cv_operator >> taskgroup_state_sentinel
+            else:
+                pull_operators_list >> copy_s3_to_snowflake >> taskgroup_state_sentinel
 
         return default_task_group
 
@@ -647,15 +634,12 @@ class EdFiResourceDAG:
             ### TASKGROUP STATE_SENTINEL
             taskgroup_state_sentinel = DummyOperator(
                 task_id=F"{cleaned_group_id}__state_sentinel",
-                trigger_rule='none_failed',
+                trigger_rule='all_success',
                 dag=self.dag
             )
 
             ### Chain tasks into final task-group
-            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
-
-            # Add sentinel to all tasks
-            [get_cv_operator, pull_edfi_to_s3, copy_s3_to_snowflake, update_cv_operator] >> taskgroup_state_sentinel
+            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator >> taskgroup_state_sentinel
 
         return dynamic_task_group
     
@@ -795,22 +779,14 @@ class EdFiResourceDAG:
             ### TASKGROUP STATE_SENTINEL
             taskgroup_state_sentinel = DummyOperator(
                 task_id=F"{cleaned_group_id}__state_sentinel",
-                trigger_rule='none_failed',
+                trigger_rule='all_success',
                 dag=self.dag
             )
 
             ### Chain tasks into final task-group
             if get_cv_operator and update_cv_operator:
-                get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
+                get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator >> taskgroup_state_sentinel
             else:
-                pull_edfi_to_s3 >> copy_s3_to_snowflake
-
-            # Add sentinel to all tasks
-            [pull_edfi_to_s3, copy_s3_to_snowflake] >> taskgroup_state_sentinel
-
-            if get_cv_operator:
-                get_cv_operator >> taskgroup_state_sentinel
-            if update_cv_operator:
-                update_cv_operator >> taskgroup_state_sentinel
+                pull_edfi_to_s3 >> copy_s3_to_snowflake >> taskgroup_state_sentinel
 
         return bulk_task_group
