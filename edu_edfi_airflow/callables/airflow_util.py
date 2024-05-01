@@ -3,6 +3,7 @@ import logging
 
 from typing import List, Optional, Tuple, Union
 
+from airflow.exceptions import AirflowFailException
 from airflow.models import Connection
 
 from edfi_api_client import camel_to_snake
@@ -127,3 +128,12 @@ def get_snowflake_params_from_conn(
 
     except KeyError:
         raise undefined_snowflake_error
+
+
+def fail_if_any_task_failed(**context):
+    """
+    Simple Python callable that raises an AirflowFailException if any task in the DAG has failed.
+    """
+    for ti in context["dag_run"].get_task_instances():
+        if ti.state == "failed":
+            raise AirflowFailException("One or more tasks in the DAG failed.")

@@ -242,45 +242,33 @@ class EdFiResourceDAG:
             self.resource_key_changes_task_group = None
 
         ### Chain task groups into the DAG between CV operators and Airflow state operators.
-        # Retrieve current and previous change versions to define an ingestion window.
-        if self.use_change_version:
-            cv_task_group: TaskGroup = self.build_change_version_task_group()
-
-        # Build an operator to increment the DBT var at the end of the run.
-        if self.dbt_incrementer_var:
-            dbt_var_increment_operator: PythonOperator = self.build_dbt_var_increment_operator()
-
-        # Create a dummy sentinel to display the success of the endpoint taskgroups.
-        dag_state_sentinel = DummyOperator(
-            task_id='dag_state_sentinel',
-            trigger_rule='none_failed',
-            dag=self.dag
-        )
-
         task_groups_to_chain = [
             self.resources_task_group,
             self.descriptors_task_group,
             self.resource_deletes_task_group,
             self.resource_key_changes_task_group,
         ]
+        task_groups_to_chain = list(filter(None, task_groups_to_chain))  # Remove Nones from the list.
 
-        for task_group in task_groups_to_chain:
+        # Create a dummy sentinel to display the success of the endpoint taskgroups.
+        dag_state_sentinel = PythonOperator(
+            task_id='dag_state_sentinel',
+            python_callable=airflow_util.fail_if_any_task_failed,
+            trigger_rule='all_done',
+            dag=self.dag
+        )
 
-            if not task_group:  # Ignore undefined task groups
-                continue
+        # Retrieve current and previous change versions to define an ingestion window.
+        if self.use_change_version:
+            cv_task_group: TaskGroup = self.build_change_version_task_group()
+            cv_task_group >> task_groups_to_chain
 
-            if self.use_change_version:
-                cv_task_group >> task_group
-
-            if self.dbt_incrementer_var:
-                task_group >> dbt_var_increment_operator
-
-            # Always apply the state sentinel.
-            task_group >> dag_state_sentinel
-
-        # The sentinel also holds the state of the CV and DBT var operators.
+        # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
-            dbt_var_increment_operator >> dag_state_sentinel
+            dbt_var_increment_operator: PythonOperator = self.build_dbt_var_increment_operator()
+            task_groups_to_chain >> dbt_var_increment_operator >> dag_state_sentinel  # Apply dag-sentinel as last task
+        else:
+            task_groups_to_chain >> dag_state_sentinel  # Apply dag-sentinel as last task
 
 
     ### Internal methods that should not be called directly.
@@ -396,7 +384,6 @@ class EdFiResourceDAG:
             trigger_rule='one_success',
             dag=self.dag
         )
-
 
     def build_default_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
