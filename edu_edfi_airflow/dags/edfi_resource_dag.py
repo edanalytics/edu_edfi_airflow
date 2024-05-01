@@ -502,18 +502,11 @@ class EdFiResourceDAG:
             else:
                 update_cv_operator = None
 
-            ### TASKGROUP STATE_SENTINEL
-            taskgroup_state_sentinel = DummyOperator(
-                task_id=F"{cleaned_group_id}__state_sentinel",
-                trigger_rule='all_success',
-                dag=self.dag
-            )
-
             ### Chain tasks into final task-group
             if get_cv_operator and update_cv_operator:
-                get_cv_operator >> pull_operators_list >> copy_s3_to_snowflake >> update_cv_operator >> taskgroup_state_sentinel
+                get_cv_operator >> pull_operators_list >> copy_s3_to_snowflake >> update_cv_operator
             else:
-                pull_operators_list >> copy_s3_to_snowflake >> taskgroup_state_sentinel
+                pull_operators_list >> copy_s3_to_snowflake
 
         return default_task_group
 
@@ -631,15 +624,8 @@ class EdFiResourceDAG:
                 get_key_changes=get_key_changes
             )
 
-            ### TASKGROUP STATE_SENTINEL
-            taskgroup_state_sentinel = DummyOperator(
-                task_id=F"{cleaned_group_id}__state_sentinel",
-                trigger_rule='all_success',
-                dag=self.dag
-            )
-
             ### Chain tasks into final task-group
-            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator >> taskgroup_state_sentinel
+            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
 
         return dynamic_task_group
     
@@ -776,17 +762,10 @@ class EdFiResourceDAG:
             else:
                 update_cv_operator = None
 
-            ### TASKGROUP STATE_SENTINEL
-            taskgroup_state_sentinel = DummyOperator(
-                task_id=F"{cleaned_group_id}__state_sentinel",
-                trigger_rule='all_success',
-                dag=self.dag
-            )
-
             ### Chain tasks into final task-group
             if get_cv_operator and update_cv_operator:
-                get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator >> taskgroup_state_sentinel
+                get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
             else:
-                pull_edfi_to_s3 >> copy_s3_to_snowflake >> taskgroup_state_sentinel
+                pull_edfi_to_s3 >> copy_s3_to_snowflake
 
         return bulk_task_group
