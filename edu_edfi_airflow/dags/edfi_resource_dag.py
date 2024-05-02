@@ -136,11 +136,6 @@ class EdFiResourceDAG:
         self.resource_deletes_task_group = None
         self.resource_key_changes_task_group = None
 
-        ### Populate variables static across all run-types.
-        self.s3_destination_directory = os.path.join(
-            self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
-        )
-
         # For a multiyear ODS, we need to specify school year as an additional query parameter.
         # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
         self.default_params = {}
@@ -216,11 +211,17 @@ class EdFiResourceDAG:
         else:
             raise ValueError(f"Run type {self.run_type} is not one of the expected values: [default, dynamic, bulk].")
 
+        # Set parent directory and create subfolders for each task group.
+        s3_parent_directory = os.path.join(
+            self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
+        )
+
         # Resources
         self.resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi_Resources",
             endpoints=list(self.resource_configs.keys()),
-            configs=self.resource_configs
+            configs=self.resource_configs,
+            s3_destination_dir=os.path.join(s3_parent_directory, 'resources')
             # Tables are built dynamically from the names of the endpoints.
         )
 
@@ -229,7 +230,8 @@ class EdFiResourceDAG:
             group_id="Ed-Fi_Descriptors",
             endpoints=list(self.descriptor_configs.keys()),
             configs=self.descriptor_configs,
-            table=self.descriptors_table
+            table=self.descriptors_table,
+            s3_destination_dir=os.path.join(s3_parent_directory, 'descriptors')
         )
 
         # Resource Deletes
@@ -238,6 +240,7 @@ class EdFiResourceDAG:
             endpoints=list(self.deletes_to_ingest),
             configs=self.resource_configs,
             table=self.deletes_table,
+            s3_destination_dir=os.path.join(s3_parent_directory, 'resource_deletes'),
             get_deletes=True
         )
 
@@ -248,6 +251,7 @@ class EdFiResourceDAG:
                 endpoints=list(self.key_changes_to_ingest),
                 configs=self.resource_configs,
                 table=self.key_changes_table,
+                s3_destination_dir=os.path.join(s3_parent_directory, 'resource_key_changes')
                 get_key_changes=True
             )
         else:
@@ -399,6 +403,7 @@ class EdFiResourceDAG:
         group_id: str,
 
         *,
+        s3_destination_dir: str,
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -412,9 +417,11 @@ class EdFiResourceDAG:
 
         :param endpoints:
         :param configs:
+        :param group_id:
+        :param s3_destination_dir:
+        :param table:
         :param get_deletes:
         :param get_key_changes:
-        :param parent_group:
         :return:
         """
         if not endpoints:
@@ -453,7 +460,7 @@ class EdFiResourceDAG:
 
                     tmp_dir=self.tmp_dir,
                     s3_conn_id=self.s3_conn_id,
-                    s3_destination_dir=self.s3_destination_directory,
+                    s3_destination_dir=s3_destination_dir,
                     s3_destination_filename=f"{display_resource}.jsonl",
                     
                     get_deletes=get_deletes,
@@ -489,7 +496,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
-                s3_destination_dir=self.s3_destination_directory,
+                s3_destination_dir=s3_destination_dir,
                 s3_destination_filename=map_xcom_attribute_by_index(1),
 
                 trigger_rule='all_done',
@@ -520,6 +527,7 @@ class EdFiResourceDAG:
         group_id: str,
 
         *,
+        s3_destination_dir: str,
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -533,9 +541,11 @@ class EdFiResourceDAG:
 
         :param endpoints:
         :param configs:
+        :param group_id:
+        :param s3_destination_dir:
+        :param table:
         :param get_deletes:
         :param get_key_changes:
-        :param parent_group:
         :return:
         """
         if not endpoints:
@@ -570,7 +580,7 @@ class EdFiResourceDAG:
 
                     tmp_dir= self.tmp_dir,
                     s3_conn_id= self.s3_conn_id,
-                    s3_destination_dir=self.s3_destination_directory,
+                    s3_destination_dir=s3_destination_dir,
 
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -609,7 +619,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
-                s3_destination_dir=self.s3_destination_directory,
+                s3_destination_dir=s3_destination_dir,
                 s3_destination_filename=map_xcom_attribute_by_index(1),
 
                 trigger_rule='all_done',
@@ -637,6 +647,7 @@ class EdFiResourceDAG:
         group_id: str,
 
         *,
+        s3_destination_dir: str,
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -650,9 +661,11 @@ class EdFiResourceDAG:
 
         :param endpoints:
         :param configs:
+        :param group_id:
+        :param s3_destination_dir:
+        :param table:
         :param get_deletes:
         :param get_key_changes:
-        :param parent_group:
         :return:
         """
         if not endpoints:
@@ -690,7 +703,7 @@ class EdFiResourceDAG:
 
                 tmp_dir=self.tmp_dir,
                 s3_conn_id=self.s3_conn_id,
-                s3_destination_dir=self.s3_destination_directory,
+                s3_destination_dir=s3_destination_dir,
                 s3_destination_filename=[
                     "{}.jsonl".format(self.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes))
                     for endpoint in endpoints        
@@ -742,7 +755,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
 
-                s3_destination_dir=self.s3_destination_directory,
+                s3_destination_dir=s3_destination_dir,
                 s3_destination_filename=map_xcom_attribute_by_index(1),
 
                 trigger_rule='none_skipped',  # Different trigger rule than default.
