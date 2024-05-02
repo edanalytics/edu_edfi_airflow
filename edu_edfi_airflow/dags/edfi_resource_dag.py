@@ -169,6 +169,18 @@ class EdFiResourceDAG:
             raise ValueError(
                 f"Passed configs are an unknown datatype! Expected Dict[endpoint: metadata] or List[(namespace, endpoint)] but received {type(configs)}"
             )
+        
+    @staticmethod
+    def build_display_name(resource: str, get_deletes: bool = False, get_key_changes: bool = False) -> str:
+        """
+        Universal helper method for building the display name of a resource.
+        """
+        if get_deletes:
+            return f"{resource}_deletes"
+        elif get_key_changes:
+            return f"{resource}_key_changes"
+        else:
+            return resource
 
 
     # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs`).
@@ -241,46 +253,45 @@ class EdFiResourceDAG:
         else:
             self.resource_key_changes_task_group = None
 
-        ### Chain task groups into the DAG between CV operators and Airflow state operators.
-        # Retrieve current and previous change versions to define an ingestion window.
-        if self.use_change_version:
-            cv_task_group: TaskGroup = self.build_change_version_task_group()
-
-        # Build an operator to increment the DBT var at the end of the run.
-        if self.dbt_incrementer_var:
-            dbt_var_increment_operator: PythonOperator = self.build_dbt_var_increment_operator()
-
-        # Create a dummy sentinel to display the success of the endpoint taskgroups.
-        dag_state_sentinel = DummyOperator(
-            task_id='dag_state_sentinel',
-            trigger_rule='none_failed',
-            dag=self.dag
-        )
-
-        task_groups_to_chain = [
+        ### Chain Ed-Fi task groups into the DAG between CV operators and Airflow state operators.
+        edfi_task_groups = [
             self.resources_task_group,
             self.descriptors_task_group,
             self.resource_deletes_task_group,
             self.resource_key_changes_task_group,
         ]
 
-        for task_group in task_groups_to_chain:
+        # Retrieve current and previous change versions to define an ingestion window.
+        if self.use_change_version:
+            cv_task_group: TaskGroup = self.build_change_version_task_group()
+        else:
+            cv_task_group = None
 
-            if not task_group:  # Ignore undefined task groups
-                continue
-
-            if self.use_change_version:
-                cv_task_group >> task_group
-
-            if self.dbt_incrementer_var:
-                task_group >> dbt_var_increment_operator
-
-            # Always apply the state sentinel.
-            task_group >> dag_state_sentinel
-
-        # The sentinel also holds the state of the CV and DBT var operators.
+        # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
-            dbt_var_increment_operator >> dag_state_sentinel
+            dbt_var_increment_operator = PythonOperator(
+                task_id='increment_dbt_variable',
+                python_callable=update_variable,
+                op_kwargs={
+                    'var': self.dbt_incrementer_var,
+                    'value': lambda x: int(x) + 1,
+                },
+                trigger_rule='one_success',
+                dag=self.dag
+            )
+        else:
+            dbt_var_increment_operator = None
+
+        # Create a dummy sentinel to display the success of the endpoint taskgroups.
+        dag_state_sentinel = PythonOperator(
+            task_id='dag_state_sentinel',
+            python_callable=airflow_util.fail_if_any_task_failed,
+            trigger_rule='all_done',
+            dag=self.dag
+        )
+
+        # Chain tasks and taskgroups into the DAG
+        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, dbt_var_increment_operator, dag_state_sentinel)
 
 
     ### Internal methods that should not be called directly.
@@ -356,7 +367,7 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-    def build_change_version_update_operator(self, task_id: str, endpoints: List[str], get_deletes: bool, get_key_changes: bool) -> PythonOperator:
+    def build_change_version_update_operator(self, task_id: str, endpoints: List[str], get_deletes: bool, get_key_changes: bool, **kwargs) -> PythonOperator:
         """
 
         :return:
@@ -377,39 +388,8 @@ class EdFiResourceDAG:
                 'get_key_changes': get_key_changes,
             },
             provide_context=True,
-            trigger_rule='all_success',
-            dag=self.dag
-        )
-
-    def build_dbt_var_increment_operator(self):
-        """
-
-        :return:
-        """
-        def short_circuit_update_variable(**kwargs):
-            """
-            Helper to build short-circuit logic into the update_variable callable if no new data was ingested.
-            :return:
-            """
-            from airflow.exceptions import AirflowSkipException
-
-            for task_id in kwargs['task'].upstream_task_ids:
-                if kwargs['ti'].xcom_pull(task_id):
-                    return update_variable(**kwargs)
-            else:
-                raise AirflowSkipException(
-                    "There is no new data to process using DBT. All upstream tasks skipped or failed."
-                )
-
-        return PythonOperator(
-            task_id='increment_dbt_variable',
-            python_callable=short_circuit_update_variable,
-            op_kwargs={
-                'var': self.dbt_incrementer_var,
-                'value': lambda x: int(x) + 1,
-            },
-            trigger_rule='all_done',
-            dag=self.dag
+            dag=self.dag,
+            **kwargs
         )
 
 
@@ -465,7 +445,7 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
-                display_resource = airflow_util.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes)
+                display_resource = self.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes)
                 endpoint_configs = configs.get(endpoint, {})
 
                 pull_edfi_to_s3 = EdFiToS3Operator(
@@ -525,20 +505,14 @@ class EdFiResourceDAG:
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    trigger_rule='all_success'
                 )
             else:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            for operator in pull_operators_list:
-                if get_cv_operator:
-                    get_cv_operator >> operator >> copy_s3_to_snowflake
-                else:
-                    operator >> copy_s3_to_snowflake
-
-            if update_cv_operator:
-                copy_s3_to_snowflake >> update_cv_operator
+            airflow_util.chain_tasks(get_cv_operator, pull_operators_list, copy_s3_to_snowflake, update_cv_operator)
 
         return default_task_group
 
@@ -622,7 +596,7 @@ class EdFiResourceDAG:
                         'num_retries': configs[endpoint__last_cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
                         'change_version_step_size': configs[endpoint__last_cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
                         'query_parameters': {**configs[endpoint__last_cv[0]].get('params', {}), **self.default_params},
-                        's3_destination_filename': "{}.jsonl".format(airflow_util.build_display_name(endpoint__last_cv[0], get_deletes=get_deletes, get_key_changes=get_key_changes)),
+                        's3_destination_filename': "{}.jsonl".format(self.build_display_name(endpoint__last_cv[0], get_deletes=get_deletes, get_key_changes=get_key_changes)),
                     })
                 )
             )
@@ -653,11 +627,12 @@ class EdFiResourceDAG:
                 task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                 endpoints=map_xcom_attribute_by_index(0),
                 get_deletes=get_deletes,
-                get_key_changes=get_key_changes
+                get_key_changes=get_key_changes,
+                trigger_rule='all_success'
             )
 
             ### Chain tasks into final task-group
-            get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
+            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_s3, copy_s3_to_snowflake, update_cv_operator)
 
         return dynamic_task_group
     
@@ -726,7 +701,7 @@ class EdFiResourceDAG:
                 s3_conn_id=self.s3_conn_id,
                 s3_destination_dir=self.s3_destination_directory,
                 s3_destination_filename=[
-                    "{}.jsonl".format(airflow_util.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes))
+                    "{}.jsonl".format(self.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes))
                     for endpoint in endpoints        
                 ],
                 
@@ -789,15 +764,13 @@ class EdFiResourceDAG:
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    trigger_rule='all_success'
                 )
             else:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            if get_cv_operator and update_cv_operator:
-                get_cv_operator >> pull_edfi_to_s3 >> copy_s3_to_snowflake >> update_cv_operator
-            else:
-                pull_edfi_to_s3 >> copy_s3_to_snowflake
+            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_s3, copy_s3_to_snowflake, update_cv_operator)
 
         return bulk_task_group

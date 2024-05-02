@@ -3,21 +3,11 @@ import logging
 
 from typing import List, Optional, Tuple, Union
 
+from airflow.exceptions import AirflowFailException
 from airflow.models import Connection
+from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
-
-
-def build_display_name(resource: str, get_deletes: bool = False, get_key_changes: bool = False) -> str:
-    """
-    Universal helper method for building the display name of a resource.
-    """
-    if get_deletes:
-        return f"{resource}_deletes"
-    elif get_key_changes:
-        return f"{resource}_key_changes"
-    else:
-        return resource
 
 
 def get_context_variable(context, variable_name: str, default: object):
@@ -127,3 +117,37 @@ def get_snowflake_params_from_conn(
 
     except KeyError:
         raise undefined_snowflake_error
+
+
+def fail_if_any_task_failed(**context):
+    """
+    Simple Python callable that raises an AirflowFailException if any task in the DAG has failed.
+    """
+    for ti in context["dag_run"].get_task_instances():
+        if ti.state == "failed":
+            raise AirflowFailException("One or more tasks in the DAG failed.")
+
+
+def chain_tasks(*tasks):
+    """
+    Alias of airflow's built-in chain, but remove Nones if present.
+    Note: this recurses only one level.
+    """
+    chain(*recursive_filter(None, tasks))
+
+def recursive_filter(func, iterable):
+    """
+    Taken from here: https://www.mycompiler.io/view/CDbwWjY
+    """
+    results = []
+    for elem in iterable:
+        if isinstance(elem, (list, tuple)):
+            result = recursive_filter(func, elem)
+            if result:
+                results.append(result)
+        elif func is None:
+            if elem:
+                results.append(elem)
+        elif func(elem):
+            results.append(elem)
+    return results
