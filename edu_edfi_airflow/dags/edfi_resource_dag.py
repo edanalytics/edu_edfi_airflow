@@ -164,18 +164,6 @@ class EdFiResourceDAG:
             raise ValueError(
                 f"Passed configs are an unknown datatype! Expected Dict[endpoint: metadata] or List[(namespace, endpoint)] but received {type(configs)}"
             )
-        
-    @staticmethod
-    def build_display_name(resource: str, get_deletes: bool = False, get_key_changes: bool = False) -> str:
-        """
-        Universal helper method for building the display name of a resource.
-        """
-        if get_deletes:
-            return f"{resource}_deletes"
-        elif get_key_changes:
-            return f"{resource}_key_changes"
-        else:
-            return resource
 
 
     # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs`).
@@ -449,11 +437,10 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
-                display_resource = self.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes)
                 endpoint_configs = configs.get(endpoint, {})
 
                 pull_edfi_to_s3 = EdFiToS3Operator(
-                    task_id=f"pull_{display_resource}_to_s3",
+                    task_id=endpoint,
 
                     edfi_conn_id=self.edfi_conn_id,
                     resource=endpoint,
@@ -461,7 +448,7 @@ class EdFiResourceDAG:
                     tmp_dir=self.tmp_dir,
                     s3_conn_id=self.s3_conn_id,
                     s3_destination_dir=s3_destination_dir,
-                    s3_destination_filename=f"{display_resource}.jsonl",
+                    s3_destination_filename=f"{endpoint}.jsonl",
                     
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -600,7 +587,7 @@ class EdFiResourceDAG:
                         'num_retries': configs[endpoint__last_cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
                         'change_version_step_size': configs[endpoint__last_cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
                         'query_parameters': {**configs[endpoint__last_cv[0]].get('params', {}), **self.default_params},
-                        's3_destination_filename': "{}.jsonl".format(self.build_display_name(endpoint__last_cv[0], get_deletes=get_deletes, get_key_changes=get_key_changes)),
+                        's3_destination_filename': f"{endpoint__last_cv[0]}.jsonl",
                     })
                 )
             )
@@ -705,8 +692,7 @@ class EdFiResourceDAG:
                 s3_conn_id=self.s3_conn_id,
                 s3_destination_dir=s3_destination_dir,
                 s3_destination_filename=[
-                    "{}.jsonl".format(self.build_display_name(endpoint, get_deletes=get_deletes, get_key_changes=get_key_changes))
-                    for endpoint in endpoints        
+                    f"{endpoint}.jsonl" for endpoint in endpoints        
                 ],
                 
                 get_deletes=get_deletes,
