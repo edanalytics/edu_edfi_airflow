@@ -239,7 +239,7 @@ class EdFiResourceDAG:
                 endpoints=list(self.key_changes_to_ingest),
                 configs=self.resource_configs,
                 table=self.key_changes_table,
-                s3_destination_dir=os.path.join(s3_parent_directory, 'resource_key_changes')
+                s3_destination_dir=os.path.join(s3_parent_directory, 'resource_key_changes'),
                 get_key_changes=True
             )
         else:
