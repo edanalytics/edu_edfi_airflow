@@ -326,6 +326,10 @@ class EdFiResourceDAG:
         get_key_changes: bool = False,
         return_only_deltas: bool = False
     ) -> PythonOperator:
+        """
+        
+        :return:
+        """
         op_kwargs = {
             'tenant_code': self.tenant_code,
             'api_year': self.api_year,
@@ -393,6 +397,7 @@ class EdFiResourceDAG:
         return airflow_util.xcom_pull_template(
             task_ids, prefix="dict(", suffix=f")['{key}']"
         )
+
 
     def build_default_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
