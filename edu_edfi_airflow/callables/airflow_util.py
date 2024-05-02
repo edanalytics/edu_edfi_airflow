@@ -9,6 +9,10 @@ from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from airflow.models.operator import Operator
+
 
 def get_context_variable(context, variable_name: str, default: object):
     """
@@ -75,7 +79,7 @@ def get_config_endpoints(context) -> List[str]:
 
 
 def xcom_pull_template(
-    task_ids: Union[str, List[str], Operator, List[Operator]],
+    task_ids: Union[str, 'Operator', List[str], List['Operator']],
     key: str = 'return_value',
     prefix: str = "",
     suffix: str = ""
