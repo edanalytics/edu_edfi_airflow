@@ -151,4 +151,4 @@ def recursive_filter(func, iterable):
     if isinstance(iterable, (list, tuple)):
         return list(filter(lambda x: recursive_filter(func, x), iterable))
     else:
-        return list(func(iterable))
+        return func(iterable)
