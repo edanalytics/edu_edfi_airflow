@@ -355,7 +355,7 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-    def build_change_version_update_operator(self, task_id: str, endpoints: List[str], get_deletes: bool, get_key_changes: bool) -> PythonOperator:
+    def build_change_version_update_operator(self, task_id: str, endpoints: List[str], get_deletes: bool, get_key_changes: bool, **kwargs) -> PythonOperator:
         """
 
         :return:
@@ -376,8 +376,8 @@ class EdFiResourceDAG:
                 'get_key_changes': get_key_changes,
             },
             provide_context=True,
-            trigger_rule='all_success',
-            dag=self.dag
+            dag=self.dag,
+            **kwargs
         )
 
 
@@ -493,7 +493,8 @@ class EdFiResourceDAG:
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    trigger_rule='all_success'
                 )
             else:
                 update_cv_operator = None
@@ -614,7 +615,8 @@ class EdFiResourceDAG:
                 task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                 endpoints=map_xcom_attribute_by_index(0),
                 get_deletes=get_deletes,
-                get_key_changes=get_key_changes
+                get_key_changes=get_key_changes,
+                trigger_rule='all_success'
             )
 
             ### Chain tasks into final task-group
@@ -750,7 +752,8 @@ class EdFiResourceDAG:
                     task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    trigger_rule='all_success'
                 )
             else:
                 update_cv_operator = None
