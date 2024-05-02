@@ -327,7 +327,7 @@ class EdFiResourceDAG:
         return_only_deltas: bool = False
     ) -> PythonOperator:
         """
-        
+
         :return:
         """
         op_kwargs = {
@@ -355,7 +355,13 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-    def build_change_version_update_operator(self, task_id: str, endpoints: List[str], get_deletes: bool, get_key_changes: bool, **kwargs) -> PythonOperator:
+    def build_change_version_update_operator(self,
+        task_id: str,
+        endpoints: List[str],
+        get_deletes: bool,
+        get_key_changes: bool,
+        **kwargs
+    ) -> PythonOperator:
         """
 
         :return:
@@ -378,6 +384,7 @@ class EdFiResourceDAG:
             dag=self.dag,
             **kwargs
         )
+
 
     # Polymorphic Ed-Fi TaskGroups
     @staticmethod
@@ -547,6 +554,10 @@ class EdFiResourceDAG:
         """
         if not endpoints:
             return None
+        
+        # Dynamic runs only make sense in the context of change-versions.
+        if not self.use_change_version:
+            raise ValueError("Dynamic run-type requires `use_change_version to be True`.")
 
         with TaskGroup(
             group_id=group_id,
@@ -555,14 +566,10 @@ class EdFiResourceDAG:
             dag=self.dag
         ) as dynamic_task_group:
 
-            # Dynamic runs only make sense in the context of change-versions.
-            if not self.use_change_version:
-                raise ValueError("Dynamic run-type requires `use_change_version to be True`.")
-
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
             get_cv_operator = self.build_change_version_get_operator(
                 task_id=f"get_last_change_versions",
-                endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
+                endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
                 return_only_deltas=True  # For dynamic mapping, only process endpoints with new data to ingest.
@@ -589,15 +596,15 @@ class EdFiResourceDAG:
                     dag=self.dag
                 )
                 .expand_kwargs(
-                    get_cv_operator.output.map(lambda endpoint__last_cv: {
-                        'resource': endpoint__last_cv[0],
-                        'min_change_version': endpoint__last_cv[1],
-                        'namespace': configs[endpoint__last_cv[0]].get('namespace', self.DEFAULT_NAMESPACE),
-                        'page_size': configs[endpoint__last_cv[0]].get('page_size', self.DEFAULT_PAGE_SIZE),
-                        'num_retries': configs[endpoint__last_cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
-                        'change_version_step_size': configs[endpoint__last_cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-                        'query_parameters': {**configs[endpoint__last_cv[0]].get('params', {}), **self.default_params},
-                        's3_destination_filename': f"{endpoint__last_cv[0]}.jsonl",
+                    get_cv_operator.output.map(lambda endpoint__cv: {
+                        'resource': endpoint__cv[0],
+                        'min_change_version': endpoint__cv[1],
+                        'namespace': configs[endpoint__cv[0]].get('namespace', self.DEFAULT_NAMESPACE),
+                        'page_size': configs[endpoint__cv[0]].get('page_size', self.DEFAULT_PAGE_SIZE),
+                        'num_retries': configs[endpoint__cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
+                        'change_version_step_size': configs[endpoint__cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
+                        'query_parameters': {**configs[endpoint__cv[0]].get('params', {}), **self.default_params},
+                        's3_destination_filename': f"{endpoint__cv[0]}.jsonl",
                     })
                 )
             )
