@@ -423,17 +423,15 @@ class EdFiResourceDAG:
         # Wrap the branch in a task group
         with TaskGroup(
             group_id=group_id,
-            prefix_group_id=False,
+            prefix_group_id=True,
             parent_group=None,
             dag=self.dag
         ) as default_task_group:
-            
-            cleaned_group_id = group_id.replace(' ', "_").lower()
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
-                    task_id=f"{cleaned_group_id}__get_last_change_versions_from_snowflake",
+                    task_id=f"get_last_change_versions_from_snowflake",
                     endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -484,7 +482,7 @@ class EdFiResourceDAG:
             )
 
             copy_s3_to_snowflake = BulkS3ToSnowflakeOperator(
-                task_id=f"{cleaned_group_id}__copy_all_endpoints_into_snowflake",
+                task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
                 resource=map_xcom_attribute_by_index(0),
@@ -502,7 +500,7 @@ class EdFiResourceDAG:
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
-                    task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
+                    task_id=f"update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -547,7 +545,7 @@ class EdFiResourceDAG:
         # Wrap the branch in a task group
         with TaskGroup(
             group_id=group_id,
-            prefix_group_id=False,
+            prefix_group_id=True,
             parent_group=None,
             dag=self.dag
         ) as dynamic_task_group:
@@ -556,11 +554,9 @@ class EdFiResourceDAG:
             if not self.use_change_version:
                 raise ValueError("Dynamic run-type requires `use_change_version to be True`.")
 
-            cleaned_group_id = group_id.replace(' ', "_").lower()
-
             ### LATEST SNOWFLAKE CHANGE VERSIONS
             get_cv_operator = self.build_change_version_get_operator(
-                task_id=f"{cleaned_group_id}__get_last_change_versions",
+                task_id=f"get_last_change_versions",
                 endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
@@ -570,7 +566,7 @@ class EdFiResourceDAG:
             ### EDFI TO S3
             pull_edfi_to_s3 = (EdFiToS3Operator
                 .partial(
-                    task_id=f"{cleaned_group_id}__pull_dynamic_endpoints_to_s3",
+                    task_id=f"pull_dynamic_endpoints_to_s3",
 
                     edfi_conn_id=self.edfi_conn_id,
 
@@ -607,7 +603,7 @@ class EdFiResourceDAG:
             )
 
             copy_s3_to_snowflake = BulkS3ToSnowflakeOperator(
-                task_id=f"{cleaned_group_id}__copy_all_endpoints_into_snowflake",
+                task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
                 resource=map_xcom_attribute_by_index(0),
@@ -624,7 +620,7 @@ class EdFiResourceDAG:
 
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             update_cv_operator = self.build_change_version_update_operator(
-                task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
+                task_id=f"update_change_versions_in_snowflake",
                 endpoints=map_xcom_attribute_by_index(0),
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
@@ -667,17 +663,15 @@ class EdFiResourceDAG:
         # Wrap the branch in a task group
         with TaskGroup(
             group_id=group_id,
-            prefix_group_id=False,
+            prefix_group_id=True,
             parent_group=None,
             dag=self.dag
         ) as bulk_task_group:
 
-            cleaned_group_id = group_id.replace(' ', "_").lower()
-
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
-                    task_id=f"{cleaned_group_id}__get_last_change_versions",
+                    task_id=f"get_last_change_versions",
                     endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -692,7 +686,7 @@ class EdFiResourceDAG:
 
             ### EDFI TO S3: Output Dict[endpoint, filename] with all successful tasks
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
-                task_id=f"{cleaned_group_id}__pull_all_endpoints_to_s3",
+                task_id=f"pull_all_endpoints_to_s3",
 
                 edfi_conn_id=self.edfi_conn_id,
                 resource=endpoints,
@@ -743,7 +737,7 @@ class EdFiResourceDAG:
             )
 
             copy_s3_to_snowflake = BulkS3ToSnowflakeOperator(
-                task_id=f"{cleaned_group_id}__copy_all_endpoints_into_snowflake",
+                task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
                 resource=map_xcom_attribute_by_index(0),
@@ -761,7 +755,7 @@ class EdFiResourceDAG:
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
-                    task_id=f"{cleaned_group_id}__update_change_versions_in_snowflake",
+                    task_id=f"update_change_versions_in_snowflake",
                     endpoints=map_xcom_attribute_by_index(0),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
