@@ -2,7 +2,6 @@ import os
 from typing import Dict, List, Optional, Tuple, Union
 
 from airflow.models.param import Param
-from airflow.operators.dummy import DummyOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
@@ -17,28 +16,28 @@ from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkS
 
 class EdFiResourceDAG:
     """
-    "Ed-Fi3 Change Version Window" TaskGroup
-
-    [Ed-Fi Max Change Version] -> [Reset Snowflake Change Versions]
-
     If use_change_version is True, initialize a change group that retrieves the latest Ed-Fi change version.
     If full_refresh is triggered in DAG configs, reset change versions for the resources being processed in Snowflake.
+
+    DAG Structure:
+        (Ed-Fi3 Change Version Window) >> [Ed-Fi Resources/Descriptors (Deletes/KeyChanges)] >> (increment_dbt_variable) >> dag_state_sentinel
     
+    "Ed-Fi3 Change Version Window" TaskGroup:
+        get_latest_edfi_change_version >> reset_previous_change_versions_in_snowflake
 
-    There are three types of Ed-Fi endpoint TaskGroups. All take the same inputs and return the same outputs (polymorphism).
+    "Ed-Fi Resources/Descriptors (Deletes/KeyChanges)" TaskGroup:
+        (get_cv_operator) >> [Ed-Fi Endpoint Task] >> copy_all_endpoints_into_snowflake >> (update_change_versions_in_snowflake)
 
+    There are three types of Ed-Fi Endpoint Tasks. All take the same inputs and return the same outputs (i.e., polymorphism).
         "Default" TaskGroup
         - Create one task per endpoint.
-
         "Dynamic" TaskGroup
         - Dynamically task-map all endpoints. This function presumes that only endpoints with deltas to ingest are passed as input.
-        
         "Bulk" TaskGroup
         - Loop over each endpoint in a single task.
 
     All task groups receive a list of (endpoint, last_change_version) tuples as input.
-    These are referenced in EdFiToS3 operators, and ingestion from Ed-Fi is attempted for each.
-    All that succeed are passed onward as a {endpoint: filename} dictionary to the S3ToSnowflake and UpdateSnowflakeCV operators.
+    All that successfully retrieve records are passed onward as a (endpoint, filename) tuples to the S3ToSnowflake and UpdateSnowflakeCV operators.
     """
     DEFAULT_NAMESPACE: str = 'ed-fi'
     DEFAULT_PAGE_SIZE: int = 500
