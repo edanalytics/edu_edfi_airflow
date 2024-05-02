@@ -5,7 +5,6 @@ from typing import List, Optional, Tuple, Union
 
 from airflow.exceptions import AirflowFailException
 from airflow.models import Connection
-from airflow.models.operator import Operator
 from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
@@ -90,14 +89,14 @@ def xcom_pull_template(
     # Retrieve string representations for each XCom in a list.
     if isinstance(task_ids, (list, tuple)):
         task_ids = [
-            task_id.task_id if issubclass(type(task_id), Operator) else task_id
+            task_id.task_id if hasattr(task_id, 'task_id') else task_id
             for task_id in task_ids
         ]
         task_ids_string = "['{}']".format("','".join(task_ids))
     
     # Or retrieve string representation of a single XCom.
     else:
-        if issubclass(type(task_ids), Operator):
+        if hasattr(task_ids, 'task_id'):
             task_ids = task_ids.task_id
         task_ids_string = f"'{task_ids}'"
 
