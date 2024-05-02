@@ -384,6 +384,15 @@ class EdFiResourceDAG:
         return airflow_util.xcom_pull_template(
             task_ids, suffix=f" | map(attribute={idx}) | list"
         )
+    
+    @staticmethod
+    def xcom_pull_template_get_key(task_ids: Union[str, List[str], 'BaseOperator', List['BaseOperator']], key: str):
+        """
+        Many XComs in this DAG are lists of tuples. This converts the XCom to a dictionary and returns the value for a given key.
+        """
+        return airflow_util.xcom_pull_template(
+            task_ids, prefix="dict(", suffix=f")['{key}']"
+        )
 
     def build_default_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
@@ -452,7 +461,7 @@ class EdFiResourceDAG:
                     
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
-                    min_change_version=airflow_util.xcom_pull_template(get_cv_operator, prefix="dict(", suffix=f")['{endpoint}']") if get_cv_operator else None,
+                    min_change_version=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else None,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                     # Optional config-specified run-attributes (overridden by those in configs)
@@ -666,7 +675,7 @@ class EdFiResourceDAG:
                     get_key_changes=get_key_changes,
                 )
                 min_change_versions = [
-                    airflow_util.xcom_pull_template(get_cv_operator, prefix="dict(", suffix=f")['{endpoint}']")
+                    self.xcom_pull_template_get_key(get_cv_operator, endpoint)
                     for endpoint in endpoints
                 ]
             else:
