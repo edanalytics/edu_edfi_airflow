@@ -128,13 +128,6 @@ class EdFiResourceDAG:
 
         self.dag = EACustomDAG(params=dag_params, **kwargs)
 
-        ### Create nested task-groups for cleaner webserver UI
-        # (Make these lazy to only show populated TaskGroups in the UI.)
-        self.resources_task_group = None
-        self.descriptors_task_group = None
-        self.resource_deletes_task_group = None
-        self.resource_key_changes_task_group = None
-
         # For a multiyear ODS, we need to specify school year as an additional query parameter.
         # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
         self.default_params = {}
@@ -204,7 +197,7 @@ class EdFiResourceDAG:
         )
 
         # Resources
-        self.resources_task_group: Optional[TaskGroup] = task_group_callable(
+        resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi_Resources",
             endpoints=list(self.resource_configs.keys()),
             configs=self.resource_configs,
@@ -213,7 +206,7 @@ class EdFiResourceDAG:
         )
 
         # Descriptors
-        self.descriptors_task_group: Optional[TaskGroup] = task_group_callable(
+        descriptors_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Descriptors",
             endpoints=list(self.descriptor_configs.keys()),
             configs=self.descriptor_configs,
@@ -222,7 +215,7 @@ class EdFiResourceDAG:
         )
 
         # Resource Deletes
-        self.resource_deletes_task_group: Optional[TaskGroup] = task_group_callable(
+        resource_deletes_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Resource_Deletes",
             endpoints=list(self.deletes_to_ingest),
             configs=self.resource_configs,
@@ -233,7 +226,7 @@ class EdFiResourceDAG:
 
         # Resource Key-Changes (only applicable in Ed-Fi v6.x and up)
         if self.get_key_changes:
-            self.resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
+            resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
                 group_id="Ed-Fi Resource Key Changes",
                 endpoints=list(self.key_changes_to_ingest),
                 configs=self.resource_configs,
@@ -242,14 +235,14 @@ class EdFiResourceDAG:
                 get_key_changes=True
             )
         else:
-            self.resource_key_changes_task_group = None
+            resource_key_changes_task_group = None
 
         ### Chain Ed-Fi task groups into the DAG between CV operators and Airflow state operators.
         edfi_task_groups = [
-            self.resources_task_group,
-            self.descriptors_task_group,
-            self.resource_deletes_task_group,
-            self.resource_key_changes_task_group,
+            resources_task_group,
+            descriptors_task_group,
+            resource_deletes_task_group,
+            resource_key_changes_task_group,
         ]
 
         # Retrieve current and previous change versions to define an ingestion window.
