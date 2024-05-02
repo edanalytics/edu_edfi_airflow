@@ -9,6 +9,10 @@ from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from airflow.models.operator import Operator
+
 
 def get_context_variable(context, variable_name: str, default: object):
     """
@@ -75,7 +79,7 @@ def get_config_endpoints(context) -> List[str]:
 
 
 def xcom_pull_template(
-    task_ids: Union[str, List[str]],
+    task_ids: Union[str, 'Operator', List[str], List['Operator']],
     key: str = 'return_value',
     prefix: str = "",
     suffix: str = ""
@@ -86,13 +90,21 @@ def xcom_pull_template(
     :param key: The key to retrieve. Default: return_value
     :return: A formatted Jinja string for the xcom pull
     """
-    if not isinstance(task_ids, str):
+    # Retrieve string representations for each XCom in a list.
+    if isinstance(task_ids, (list, tuple)):
+        task_ids = [
+            task_id.task_id if hasattr(task_id, 'task_id') else task_id
+            for task_id in task_ids
+        ]
         task_ids_string = "['{}']".format("','".join(task_ids))
+    
+    # Or retrieve string representation of a single XCom.
     else:
+        if hasattr(task_ids, 'task_id'):
+            task_ids = task_ids.task_id
         task_ids_string = f"'{task_ids}'"
 
     xcom_string = f"{prefix} ti.xcom_pull(task_ids={task_ids_string}, key='{key}') {suffix}"
-
     return '{{ ' + xcom_string + ' }}'
 
 
