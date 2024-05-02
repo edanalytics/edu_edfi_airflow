@@ -377,7 +377,7 @@ class EdFiResourceDAG:
 
     # Polymorphic Ed-Fi TaskGroups
     @staticmethod
-    def xcom_pull_template_map_idx(task_ids: Union[str, List[str], 'BaseOperator', List['BaseOperator']], idx: int):
+    def xcom_pull_template_map_idx(task_ids, idx: int):
         """
         Many XComs in this DAG are lists of tuples. This overloads xcom_pull_template to retrieve a list of items at a given index.
         """
@@ -386,7 +386,7 @@ class EdFiResourceDAG:
         )
     
     @staticmethod
-    def xcom_pull_template_get_key(task_ids: Union[str, List[str], 'BaseOperator', List['BaseOperator']], key: str):
+    def xcom_pull_template_get_key(task_ids, key: str):
         """
         Many XComs in this DAG are lists of tuples. This converts the XCom to a dictionary and returns the value for a given key.
         """
