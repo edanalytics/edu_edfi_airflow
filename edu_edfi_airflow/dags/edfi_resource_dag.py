@@ -218,7 +218,7 @@ class EdFiResourceDAG:
 
         # Resources
         self.resources_task_group: Optional[TaskGroup] = task_group_callable(
-            group_id = "Ed-Fi Resources",
+            group_id = "Ed-Fi_Resources",
             endpoints=list(self.resource_configs.keys()),
             configs=self.resource_configs
             # Tables are built dynamically from the names of the endpoints.
@@ -226,7 +226,7 @@ class EdFiResourceDAG:
 
         # Descriptors
         self.descriptors_task_group: Optional[TaskGroup] = task_group_callable(
-            group_id="Ed-Fi Descriptors",
+            group_id="Ed-Fi_Descriptors",
             endpoints=list(self.descriptor_configs.keys()),
             configs=self.descriptor_configs,
             table=self.descriptors_table
@@ -234,7 +234,7 @@ class EdFiResourceDAG:
 
         # Resource Deletes
         self.resource_deletes_task_group: Optional[TaskGroup] = task_group_callable(
-            group_id="Ed-Fi Resource Deletes",
+            group_id="Ed-Fi_Resource_Deletes",
             endpoints=list(self.deletes_to_ingest),
             configs=self.resource_configs,
             table=self.deletes_table,
@@ -420,7 +420,6 @@ class EdFiResourceDAG:
         if not endpoints:
             return None
         
-        # Wrap the branch in a task group
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=True,
@@ -542,7 +541,6 @@ class EdFiResourceDAG:
         if not endpoints:
             return None
 
-        # Wrap the branch in a task group
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=True,
@@ -554,7 +552,7 @@ class EdFiResourceDAG:
             if not self.use_change_version:
                 raise ValueError("Dynamic run-type requires `use_change_version to be True`.")
 
-            ### LATEST SNOWFLAKE CHANGE VERSIONS
+            ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
             get_cv_operator = self.build_change_version_get_operator(
                 task_id=f"get_last_change_versions",
                 endpoints=[(configs[endpoint].get('namespace', 'ed-fi'), endpoint) for endpoint in endpoints],
@@ -563,7 +561,7 @@ class EdFiResourceDAG:
                 return_only_deltas=True  # For dynamic mapping, only process endpoints with new data to ingest.
             )
 
-            ### EDFI TO S3
+            ### EDFI TO S3: Output Tuple[endpoint, filename] per successful task
             pull_edfi_to_s3 = (EdFiToS3Operator
                 .partial(
                     task_id=f"pull_dynamic_endpoints_to_s3",
@@ -660,7 +658,6 @@ class EdFiResourceDAG:
         if not endpoints:
             return None
 
-        # Wrap the branch in a task group
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=True,
