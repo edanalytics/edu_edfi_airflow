@@ -24,7 +24,7 @@ The following metadata are customizable per endpoint:
 - page_size (default `500`)
 - num_retries (default `5`)
 - change_version_step_size (default `50000`)
-- query_parameters (default `{}`)
+- params (default `{}`)
 
 Note: Historically, the `add_resource()`, `add_resource_deletes()`, and `add_descriptor()` methods were used to populate endpoint metadata.
 These methods will be deprecated in a future release.
