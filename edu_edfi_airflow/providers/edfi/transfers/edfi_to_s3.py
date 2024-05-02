@@ -255,6 +255,10 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
     Use a paged-get to retrieve a list of resources from the ODS.
     Save the results as JSON lines to `tmp_dir` on the server.
     Once pagination is complete, write the full results to S3.
+
+    If all endpoints skip, raise an AirflowSkipException.
+    If at least one endpoint fails, push the XCom and raise an AirflowFailException.
+    Otherwise, return a successful XCom.
     """
     def execute(self, context) -> str:
         """
@@ -300,6 +304,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         return_tuples = []
+        failed_endpoints = []  # Track which endpoints failed during ingestion.
 
         # Presume all argument lists are equal length, and iterate each endpoint. Only add to the return in successful pulls.
         zip_arguments = [
@@ -342,10 +347,22 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             except AirflowSkipException:
                 continue
 
-        # Note: this return-type differs from that of the parent operator.
-        # We need to know which endpoints succeeded to limit the copies completed in the next step.
+            except Exception:
+                failed_endpoints.append(resource)
+                logging.warning(
+                    f"Unable to complete ingestion of endpoint: {namespace}/{resource}"
+                )
+                continue
+
+        if failed_endpoints:
+            context['ti'].xcom_push(key='return_value', value=return_tuples)
+            raise AirflowFailException(
+                f"Failed ingestion of one or more endpoints: {failed_endpoints}"
+            )
+
         if not return_tuples:
-            logging.info("No new data was ingested for any endpoints. Raising a skip exception...")
-            raise AirflowSkipException
+            raise AirflowSkipException(
+                "No new data was ingested for any endpoints. Skipping downstream copy..."
+            )
 
         return return_tuples
