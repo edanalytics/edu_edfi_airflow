@@ -145,7 +145,7 @@ def chain_tasks(*tasks):
     Alias of airflow's built-in chain, but remove Nones if present.
     Note: this recurses only one level.
     """
-    chain(recursive_filter(None, tasks))
+    chain(recursive_filter(lambda task: task is not None, tasks))
 
 def recursive_filter(func, iterable):
     if isinstance(iterable, (list, tuple)):
