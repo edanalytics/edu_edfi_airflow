@@ -10,18 +10,6 @@ from airflow.models.baseoperator import chain
 from edfi_api_client import camel_to_snake
 
 
-def build_display_name(resource: str, get_deletes: bool = False, get_key_changes: bool = False) -> str:
-    """
-    Universal helper method for building the display name of a resource.
-    """
-    if get_deletes:
-        return f"{resource}_deletes"
-    elif get_key_changes:
-        return f"{resource}_key_changes"
-    else:
-        return resource
-
-
 def get_context_variable(context, variable_name: str, default: object):
     """
     Generic method to search the DAG Run conf and params for a context variable.
