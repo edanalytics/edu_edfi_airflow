@@ -161,7 +161,8 @@ def get_previous_change_versions_with_deltas(
     return_tuples = get_previous_change_versions(
         tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
         snowflake_conn_id=snowflake_conn_id, change_version_table=change_version_table,
-        get_deletes=get_deletes, get_key_changes=get_key_changes
+        get_deletes=get_deletes, get_key_changes=get_key_changes,
+        **context
     )
 
     edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
