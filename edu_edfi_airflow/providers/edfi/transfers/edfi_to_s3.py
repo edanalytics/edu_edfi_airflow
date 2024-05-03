@@ -126,12 +126,12 @@ class EdFiToS3Operator(BaseOperator):
         
         # Run change-version sanity checks to make sure we aren't doing something wrong.
         if min_change_version == max_change_version:
-            logging.info("ODS is unchanged since previous pull.")
+            logging.info("    ODS is unchanged since previous pull.")
             raise AirflowSkipException
 
         if max_change_version < min_change_version:
             raise AirflowFailException(
-                "Apparent out-of-sequence run: current change version is smaller than previous! Run a full-refresh of this resource to resolve!"
+                "    Apparent out-of-sequence run: current change version is smaller than previous! Run a full-refresh of this resource to resolve!"
             )
 
     def pull_edfi_to_s3(self,
@@ -350,7 +350,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             except Exception:
                 failed_endpoints.append(resource)
                 logging.warning(
-                    f"Unable to complete ingestion of endpoint: {namespace}/{resource}"
+                    f"    Unable to complete ingestion of endpoint: {namespace}/{resource}"
                 )
                 continue
 
