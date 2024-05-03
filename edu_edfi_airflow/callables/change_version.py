@@ -183,6 +183,9 @@ def get_previous_change_versions_with_deltas(
         if config_endpoints and endpoint not in config_endpoints:
             continue
 
+        if last_max_version == max_change_version:
+            continue
+
         namespace = endpoint_namespaces[endpoint]
 
         try:
