@@ -495,13 +495,12 @@ class EdFiResourceDAG:
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
+                
                 resource=self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
-
-                s3_destination_dir=s3_destination_dir,
-                s3_destination_filename=self.xcom_pull_template_map_idx(pull_operators_list, 1),
+                s3_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -614,13 +613,12 @@ class EdFiResourceDAG:
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
+                
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
-
-                s3_destination_dir=s3_destination_dir,
-                s3_destination_filename=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
+                s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -745,13 +743,12 @@ class EdFiResourceDAG:
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
+
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
-
-                s3_destination_dir=s3_destination_dir,
-                s3_destination_filename=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
+                s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
 
                 trigger_rule='none_skipped',  # Different trigger rule than default.
                 dag=self.dag

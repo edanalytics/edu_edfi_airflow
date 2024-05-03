@@ -175,17 +175,28 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
 
         if isinstance(self.table_name, str):
             self.table_name = [self.table_name] * len(self.resource)
-
-        # Force destination_dir and destination_filename arguments to be used.
-        if self.s3_destination_key or not (self.s3_destination_dir and self.s3_destination_filename):
-            raise ValueError(
-                "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
-            )
+            
+        ### Optionally set destination key by concatting separate args for dir and filename
+        if not self.s3_destination_key:
+            if not (self.s3_destination_dir and self.s3_destination_filename):
+                raise ValueError(
+                    f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
+                )
         
-        if isinstance(self.s3_destination_filename, str):
+            if isinstance(self.s3_destination_filename, str):
+                raise ValueError(
+                    "Bulk operators require argument `s3_destination_filename` to be a list."
+                )
+            
+            self.s3_destination_key = [
+                os.path.join(self.s3_destination_dir, filename)
+                for filename in self.s3_destination_filename
+            ]
+        
+        elif isinstance(self.s3_destination_key, str):
             raise ValueError(
-                "Bulk operators require argument `s3_destination_filename` to be a list."
-            )
+                    "Bulk operators require argument `s3_destination_key` to be a list."
+                )
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
         self.set_edfi_attributes()
@@ -193,13 +204,11 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         xcom_returns = []
 
-        for idx, (resource, table, s3_destination_filename) in enumerate(zip(self.resource, self.table_name, self.s3_destination_filename), start=1):
+        for idx, (resource, table, s3_destination_key) in enumerate(zip(self.resource, self.table_name, self.s3_destination_key), start=1):
             logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
-
-            s3_key = os.path.join(self.s3_destination_dir, s3_destination_filename)
             self.run_sql_queries(
                 name=resource, table=table,
-                s3_key=s3_key, full_refresh=airflow_util.is_full_refresh(context)
+                s3_key=s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
             )
 
             if self.xcom_return:
