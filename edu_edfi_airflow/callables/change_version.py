@@ -75,9 +75,6 @@ def get_previous_change_versions(
     snowflake_conn_id: str,
     change_version_table: str,
 
-    edfi_conn_id: Optional[str] = None,
-    max_change_version: Optional[int] = None,
-
     get_deletes: bool = False,
     get_key_changes: bool = False,
 
@@ -96,8 +93,6 @@ def get_previous_change_versions(
     At the end of the ingest, the change version table is updated with the most recent version found in EdFi.
 
     If a full refresh is being completed, all change versions for this tenant-year have been set to inactive.
-
-    If an Ed-Fi connection and max_change_version are specified, each endpoint is checked for deltas and only updates are returned.
     """
     # Skip deletes/key-changes if a full-refresh.
     if airflow_util.is_full_refresh(context) and (get_deletes or get_key_changes):
@@ -127,57 +122,100 @@ def get_previous_change_versions(
         group by all
     """
 
+    ### Retrieve previous endpoint-level change versions and push as an XCom.
     prior_change_versions = dict(SnowflakeHook(snowflake_conn_id).get_records(qry_prior_max))
     logging.info(
         f"Collected prior change versions for {len(prior_change_versions)} endpoints."
     )
 
-    ### Retrieve previous endpoint-level change versions and push as an XCom.
     return_tuples = []
-    failed_total_counts = []  # Track which endpoints failed total-count gets in condition block.
-
-    # Only initialize the Ed-Fi connection once if there is a max-change-version to compare against.
-    if edfi_conn_id:
-        edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
 
     for namespace, endpoint in endpoints:
         last_max_version = prior_change_versions.get(endpoint, 0)
-
-        # If Ed-Fi Conn is attached, only add to XCom if there are new rows to ingest.
-        if edfi_conn_id and max_change_version is not None:
-
-            try:
-                resource = edfi_conn.resource(
-                    endpoint, namespace=namespace,
-                    get_deletes=get_deletes, get_key_changes=get_key_changes,
-                    min_change_version=last_max_version,
-                    max_change_version=max_change_version
-                )
-
-                if not resource.total_count():
-                    continue
-            
-            except Exception:
-                logging.warning(
-                    f"Unable to retrieve record count for endpoint: {namespace}/{endpoint}"
-                )
-                failed_total_counts.append(endpoint)  # Still return the tuples, but mark as failed in the UI.
-                continue
-
-        return_tuples.append((endpoint, last_max_version))
         logging.info(f"{namespace}/{endpoint}: {last_max_version}")
-
-    # Always push the xcom, but raise an AirflowFailException if any of the TotalCount gets failed.
-    if failed_total_counts:
-        context['ti'].xcom_push(key='return_value', value=return_tuples)
-        raise AirflowFailException(
-            f"Failed getting delta row count for one or more endpoints: {failed_total_counts}"
-        )
-
-    if not return_tuples:
-        raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
+        return_tuples.append((endpoint, last_max_version))
 
     return return_tuples
+
+
+def get_previous_change_versions_with_deltas(
+    tenant_code: str,
+    api_year: int,
+    endpoints: List[Tuple[str, str]],
+
+    *,
+    snowflake_conn_id: str,
+    change_version_table: str,
+
+    edfi_conn_id: Optional[str],
+    max_change_version: Optional[int],
+
+    get_deletes: bool = False,
+    get_key_changes: bool = False,
+
+    **context
+) -> None:
+    """
+    Overload get_previous_change_versions() with a check against the Ed-Fi API to only return endpoints with new data to process.
+    """
+    return_tuples = get_previous_change_versions(
+        tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
+        snowflake_conn_id=snowflake_conn_id, change_version_table=change_version_table,
+        get_deletes=get_deletes, get_key_changes=get_key_changes
+    )
+
+    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
+
+    # Only ping the API if the endpoint is specified in the run.
+    config_endpoints = airflow_util.get_config_endpoints(context)
+
+    # Convert (namespace, endpoint) tuples to a {endpoint: namespace} dictionary.
+    endpoint_namespaces = {endpoint: namespace for namespace, endpoint in endpoints}
+
+    # Track which endpoints have deltas or failed total-count gets.
+    delta_endpoints = []
+    failed_endpoints = []
+
+    for endpoint, last_max_version in return_tuples:
+
+        # If a subset of endpoints have been selected, only get CV counts for these.
+        if config_endpoints and endpoint not in config_endpoints:
+            continue
+
+        namespace = endpoint_namespaces[endpoint]
+
+        try:
+            resource = edfi_conn.resource(
+                endpoint, namespace=namespace,
+                get_deletes=get_deletes, get_key_changes=get_key_changes,
+                min_change_version=last_max_version,
+                max_change_version=max_change_version
+            )
+
+            if not (delta_record_count := resource.total_count()):
+                continue
+
+            logging.info(f"{namespace}/{endpoint}: {delta_record_count} new records")
+            delta_endpoints.append((endpoint, last_max_version))
+        
+        except Exception:
+            logging.warning(
+                f"Unable to retrieve record count for endpoint: {namespace}/{endpoint}"
+            )
+            failed_endpoints.append(endpoint)  # Still return the tuples, but mark as failed in the UI.
+            continue
+
+    # Always push the xcom, but raise an AirflowFailException if any of the TotalCount gets failed.
+    if failed_endpoints:
+        context['ti'].xcom_push(key='return_value', value=delta_endpoints)
+        raise AirflowFailException(
+            f"Failed getting delta row count for one or more endpoints: {failed_endpoints}"
+        )
+
+    if not delta_endpoints:
+        raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
+
+    return delta_endpoints
 
 
 def update_change_versions(
