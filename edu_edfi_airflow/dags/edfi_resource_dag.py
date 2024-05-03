@@ -339,17 +339,19 @@ class EdFiResourceDAG:
             'get_deletes': get_deletes,
             'get_key_changes': get_key_changes,
         }
+        python_callable = change_version.get_previous_change_versions
 
-        # If Ed-Fi connection is provided, total-count checks will be made for each endpoint.
+        # In a dynamic run, only return endpoints with records to ingest.
         if return_only_deltas:
             op_kwargs.update({
                 'edfi_conn_id': self.edfi_conn_id,
                 'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
             })
+            python_callable = change_version.get_previous_change_versions_with_deltas
 
         return PythonOperator(
             task_id=task_id,
-            python_callable=change_version.get_previous_change_versions,
+            python_callable=python_callable,
             op_kwargs=op_kwargs,
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
             dag=self.dag
