@@ -1,7 +1,5 @@
-from functools import partial
 from typing import Callable, List, Optional
 
-from airflow import DAG
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
@@ -10,7 +8,6 @@ from airflow.utils.task_group import TaskGroup
 
 import edfi_api_client
 from ea_airflow_util import EACustomDAG
-from ea_airflow_util import slack_callbacks
 
 from edu_edfi_airflow.callables.s3 import local_filepath_to_s3, remove_filepaths
 from edu_edfi_airflow.callables import airflow_util
