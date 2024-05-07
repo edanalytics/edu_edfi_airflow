@@ -131,8 +131,13 @@ def get_previous_change_versions(
     return_tuples = []
 
     for namespace, endpoint in endpoints:
-        last_max_version = prior_change_versions.get(endpoint, 0)
-        logging.info(f"{namespace}/{endpoint}: {last_max_version}")
+        last_max_version = prior_change_versions.get(endpoint)
+        
+        if last_max_version is not None:
+            logging.info(f"{namespace}/{endpoint}: {last_max_version}")
+        else:
+            last_max_version = 0
+        
         return_tuples.append((endpoint, last_max_version))
 
     return return_tuples
@@ -174,6 +179,8 @@ def get_previous_change_versions_with_deltas(
     endpoint_namespaces = {endpoint: namespace for namespace, endpoint in endpoints}
 
     # Track which endpoints have deltas or failed total-count gets.
+    logging.info("Checking each endpoint for new records...")
+
     delta_endpoints = []
     failed_endpoints = []
 
