@@ -247,25 +247,39 @@ def update_change_versions(
         )
     
     logging.info(f"Collected updated change versions for {len(endpoints)} endpoints.")
+    
+    # Deletes and KeyChanges are mutually-exclusive. Delete-status is original and required to output.
+    # Optionally adding KeyChanges removes the need to update the change-version table until necessary (default False).
+    columns = [
+        "tenant_code", "api_year", "name",
+        "pull_date", "pull_timestamp",
+        "max_version", "is_active",
+        "is_deletes",
+    ]
+
+    if get_key_changes:
+        columns.append("is_key_changes")
+    
+    # Build and insert row tuples for each endpoint.
     rows_to_insert = []
 
     for endpoint in endpoints:
-        rows_to_insert.append([
+        row = [
             tenant_code, api_year, endpoint,
-            get_deletes, get_key_changes,
             kwargs["ds"], kwargs["ts"],
-            edfi_change_version, True
-        ])
+            edfi_change_version, True,
+            get_deletes,
+        ]
+
+        if get_key_changes:
+            row.append(get_key_changes)
+
+        rows_to_insert.append(row)
 
     insert_into_snowflake(
         snowflake_conn_id=snowflake_conn_id,
         table_name=change_version_table,
-        columns=[
-            "tenant_code", "api_year", "name",
-            "is_deletes", "is_key_changes",
-            "pull_date", "pull_timestamp",
-            "max_version", "is_active"
-        ],
+        columns=columns,
         values=rows_to_insert
     )
 
