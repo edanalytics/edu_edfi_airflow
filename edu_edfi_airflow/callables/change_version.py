@@ -132,7 +132,7 @@ def get_previous_change_versions(
 
     for namespace, endpoint in endpoints:
         if (last_max_version := prior_change_versions.get(endpoint, 0)):
-            logging.info(f"{namespace}/{endpoint}: {last_max_version}")
+            logging.info(f"    {namespace}/{endpoint}: {last_max_version}")
         
         return_tuples.append((endpoint, last_max_version))
 
@@ -202,12 +202,12 @@ def get_previous_change_versions_with_deltas(
             if not (delta_record_count := resource.total_count()):
                 continue
 
-            logging.info(f"{namespace}/{endpoint}: {delta_record_count} new records")
+            logging.info(f"    {namespace}/{endpoint}: {delta_record_count} new records")
             delta_endpoints.append((endpoint, last_max_version))
         
         except Exception:
             logging.warning(
-                f"Unable to retrieve record count for endpoint: {namespace}/{endpoint}"
+                f"    Unable to retrieve record count for endpoint: {namespace}/{endpoint}"
             )
             failed_endpoints.append(endpoint)  # Still return the tuples, but mark as failed in the UI.
             continue
