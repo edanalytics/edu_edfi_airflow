@@ -131,12 +131,8 @@ def get_previous_change_versions(
     return_tuples = []
 
     for namespace, endpoint in endpoints:
-        last_max_version = prior_change_versions.get(endpoint)
-        
-        if last_max_version is not None:
+        if (last_max_version := prior_change_versions.get(endpoint, 0)):
             logging.info(f"{namespace}/{endpoint}: {last_max_version}")
-        else:
-            last_max_version = 0
         
         return_tuples.append((endpoint, last_max_version))
 
