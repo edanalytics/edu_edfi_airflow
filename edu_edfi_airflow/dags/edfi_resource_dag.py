@@ -369,7 +369,7 @@ class EdFiResourceDAG:
             failed_sentinel = PythonOperator(
                 task_id=f"{task_id}__failed_total_counts",
                 python_callable=fail_if_xcom,
-                op_args=airflow_util.xcom_pull_template(get_cv_operator, key='failed_endpoints'),
+                op_args=[airflow_util.xcom_pull_template(get_cv_operator, key='failed_endpoints')],
                 trigger_rule='all_done',
                 dag=self.dag
             )
