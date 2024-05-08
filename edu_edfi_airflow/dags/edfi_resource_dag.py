@@ -1,6 +1,7 @@
 import os
 from typing import Dict, List, Optional, Tuple, Union
 
+from airflow.exceptions import AirflowFailException
 from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
@@ -349,13 +350,32 @@ class EdFiResourceDAG:
             })
             python_callable = change_version.get_previous_change_versions_with_deltas
 
-        return PythonOperator(
+        get_cv_operator = PythonOperator(
             task_id=task_id,
             python_callable=python_callable,
             op_kwargs=op_kwargs,
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
             dag=self.dag
         )
+
+        # In a dynamic run, one or more endpoints can fail total-get count.
+        # Create a second operator to track that failed status.
+        # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
+        if return_only_deltas:
+            def fail_if_xcom(xcom_value, **context):
+                if xcom_value:
+                    raise AirflowFailException
+
+            failed_sentinel = PythonOperator(
+                task_id=f"{task_id}__failed_total_counts",
+                python_callable=fail_if_xcom,
+                op_args=airflow_util.xcom_pull_template(get_cv_operator, key='failed_endpoints'),
+                trigger_rule='all_done',
+                dag=self.dag
+            )
+            get_cv_operator >> failed_sentinel
+
+        return get_cv_operator
 
     def build_change_version_update_operator(self,
         task_id: str,
