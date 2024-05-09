@@ -27,7 +27,7 @@ class EdFiToS3Operator(BaseOperator):
     template_fields = (
         'resource', 'namespace', 'page_size', 'num_retries', 'change_version_step_size', 'query_parameters',
         's3_destination_key', 's3_destination_dir', 's3_destination_filename',
-        'min_change_version', 'max_change_version',
+        'min_change_version', 'max_change_version', 'ingest_endpoint',
     )
 
     def __init__(self,
@@ -51,6 +51,8 @@ class EdFiToS3Operator(BaseOperator):
         num_retries: int = 5,
         change_version_step_size: int = 50000,
         query_parameters  : Optional[dict] = None,
+
+        ingest_endpoint: Optional[bool] = True,
 
         **kwargs
     ) -> None:
@@ -79,6 +81,9 @@ class EdFiToS3Operator(BaseOperator):
         self.change_version_step_size = change_version_step_size
         self.query_parameters = query_parameters
 
+        # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
+        self.ingest_endpoint = ingest_endpoint
+
 
     def execute(self, context) -> str:
         """
@@ -90,6 +95,11 @@ class EdFiToS3Operator(BaseOperator):
         config_endpoints = airflow_util.get_config_endpoints(context)
         if config_endpoints and self.resource not in config_endpoints:
             raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
+        
+        # Skip immediately if XCom is defined for endpoint (used for dynamic XComs retrieved from get-change-version operator).
+        # This value is the last change-version, so falsy boolean checks cannot be made.
+        if self.ingest_endpoint is None:
+            raise AirflowSkipException("Endpoint explicitly marked as skipped.")
 
         # Optionally set destination key by concatting separate args for dir and filename
         if not self.s3_destination_key:

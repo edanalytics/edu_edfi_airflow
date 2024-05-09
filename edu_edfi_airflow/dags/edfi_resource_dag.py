@@ -412,7 +412,7 @@ class EdFiResourceDAG:
         Many XComs in this DAG are lists of tuples. This converts the XCom to a dictionary and returns the value for a given key.
         """
         return airflow_util.xcom_pull_template(
-            task_ids, prefix="dict(", suffix=f")['{key}']"
+            task_ids, prefix="dict(", suffix=f").get('{key}')"
         )
 
 
@@ -491,6 +491,8 @@ class EdFiResourceDAG:
                     num_retries=endpoint_configs.get('num_retries', self.DEFAULT_MAX_RETRIES),
                     change_version_step_size=endpoint_configs.get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
                     query_parameters={**endpoint_configs.get('params', {}), **self.default_params},
+
+                    ingest_endpoint=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else True,  # Returns None if not found.
 
                     pool=self.pool,
                     trigger_rule='none_skipped',
