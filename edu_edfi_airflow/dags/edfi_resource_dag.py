@@ -712,7 +712,7 @@ class EdFiResourceDAG:
         ) as bulk_task_group:
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
-            # If change versions are enabled, dynamically expand the output of the CV operator task into the Ed-Fi partial.
+            # If change versions are enabled, dynamically expand the output of the CV operator task into the Ed-Fi bulk operator.
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions",
