@@ -212,12 +212,13 @@ def get_previous_change_versions_with_deltas(
             failed_endpoints.append(endpoint)  # Still return the tuples, but mark as failed in the UI.
             continue
 
-    # Always push the xcom, but raise an AirflowFailException if any of the TotalCount gets failed.
+    # Always push the xcom, but return a second xcom if at least one endpoint failed.
+    # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
     if failed_endpoints:
-        context['ti'].xcom_push(key='return_value', value=delta_endpoints)
-        raise AirflowFailException(
+        logging.info(
             f"Failed getting delta row count for one or more endpoints: {failed_endpoints}"
         )
+        context['ti'].xcom_push(key='failed_endpoints', value=failed_endpoints)
 
     if not delta_endpoints:
         raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
