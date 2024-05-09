@@ -584,6 +584,7 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
+                enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
                     'resource': endpoint__cv[0],
                     'min_change_version': endpoint__cv[1],
@@ -598,6 +599,7 @@ class EdFiResourceDAG:
             # Otherwise, iterate all endpoints.
             else:
                 get_cv_operator = None
+                enabled_endpoints = endpoints
                 kwargs_dicts = list(map(lambda endpoint: {
                     'resource': endpoint,
                     'min_change_version': None,
@@ -623,6 +625,9 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+
+                    # Only run endpoints specified at DAG or delta-level.
+                    enabled_endpoints=enabled_endpoints,
 
                     sla=None,  # "SLAs are unsupported with mapped tasks."
                     pool=self.pool,
