@@ -461,8 +461,10 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                 )
+                enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
             else:
                 get_cv_operator = None
+                enabled_endpoints = endpoints
 
             ### EDFI TO S3: Output Tuple[endpoint, filename] per successful task
             pull_operators_list = []
@@ -492,7 +494,8 @@ class EdFiResourceDAG:
                     change_version_step_size=endpoint_configs.get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
                     query_parameters={**endpoint_configs.get('params', {}), **self.default_params},
 
-                    ingest_endpoint=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else True,  # Returns None if not found.
+                    # Only run endpoints specified at DAG or delta-level.
+                    enabled_endpoints=enabled_endpoints,
 
                     pool=self.pool,
                     trigger_rule='none_skipped',
@@ -709,30 +712,17 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
-                kwargs_lists = {
-                    'resource': get_cv_operator.output.map(lambda endpoint__cv: endpoint__cv[0]),
-                    'min_change_version': get_cv_operator.output.map(lambda endpoint__cv: endpoint__cv[1]),
-                    'namespace': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('namespace', self.DEFAULT_NAMESPACE)),
-                    'page_size': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('page_size', self.DEFAULT_PAGE_SIZE)),
-                    'num_retries': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES)),
-                    'change_version_step_size': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE)),
-                    'query_parameters': get_cv_operator.output.map(lambda endpoint__cv: {**configs[endpoint__cv[0]].get('params', {}), **self.default_params}),
-                    's3_destination_filename': get_cv_operator.output.map(lambda endpoint__cv: f"{endpoint__cv[0]}.jsonl"),
-                }
+                min_change_versions = [
+                    self.xcom_pull_template_get_key(get_cv_operator, endpoint)
+                    for endpoint in endpoints
+                ]
+                enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
             
             # Otherwise, iterate all endpoints.
             else:
                 get_cv_operator = None
-                kwargs_lists = {
-                    'resource': endpoints,
-                    'min_change_version': [None] * len(endpoints),
-                    'namespace': [configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE) for endpoint in endpoints],
-                    'page_size': [configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE) for endpoint in endpoints],
-                    'num_retries': [configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES) for endpoint in endpoints],
-                    'change_version_step_size': [configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE) for endpoint in endpoints],
-                    'query_parameters': [{**configs[endpoint].get('params', {}), **self.default_params} for endpoint in endpoints],
-                    's3_destination_filename': [f"{endpoint}.jsonl" for endpoint in endpoints],
-                }
+                min_change_versions = [None] * len(endpoints)
+                enabled_endpoints = endpoints
 
             ### EDFI TO S3: Output Dict[endpoint, filename] with all successful tasks
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
@@ -747,8 +737,18 @@ class EdFiResourceDAG:
                 get_key_changes=get_key_changes,
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
-                # Ingestion-attributes are dynamic or static depending on change-versioning.
-                **kwargs_lists,
+                # Arguments that are required to be lists in Ed-Fi bulk-operator.
+                resource=endpoints,
+                min_change_version=min_change_versions,
+                namespace=[configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE) for endpoint in endpoints],
+                page_size=[configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE) for endpoint in endpoints],
+                num_retries=[configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES) for endpoint in endpoints],
+                change_version_step_size=[configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE) for endpoint in endpoints],
+                query_parameters=[{**configs[endpoint].get('params', {}), **self.default_params} for endpoint in endpoints],
+                s3_destination_filename=[f"{endpoint}.jsonl" for endpoint in endpoints],
+
+                # Only run endpoints specified at DAG or delta-level.
+                enabled_endpoints=enabled_endpoints,
 
                 pool=self.pool,
                 trigger_rule='none_skipped',
