@@ -324,56 +324,44 @@ class EdFiResourceDAG:
         task_id: str,
         endpoints: List[Tuple[str, str]],
         get_deletes: bool = False,
-        get_key_changes: bool = False,
-        return_only_deltas: bool = False
+        get_key_changes: bool = False
     ) -> PythonOperator:
         """
 
         :return:
         """
-        op_kwargs = {
-            'tenant_code': self.tenant_code,
-            'api_year': self.api_year,
-            'endpoints': endpoints,
-            'snowflake_conn_id': self.snowflake_conn_id,
-            'change_version_table': self.change_version_table,
-            'get_deletes': get_deletes,
-            'get_key_changes': get_key_changes,
-        }
-        python_callable = change_version.get_previous_change_versions
-
-        # In a dynamic run, only return endpoints with records to ingest.
-        if return_only_deltas:
-            op_kwargs.update({
-                'edfi_conn_id': self.edfi_conn_id,
-                'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
-            })
-            python_callable = change_version.get_previous_change_versions_with_deltas
-
         get_cv_operator = PythonOperator(
             task_id=task_id,
-            python_callable=python_callable,
-            op_kwargs=op_kwargs,
+            python_callable=change_version.get_previous_change_versions_with_deltas,
+            op_kwargs={
+                'tenant_code': self.tenant_code,
+                'api_year': self.api_year,
+                'endpoints': endpoints,
+                'snowflake_conn_id': self.snowflake_conn_id,
+                'change_version_table': self.change_version_table,
+                'get_deletes': get_deletes,
+                'get_key_changes': get_key_changes,
+                'edfi_conn_id': self.edfi_conn_id,
+                'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+            },
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
             dag=self.dag
         )
 
-        # In a dynamic run, one or more endpoints can fail total-get count.
-        # Create a second operator to track that failed status.
+        # One or more endpoints can fail total-get count. Create a second operator to track that failed status.
         # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
-        if return_only_deltas:
-            def fail_if_xcom(xcom_value, **context):
-                if xcom_value:
-                    raise AirflowFailException
+        def fail_if_xcom(xcom_value, **context):
+            if xcom_value:
+                raise AirflowFailException
 
-            failed_sentinel = PythonOperator(
-                task_id=f"{task_id}__failed_total_counts",
-                python_callable=fail_if_xcom,
-                op_args=[airflow_util.xcom_pull_template(get_cv_operator, key='failed_endpoints')],
-                trigger_rule='all_done',
-                dag=self.dag
-            )
-            get_cv_operator >> failed_sentinel
+        failed_sentinel = PythonOperator(
+            task_id=f"{task_id}__failed_total_counts",
+            python_callable=fail_if_xcom,
+            op_args=[airflow_util.xcom_pull_template(get_cv_operator, key='failed_endpoints')],
+            trigger_rule='all_done',
+            dag=self.dag
+        )
+        get_cv_operator >> failed_sentinel
 
         return get_cv_operator
 
@@ -589,8 +577,7 @@ class EdFiResourceDAG:
                     task_id=f"get_last_change_versions_from_snowflake",
                     endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes,
-                    return_only_deltas=True  # Only return endpoints with new data to ingest.
+                    get_key_changes=get_key_changes
                 )
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
                     'resource': endpoint__cv[0],
@@ -718,8 +705,7 @@ class EdFiResourceDAG:
                     task_id=f"get_last_change_versions",
                     endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes,
-                    return_only_deltas=True  # Only return endpoints with new data to ingest.
+                    get_key_changes=get_key_changes
                 )
                 kwargs_lists = {
                     'resource': get_cv_operator.output.map(lambda endpoint__cv: endpoint__cv[0]),
