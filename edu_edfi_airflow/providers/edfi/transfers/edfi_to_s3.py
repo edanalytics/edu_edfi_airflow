@@ -311,12 +311,12 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
 
             # If doing a resource-specific run, confirm resource is in the list.
             if config_endpoints and resource not in config_endpoints:
-                logging.info("    Endpoint not specified in DAG config endpoints. Skipping...")
+                logging.info(f"    Endpoint {resource} not specified in DAG config endpoints. Skipping...")
                 continue
 
             # Confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
-            if self.enabled_endpoints and self.resource not in self.enabled_endpoints:
-                logging.info("    Endpoint not specified in run endpoints. Skipping...")
+            if self.enabled_endpoints and resource not in self.enabled_endpoints:
+                logging.info(f"    Endpoint {resource} not specified in run endpoints. Skipping...")
                 continue
 
             try:

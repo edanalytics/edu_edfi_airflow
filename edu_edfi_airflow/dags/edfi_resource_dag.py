@@ -432,8 +432,6 @@ class EdFiResourceDAG:
         Build one EdFiToS3 task per endpoint
         Bulk copy the data to its respective table in Snowflake.
 
-        len(get_cv_operator.input) == len(get_cv_operator.output) == len(pull_edfi_to_s3.input) >= len(pull_edfi_to_s3.output) == len(copy_s3_to_snowflake.input)
-
         :param endpoints:
         :param configs:
         :param group_id:
@@ -470,8 +468,6 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
-                endpoint_configs = configs.get(endpoint, {})
-
                 pull_edfi_to_s3 = EdFiToS3Operator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
@@ -488,11 +484,11 @@ class EdFiResourceDAG:
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                     # Optional config-specified run-attributes (overridden by those in configs)
-                    namespace=endpoint_configs.get('namespace', self.DEFAULT_NAMESPACE),
-                    page_size=endpoint_configs.get('page_size', self.DEFAULT_PAGE_SIZE),
-                    num_retries=endpoint_configs.get('num_retries', self.DEFAULT_MAX_RETRIES),
-                    change_version_step_size=endpoint_configs.get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-                    query_parameters={**endpoint_configs.get('params', {}), **self.default_params},
+                    namespace=configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
+                    page_size=configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
+                    num_retries=configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
+                    change_version_step_size=configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
+                    query_parameters={**configs[endpoint].get('params', {}), **self.default_params},
 
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
@@ -553,8 +549,6 @@ class EdFiResourceDAG:
         """
         Build one EdFiToS3 task per endpoint
         Bulk copy the data to its respective table in Snowflake.
-
-        len(get_cv_operator.input) >= len(get_cv_operator.output) == len(pull_edfi_to_s3.input) >= len(pull_edfi_to_s3.output) == len(copy_s3_to_snowflake.input)
 
         :param endpoints:
         :param configs:
@@ -686,8 +680,6 @@ class EdFiResourceDAG:
         """
         Build one EdFiToS3 task (with inner for-loop across endpoints).
         Bulk copy the data to its respective table in Snowflake.
-
-        len(get_cv_operator.input) == len(get_cv_operator.output) == len(pull_edfi_to_s3.input) >= len(pull_edfi_to_s3.output) == len(copy_s3_to_snowflake.input)
 
         :param endpoints:
         :param configs:
