@@ -722,14 +722,14 @@ class EdFiResourceDAG:
                     return_only_deltas=True  # Only return endpoints with new data to ingest.
                 )
                 kwargs_lists = {
-                    'resource': self.xcom_pull_template_map_idx(get_cv_operator, 0),
-                    'min_change_version': self.xcom_pull_template_map_idx(get_cv_operator, 1),
-                    'namespace': self.xcom_pull_template_map_idx(get_cv_operator, 0).map(lambda endpoint: configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE)),
-                    'page_size': self.xcom_pull_template_map_idx(get_cv_operator, 0).map(lambda endpoint: configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE)),
-                    'num_retries': self.xcom_pull_template_map_idx(get_cv_operator, 0).map(lambda endpoint: configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES)),
-                    'change_version_step_size': self.xcom_pull_template_map_idx(get_cv_operator, 0).map(lambda endpoint: configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE)),
-                    'query_parameters': self.xcom_pull_template_map_idx(get_cv_operator, 0).map(lambda endpoint: {**configs[endpoint].get('params', {}), **self.default_params}),
-                    's3_destination_filename': self.xcom_pull_template_map_idx(get_cv_operator, 0).map(lambda endpoint: f"{endpoint}.jsonl"),
+                    'resource': get_cv_operator.output.map(lambda endpoint__cv: endpoint__cv[0]),
+                    'min_change_version': get_cv_operator.output.map(lambda endpoint__cv: endpoint__cv[1]),
+                    'namespace': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('namespace', self.DEFAULT_NAMESPACE)),
+                    'page_size': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('page_size', self.DEFAULT_PAGE_SIZE)),
+                    'num_retries': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES)),
+                    'change_version_step_size': get_cv_operator.output.map(lambda endpoint__cv: configs[endpoint__cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE)),
+                    'query_parameters': get_cv_operator.output.map(lambda endpoint__cv: {**configs[endpoint__cv[0]].get('params', {}), **self.default_params}),
+                    's3_destination_filename': get_cv_operator.output.map(lambda endpoint__cv: f"{endpoint__cv[0]}.jsonl"),
                 }
             
             # Otherwise, iterate all endpoints.
