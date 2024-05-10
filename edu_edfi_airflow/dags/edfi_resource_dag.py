@@ -106,8 +106,8 @@ class EdFiResourceDAG:
         self.endpoint_configs = {**self.resource_configs, **self.descriptor_configs}
         
         # Build lists of each endpoint type.
-        self.resources = set([resource for resource, config in resource_configs.items() if config.get('enabled')])
-        self.descriptors = set([resource for resource, config in resource_configs.items() if config.get('enabled')])
+        self.resources = set([resource for resource, config in self.resource_configs.items() if config.get('enabled')])
+        self.descriptors = set([resource for resource, config in self.resource_configs.items() if config.get('enabled')])
 
         # Only collect deletes and key-changes for resources.
         self.deletes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
@@ -136,7 +136,7 @@ class EdFiResourceDAG:
             self.default_params['schoolYear'] = self.api_year
 
 
-    # Helper method for parsing new optional DAG arguments resource_configs and descriptor_configs
+    # Helper methods for putting and getting DAG endpointconfigs.
     @staticmethod
     def parse_endpoint_configs(configs: Optional[Union[dict, list]] = None) -> Dict[str, dict]:
         """
@@ -157,6 +157,30 @@ class EdFiResourceDAG:
             raise ValueError(
                 f"Passed configs are an unknown datatype! Expected Dict[endpoint: metadata] or List[(namespace, endpoint)] but received {type(configs)}"
             )
+        
+    def get_endpoint_configs(self,
+        endpoint: Optional[str] = None,
+        key: Optional[str] = None
+    ) -> Union[dict, object]:
+        """
+        Helper to retrieve endpoint metadata from globally-defined configs.
+        The keys to this dictionary align with arguments passed in EdFiToS3Operator.
+
+        Pass a key to get a specific value from the dictionary.
+        Pass no endpoint to get the default config values.
+        """
+        configs = {
+            'namespace': self.endpoint_configs.get(endpoint, {}).get('namespace', self.DEFAULT_NAMESPACE),
+            'page_size': self.endpoint_configs.get(endpoint, {}).get('page_size', self.DEFAULT_PAGE_SIZE),
+            'num_retries': self.endpoint_configs.get(endpoint, {}).get('num_retries', self.DEFAULT_MAX_RETRIES),
+            'change_version_step_size': self.endpoint_configs.get(endpoint, {}).get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
+            'query_parameters': {**self.endpoint_configs.get(endpoint, {}).get('params', {}), **self.default_params},
+        }
+
+        if key:
+            return configs.get(key)
+        else:
+            return configs
 
 
     # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs`).
@@ -414,30 +438,6 @@ class EdFiResourceDAG:
         return airflow_util.xcom_pull_template(
             task_ids, prefix="dict(", suffix=f").get('{key}')"
         )
-    
-    def get_endpoint_configs(self,
-        endpoint: Optional[str] = None,
-        key: Optional[str] = None
-    ) -> Union[dict, object]:
-        """
-        Helper to retrieve endpoint metadata from globally-defined configs.
-        The keys to this dictionary align with arguments passed in EdFiToS3Operator.
-
-        Pass a key to get a specific value from the dictionary.
-        Pass no endpoint to get the default config values.
-        """
-        configs = {
-            'namespace': self.endpoint_configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
-            'page_size': self.endpoint_configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
-            'num_retries': self.endpoint_configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
-            'change_version_step_size': self.endpoint_configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-            'query_parameters': {**self.endpoint_configs[endpoint].get('params', {}), **self.default_params},
-        }
-
-        if key:
-            return configs.get(key)
-        else:
-            return configs
 
     def build_default_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
