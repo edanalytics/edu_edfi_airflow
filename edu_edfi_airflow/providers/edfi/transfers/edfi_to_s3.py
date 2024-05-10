@@ -54,6 +54,10 @@ class EdFiToS3Operator(BaseOperator):
 
         enabled_endpoints: Optional[List[str]] = None,
 
+        # Keyword arguments used in configs that should not be passed into super.
+        enabled: bool = None,
+        fetch_deletes: bool = None,
+
         **kwargs
     ) -> None:
         super(EdFiToS3Operator, self).__init__(**kwargs)

@@ -16,7 +16,7 @@ class S3ToSnowflakeOperator(BaseOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    template_fields = ('resource', 'table_name', 's3_destination_key', 's3_destination_dir', 's3_destination_filename',)
+    template_fields = ('resource', 'table_name', 's3_destination_key', 's3_destination_dir', 's3_destination_filename', 'xcom_return',)
 
     @apply_defaults
     def __init__(self,
@@ -211,7 +211,9 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                 s3_key=s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
             )
 
-            if self.xcom_return:
-                xcom_returns.append(self.xcom_return(resource))
-
-        return xcom_returns
+        # Send the prebuilt-output if specified; otherwise, send the compiled list created above.
+        # This only exists to maintain backwards-compatibility with original S3ToSnowflakeOperator.
+        if self.xcom_return:
+            return self.xcom_return
+        else:
+            return xcom_returns
