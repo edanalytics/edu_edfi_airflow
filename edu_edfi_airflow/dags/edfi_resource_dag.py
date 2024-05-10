@@ -219,7 +219,7 @@ class EdFiResourceDAG:
         # Resources
         resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi_Resources",
-            endpoints=list(self.resources),
+            endpoints=sorted(list(self.resources)),
             s3_destination_dir=os.path.join(s3_parent_directory, 'resources')
             # Tables are built dynamically from the names of the endpoints.
         )
@@ -227,7 +227,7 @@ class EdFiResourceDAG:
         # Descriptors
         descriptors_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Descriptors",
-            endpoints=list(self.descriptors),
+            endpoints=sorted(list(self.descriptors)),
             table=self.descriptors_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'descriptors')
         )
@@ -235,7 +235,7 @@ class EdFiResourceDAG:
         # Resource Deletes
         resource_deletes_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Resource_Deletes",
-            endpoints=list(self.deletes_to_ingest),
+            endpoints=sorted(list(self.deletes_to_ingest)),
             table=self.deletes_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'resource_deletes'),
             get_deletes=True
@@ -245,7 +245,7 @@ class EdFiResourceDAG:
         if self.get_key_changes:
             resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
                 group_id="Ed-Fi Resource Key Changes",
-                endpoints=list(self.key_changes_to_ingest),
+                endpoints=sorted(list(self.key_changes_to_ingest)),
                 table=self.key_changes_table,
                 s3_destination_dir=os.path.join(s3_parent_directory, 'resource_key_changes'),
                 get_key_changes=True
