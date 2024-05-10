@@ -27,7 +27,7 @@ class EdFiToS3Operator(BaseOperator):
     template_fields = (
         'resource', 'namespace', 'page_size', 'num_retries', 'change_version_step_size', 'query_parameters',
         's3_destination_key', 's3_destination_dir', 's3_destination_filename',
-        'min_change_version', 'max_change_version',
+        'min_change_version', 'max_change_version', 'enabled_endpoints',
     )
 
     def __init__(self,
@@ -51,6 +51,8 @@ class EdFiToS3Operator(BaseOperator):
         num_retries: int = 5,
         change_version_step_size: int = 50000,
         query_parameters  : Optional[dict] = None,
+
+        enabled_endpoints: Optional[List[str]] = None,
 
         **kwargs
     ) -> None:
@@ -79,6 +81,9 @@ class EdFiToS3Operator(BaseOperator):
         self.change_version_step_size = change_version_step_size
         self.query_parameters = query_parameters
 
+        # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
+        self.enabled_endpoints = enabled_endpoints
+
 
     def execute(self, context) -> str:
         """
@@ -90,7 +95,10 @@ class EdFiToS3Operator(BaseOperator):
         config_endpoints = airflow_util.get_config_endpoints(context)
         if config_endpoints and self.resource not in config_endpoints:
             raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
-
+        
+        # Confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
+        if self.enabled_endpoints and self.resource not in self.enabled_endpoints:
+            raise AirflowSkipException("Endpoint not specified in run endpoints.")
         # Optionally set destination key by concatting separate args for dir and filename
         if not self.s3_destination_key:
             if not (self.s3_destination_dir and self.s3_destination_filename):
@@ -249,12 +257,15 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
     """
     Inherits from EdFiToS3Operator to reduce code-duplication.
 
-    Establish a connection to the EdFi ODS using an Airflow Connection.
-    Default to pulling the EdFi API configs from the connection if not explicitly provided.
-
-    Use a paged-get to retrieve a list of resources from the ODS.
-    Save the results as JSON lines to `tmp_dir` on the server.
-    Once pagination is complete, write the full results to S3.
+    The following arguments MUST be lists instead of singletons:
+    - resource
+    - namespace
+    - page_size
+    - num_retries
+    - change_version_step_size
+    - query_parameters
+    - min_change_version
+    - s3_destination_filename
 
     If all endpoints skip, raise an AirflowSkipException.
     If at least one endpoint fails, push the XCom and raise an AirflowFailException.
@@ -266,42 +277,17 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
         :param context:
         :return:
         """
-        # Force potential string columns into lists for zipping in execute.
-        if isinstance(self.resource, str):
-            raise AirflowFailException("Bulk operators require lists of resources to be passed.")
-
-        if isinstance(self.namespace, str):
-            self.namespace = [self.namespace] * len(self.resource)
-
-        if isinstance(self.page_size, int):
-            self.page_size = [self.page_size] * len(self.resource)
-
-        if isinstance(self.num_retries, int):
-            self.num_retries = [self.num_retries] * len(self.resource)
-
-        if isinstance(self.change_version_step_size, int):
-            self.change_version_step_size = [self.change_version_step_size] * len(self.resource)
-
-        if isinstance(self.query_parameters, dict):
-            self.query_parameters = [self.query_parameters] * len(self.resource)
-
-        if isinstance(self.min_change_version, (int, type(None))):
-            self.min_change_version = [self.min_change_version] * len(self.resource)
-
         # Force destination_dir and destination_filename arguments to be used.
         if self.s3_destination_key or not (self.s3_destination_dir and self.s3_destination_filename):
             raise ValueError(
                 "Bulk operators require arguments `s3_destination_dir` and `s3_destination_filename` to be passed."
             )
 
-        if isinstance(self.s3_destination_filename, str):
-            raise ValueError(
-                "Bulk operators require a list to be passed in argument `s3_destination_filename`."
-            )
-
-        # Begin actual processing of defined endpoints.
-        config_endpoints = airflow_util.get_config_endpoints(context)
+        # Make connection outside of loop to not re-authenticate at every resource.
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+
+        # Gather DAG-level endpoints outside of loop.
+        config_endpoints = airflow_util.get_config_endpoints(context)
 
         return_tuples = []
         failed_endpoints = []  # Track which endpoints failed during ingestion.
@@ -326,6 +312,11 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             # If doing a resource-specific run, confirm resource is in the list.
             if config_endpoints and resource not in config_endpoints:
                 logging.info(f"    Endpoint {resource} not specified in DAG config endpoints. Skipping...")
+                continue
+
+            # Confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
+            if self.enabled_endpoints and resource not in self.enabled_endpoints:
+                logging.info(f"    Endpoint {resource} not specified in run endpoints. Skipping...")
                 continue
 
             try:
