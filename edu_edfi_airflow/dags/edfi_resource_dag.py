@@ -99,6 +99,13 @@ class EdFiResourceDAG:
         self.descriptors_table = descriptors_table
 
         self.dbt_incrementer_var = dbt_incrementer_var
+
+        ### For a multiyear ODS, we need to specify school year as an additional query parameter.
+        # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
+        # Set defaults before parsing configs.
+        self.default_params = {}
+        if self.multiyear:
+            self.default_params['schoolYear'] = self.api_year
         
         ### Parse optional config objects (improved performance over adding resources manually)
         resource_configs = self.parse_endpoint_configs(resource_configs)
@@ -126,12 +133,6 @@ class EdFiResourceDAG:
         }
 
         self.dag = EACustomDAG(params=dag_params, **kwargs)
-
-        # For a multiyear ODS, we need to specify school year as an additional query parameter.
-        # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
-        self.default_params = {}
-        if self.multiyear:
-            self.default_params['schoolYear'] = self.api_year
 
 
     # Helper methods for putting and getting DAG endpointconfigs.
@@ -478,7 +479,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
-                    endpoints=[self.get_endpoint_configs(endpoint, 'namespace') for endpoint in endpoints],
+                    endpoints=[(self.get_endpoint_configs(endpoint, 'namespace'), endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                 )
@@ -591,7 +592,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
-                    endpoints=[self.get_endpoint_configs(endpoint, 'namespace') for endpoint in endpoints],
+                    endpoints=[(self.get_endpoint_configs(endpoint, 'namespace'), endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
@@ -712,7 +713,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions",
-                    endpoints=[self.get_endpoint_configs(endpoint, 'namespace') for endpoint in endpoints],
+                    endpoints=[(self.get_endpoint_configs(endpoint, 'namespace'), endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
