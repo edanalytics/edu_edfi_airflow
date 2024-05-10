@@ -41,8 +41,6 @@ class EdFiResourceDAG:
     All that successfully retrieve records are passed onward as a (endpoint, filename) tuples to the S3ToSnowflake and UpdateSnowflakeCV operators.
     """
     DEFAULT_CONFIGS = {
-        'enabled': True,
-        'fetch_deletes': True,
         'namespace': 'ed-fi',
         'page_size': 500,
         'change_version_step_size': 50000,
@@ -111,8 +109,8 @@ class EdFiResourceDAG:
         self.endpoint_configs = {**resource_configs, **descriptor_configs}
         
         # Build lists of each enabled endpoint type (only collect deletes and key-changes for resources).
-        self.resources = set(resource for resource, config in resource_configs.items() if config['enabled'])
-        self.descriptors = set(resource for resource, config in descriptor_configs.items() if config['enabled'])
+        self.resources = set(resource_configs.keys())
+        self.descriptors = set(descriptor_configs.keys())
         self.deletes_to_ingest = set(resource for resource in self.resources if self.endpoint_configs[resource]['fetch_deletes'])
         self.key_changes_to_ingest = set(resource for resource in self.resources if self.endpoint_configs[resource]['fetch_deletes'])
 
@@ -134,10 +132,11 @@ class EdFiResourceDAG:
 
 
     # Helper methods for parsing and building DAG endpoint configs.
-    def build_endpoint_configs(self, **kwargs):
+    def build_endpoint_configs(self, enabled: bool = True, fetch_deletes: bool = True, **kwargs):
         """
         Unify kwargs with default config arguments.
         Add schoolYear filter in multiYear ODSes.
+        `enabled` and `fetch_deletes` are not passed into configs.
         """
         configs = {**self.DEFAULT_CONFIGS, **kwargs}
 
@@ -152,12 +151,17 @@ class EdFiResourceDAG:
         """
         Parse endpoint configs into dictionaries if passed.
         Force all endpoints to snake-case for consistency.
+        Return only enabled configs (enabled by default).
         """
         if not configs:
             return {}
         
         elif isinstance(configs, dict):
-            return {camel_to_snake(endpoint): self.build_endpoint_configs(**config) for endpoint, config in configs.items()}
+            return {
+                camel_to_snake(endpoint): self.build_endpoint_configs(**kwargs)
+                for endpoint, kwargs in configs.items()
+                if kwargs.get('enabled', True)
+            }
         
         # A list of resources has been passed without run-metadata
         elif isinstance(configs, list):
@@ -171,20 +175,20 @@ class EdFiResourceDAG:
     
     # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs` DAG arguments).
     def add_resource(self, resource: str, **kwargs):
-        snake_resource = camel_to_snake(resource)
-        if kwargs.get('enabled'):
+        if kwargs.get('enabled', True):
+            snake_resource = camel_to_snake(resource)
             self.resources.add(snake_resource)
-        self.endpoint_configs[snake_resource] = self.build_endpoint_configs(**kwargs)
+            self.endpoint_configs[snake_resource] = self.build_endpoint_configs(**kwargs)
 
     def add_descriptor(self, resource: str, **kwargs):
-        snake_resource = camel_to_snake(resource)
-        if kwargs.get('enabled'):
+        if kwargs.get('enabled', True):
+            snake_resource = camel_to_snake(resource)
             self.descriptors.add(snake_resource)
-        self.endpoint_configs[snake_resource] = self.build_endpoint_configs(**kwargs)
+            self.endpoint_configs[snake_resource] = self.build_endpoint_configs(**kwargs)
 
     def add_resource_deletes(self, resource: str, **kwargs):
-        snake_resource = camel_to_snake(resource)
-        if kwargs.get('enabled'):
+        if kwargs.get('enabled', True):
+            snake_resource = camel_to_snake(resource)
             self.deletes_to_ingest.add(snake_resource)
             self.key_changes_to_ingest.add(snake_resource)
 
