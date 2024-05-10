@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from airflow.exceptions import AirflowFailException
 from airflow.models.param import Param
@@ -103,17 +103,17 @@ class EdFiResourceDAG:
         ### Parse optional config objects (improved performance over adding resources manually)
         self.resource_configs = self.parse_endpoint_configs(resource_configs)
         self.descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
+        self.endpoint_configs = {**resource_configs, **descriptor_configs}
+        
+        # Build lists of each endpoint type.
+        self.resources = set([resource for resource, config in resource_configs.items() if config.get('enabled')])
+        self.descriptors = set([resource for resource, config in resource_configs.items() if config.get('enabled')])
 
-        # Only collect deletes and key-changes for resources
+        # Only collect deletes and key-changes for resources.
         self.deletes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
         self.key_changes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
-        enabled_endpoints = [
-            endpoint for endpoint, config in {**self.resource_configs, **self.descriptor_configs}.items()
-            if config.get('enabled')
-        ]
-
         dag_params = {
             "full_refresh": Param(
                 default=False,
@@ -121,7 +121,7 @@ class EdFiResourceDAG:
                 description="If true, deletes endpoint data in Snowflake before ingestion"
             ),
             "endpoints": Param(
-                default=sorted(enabled_endpoints),
+                default=sorted(list(self.resources + self.descriptors)),
                 type="array",
                 description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
             ),
@@ -138,7 +138,7 @@ class EdFiResourceDAG:
 
     # Helper method for parsing new optional DAG arguments resource_configs and descriptor_configs
     @staticmethod
-    def parse_endpoint_configs(configs: Optional[Union[dict, list]] = None):
+    def parse_endpoint_configs(configs: Optional[Union[dict, list]] = None) -> Dict[str, dict]:
         """
         Parse endpoint configs into dictionaries if passed.
         Force all endpoints to snake-case for consistency.
@@ -422,14 +422,12 @@ class EdFiResourceDAG:
         Pass a key to get a specific value from the dictionary.
         Pass no endpoint to get the default config values.
         """
-        all_configs = {**self.resource_configs, **self.descriptor_configs}
-
         configs = {
-            'namespace': all_configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
-            'page_size': all_configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
-            'num_retries': all_configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
-            'change_version_step_size': all_configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-            'query_parameters': {**all_configs[endpoint].get('params', {}), **self.default_params},
+            'namespace': self.endpoint_configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
+            'page_size': self.endpoint_configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
+            'num_retries': self.endpoint_configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
+            'change_version_step_size': self.endpoint_configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
+            'query_parameters': {**self.endpoint_configs[endpoint].get('params', {}), **self.default_params},
         }
 
         if key:
