@@ -155,7 +155,7 @@ class EdFiResourceDAG:
         if not raw_configs:
             return {}, set(), set()
         
-        elif isinstance(configs, dict):
+        elif isinstance(raw_configs, dict):
             # Collect enabled configs before extracting deletes and keyChanges.
             configs = {
                 camel_to_snake(endpoint): self.build_endpoint_configs(**kwargs)
@@ -167,7 +167,7 @@ class EdFiResourceDAG:
             return configs, deletes, key_changes
 
         # A list of resources has been passed without run-metadata
-        elif isinstance(configs, list):
+        elif isinstance(raw_configs, list):
             # All other endpoint configs will be set to defaults during gets.
             configs = {camel_to_snake(endpoint): self.build_endpoint_configs(namespace=ns) for endpoint, ns in raw_configs}
             deletes = set(configs.keys())
