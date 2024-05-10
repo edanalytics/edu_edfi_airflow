@@ -103,16 +103,14 @@ class EdFiResourceDAG:
 
         self.dbt_incrementer_var = dbt_incrementer_var
         
-        ### Parse optional config objects (improved performance over adding resources manually)
-        resource_configs = self.parse_endpoint_configs(resource_configs)
-        descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
-        self.endpoint_configs = {**resource_configs, **descriptor_configs}
-        
+        ### Parse optional config objects (improved performance over adding resources manually).
         # Build lists of each enabled endpoint type (only collect deletes and key-changes for resources).
+        resource_configs, self.deletes_to_ingest, self.key_changes_to_ingest = self.parse_endpoint_configs(resource_configs)
+        descriptor_configs, _, _ = self.parse_endpoint_configs(descriptor_configs)
+        
         self.resources = set(resource_configs.keys())
         self.descriptors = set(descriptor_configs.keys())
-        self.deletes_to_ingest = set(resource for resource in self.resources if self.endpoint_configs[resource]['fetch_deletes'])
-        self.key_changes_to_ingest = set(resource for resource in self.resources if self.endpoint_configs[resource]['fetch_deletes'])
+        self.endpoint_configs = {**resource_configs, **descriptor_configs}
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         dag_params = {
@@ -147,26 +145,34 @@ class EdFiResourceDAG:
 
         return configs
 
-    def parse_endpoint_configs(self, configs: Optional[Union[dict, list]] = None) -> Dict[str, dict]:
+    def parse_endpoint_configs(self, raw_configs: Optional[Union[dict, list]] = None) -> Tuple[Dict[str, dict], List[str], List[str]]:
         """
-        Parse endpoint configs into dictionaries if passed.
+        Parse endpoint configs into kwarg bundles if passed.
+        Keep list of deletes and keyChanges to fetch.
         Force all endpoints to snake-case for consistency.
         Return only enabled configs (enabled by default).
         """
-        if not configs:
-            return {}
+        if not raw_configs:
+            return {}, [], []
         
         elif isinstance(configs, dict):
-            return {
+            # Collect enabled configs before extracting deletes and keyChanges.
+            configs = {
                 camel_to_snake(endpoint): self.build_endpoint_configs(**kwargs)
-                for endpoint, kwargs in configs.items()
+                for endpoint, kwargs in raw_configs.items()
                 if kwargs.get('enabled', True)
             }
-        
+            deletes = [endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True)]
+            key_changes = [endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True)]  # Use fetch_deletes for keyChanges as well.
+            return configs, deletes, key_changes
+
         # A list of resources has been passed without run-metadata
         elif isinstance(configs, list):
             # All other endpoint configs will be set to defaults during gets.
-            return {camel_to_snake(endpoint): self.build_endpoint_configs(namespace=ns) for endpoint, ns in configs}
+            configs = {camel_to_snake(endpoint): self.build_endpoint_configs(namespace=ns) for endpoint, ns in raw_configs}
+            deletes = list(configs.keys())
+            key_changes = list(configs.keys())
+            return configs, deletes, key_changes
         
         else:
             raise ValueError(
