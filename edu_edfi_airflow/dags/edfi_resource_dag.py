@@ -101,17 +101,15 @@ class EdFiResourceDAG:
         self.dbt_incrementer_var = dbt_incrementer_var
         
         ### Parse optional config objects (improved performance over adding resources manually)
-        self.resource_configs = self.parse_endpoint_configs(resource_configs)
-        self.descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
-        self.endpoint_configs = {**self.resource_configs, **self.descriptor_configs}
+        resource_configs = self.parse_endpoint_configs(resource_configs)
+        descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
+        self.endpoint_configs = {**resource_configs, **descriptor_configs}
         
-        # Build lists of each endpoint type.
-        self.resources = set([resource for resource, config in self.resource_configs.items() if config.get('enabled')])
-        self.descriptors = set([resource for resource, config in self.resource_configs.items() if config.get('enabled')])
-
-        # Only collect deletes and key-changes for resources.
-        self.deletes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
-        self.key_changes_to_ingest = set([resource for resource, config in self.resource_configs.items() if config.get('fetch_deletes')])
+        # Build lists of each enabled endpoint type. (only collect deletes and key-changes for resources).
+        self.resources = set([resource for resource, config in resource_configs.items() if config.get('enabled')])
+        self.descriptors = set([resource for resource, config in descriptor_configs.items() if config.get('enabled')])
+        self.deletes_to_ingest = set([resource for resource in self.resources if self.get_endpoint_configs(resource, 'fetch_deletes')])
+        self.key_changes_to_ingest = set([resource for resource in self.resources if self.get_endpoint_configs(resource, 'fetch_deletes')])
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         dag_params = {
@@ -185,18 +183,22 @@ class EdFiResourceDAG:
 
     # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs`).
     def add_resource(self, resource: str, **kwargs):
+        snake_resource = camel_to_snake(resource)
         if kwargs.get('enabled'):
-            self.resources.add(resource)
-        self.resource_configs[camel_to_snake(resource)] = kwargs
+            self.resources.add(snake_resource)
+        self.endpoint_configs[snake_resource] = kwargs
 
     def add_descriptor(self, resource: str, **kwargs):
+        snake_resource = camel_to_snake(resource)
         if kwargs.get('enabled'):
-            self.descriptors.add(resource)
-        self.descriptor_configs[camel_to_snake(resource)] = kwargs
+            self.descriptors.add(snake_resource)
+        self.endpoint_configs[snake_resource] = kwargs
 
     def add_resource_deletes(self, resource: str, **kwargs):
-        self.deletes_to_ingest.add(camel_to_snake(resource))
-        self.key_changes_to_ingest.add(camel_to_snake(resource))
+        snake_resource = camel_to_snake(resource)
+        if kwargs.get('enabled'):
+            self.deletes_to_ingest.add(snake_resource)
+            self.key_changes_to_ingest.add(snake_resource)
 
     def chain_task_groups_into_dag(self):
         """
@@ -228,7 +230,7 @@ class EdFiResourceDAG:
         # Resources
         resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi_Resources",
-            endpoints=list(self.resource_configs.keys()),
+            endpoints=list(self.resources),
             s3_destination_dir=os.path.join(s3_parent_directory, 'resources')
             # Tables are built dynamically from the names of the endpoints.
         )
@@ -236,7 +238,7 @@ class EdFiResourceDAG:
         # Descriptors
         descriptors_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Descriptors",
-            endpoints=list(self.descriptor_configs.keys()),
+            endpoints=list(self.descriptors),
             table=self.descriptors_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'descriptors')
         )
