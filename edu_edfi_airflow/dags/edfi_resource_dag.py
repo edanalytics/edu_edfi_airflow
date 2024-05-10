@@ -103,7 +103,7 @@ class EdFiResourceDAG:
         ### Parse optional config objects (improved performance over adding resources manually)
         self.resource_configs = self.parse_endpoint_configs(resource_configs)
         self.descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
-        self.endpoint_configs = {**resource_configs, **descriptor_configs}
+        self.endpoint_configs = {**self.resource_configs, **self.descriptor_configs}
         
         # Build lists of each endpoint type.
         self.resources = set([resource for resource, config in resource_configs.items() if config.get('enabled')])
@@ -121,7 +121,7 @@ class EdFiResourceDAG:
                 description="If true, deletes endpoint data in Snowflake before ingestion"
             ),
             "endpoints": Param(
-                default=sorted(list(self.resources + self.descriptors)),
+                default=sorted(list(self.resources.union(self.descriptors))),
                 type="array",
                 description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
             ),
@@ -161,9 +161,13 @@ class EdFiResourceDAG:
 
     # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs`).
     def add_resource(self, resource: str, **kwargs):
+        if kwargs.get('enabled'):
+            self.resources.add(resource)
         self.resource_configs[camel_to_snake(resource)] = kwargs
 
     def add_descriptor(self, resource: str, **kwargs):
+        if kwargs.get('enabled'):
+            self.descriptors.add(resource)
         self.descriptor_configs[camel_to_snake(resource)] = kwargs
 
     def add_resource_deletes(self, resource: str, **kwargs):
