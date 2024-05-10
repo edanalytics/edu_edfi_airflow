@@ -155,15 +155,22 @@ class EdFiResourceDAG:
         if not raw_configs:
             return {}, set(), set()
         
+        # A dictionary of endpoints has been passed with run-metadata.
         elif isinstance(raw_configs, dict):
-            # Collect enabled configs before extracting deletes and keyChanges.
-            configs = {
-                camel_to_snake(endpoint): self.build_endpoint_configs(**kwargs)
-                for endpoint, kwargs in raw_configs.items()
-                if kwargs.get('enabled', True)
-            }
-            deletes = set(endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True))
-            key_changes = set(endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True))  # Use fetch_deletes for keyChanges as well.
+            configs = {}
+            deletes = set()
+            key_changes = set()
+
+            for endpoint, kwargs in raw_configs.items():
+                if not kwargs.get('enabled', True):
+                    continue
+                
+                snake_endpoint = camel_to_snake(endpoint)
+                configs[snake_endpoint] = self.build_endpoint_configs(**kwargs)
+                if kwargs.get('fetch_deletes'):
+                    deletes.add(snake_endpoint)
+                    key_changes.add(snake_endpoint)
+            
             return configs, deletes, key_changes
 
         # A list of resources has been passed without run-metadata
