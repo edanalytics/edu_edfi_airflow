@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from airflow.exceptions import AirflowFailException
 from airflow.models.param import Param
@@ -201,7 +201,6 @@ class EdFiResourceDAG:
         resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi_Resources",
             endpoints=list(self.resource_configs.keys()),
-            configs=self.resource_configs,
             s3_destination_dir=os.path.join(s3_parent_directory, 'resources')
             # Tables are built dynamically from the names of the endpoints.
         )
@@ -210,7 +209,6 @@ class EdFiResourceDAG:
         descriptors_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Descriptors",
             endpoints=list(self.descriptor_configs.keys()),
-            configs=self.descriptor_configs,
             table=self.descriptors_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'descriptors')
         )
@@ -219,7 +217,6 @@ class EdFiResourceDAG:
         resource_deletes_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Resource_Deletes",
             endpoints=list(self.deletes_to_ingest),
-            configs=self.resource_configs,
             table=self.deletes_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'resource_deletes'),
             get_deletes=True
@@ -230,7 +227,6 @@ class EdFiResourceDAG:
             resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
                 group_id="Ed-Fi Resource Key Changes",
                 endpoints=list(self.key_changes_to_ingest),
-                configs=self.resource_configs,
                 table=self.key_changes_table,
                 s3_destination_dir=os.path.join(s3_parent_directory, 'resource_key_changes'),
                 get_key_changes=True
@@ -414,11 +410,35 @@ class EdFiResourceDAG:
         return airflow_util.xcom_pull_template(
             task_ids, prefix="dict(", suffix=f").get('{key}')"
         )
+    
+    def get_endpoint_configs(self,
+        endpoint: Optional[str] = None,
+        key: Optional[str] = None
+    ) -> Union[dict, object]:
+        """
+        Helper to retrieve endpoint metadata from globally-defined configs.
+        The keys to this dictionary align with arguments passed in EdFiToS3Operator.
 
+        Pass a key to get a specific value from the dictionary.
+        Pass no endpoint to get the default config values.
+        """
+        all_configs = {**self.resource_configs, **self.descriptor_configs}
+
+        configs = {
+            'namespace': all_configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
+            'page_size': all_configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
+            'num_retries': all_configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
+            'change_version_step_size': all_configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
+            'query_parameters': {**all_configs[endpoint].get('params', {}), **self.default_params},
+        }
+
+        if key:
+            return configs.get(key)
+        else:
+            return configs
 
     def build_default_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
-        configs: Dict[str, dict],
         group_id: str,
 
         *,
@@ -433,7 +453,6 @@ class EdFiResourceDAG:
         Bulk copy the data to its respective table in Snowflake.
 
         :param endpoints:
-        :param configs:
         :param group_id:
         :param s3_destination_dir:
         :param table:
@@ -455,7 +474,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
-                    endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
+                    endpoints=[self.get_endpoint_configs(endpoint, 'namespace') for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                 )
@@ -484,11 +503,7 @@ class EdFiResourceDAG:
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                     # Optional config-specified run-attributes (overridden by those in configs)
-                    namespace=configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
-                    page_size=configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
-                    num_retries=configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
-                    change_version_step_size=configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-                    query_parameters={**configs[endpoint].get('params', {}), **self.default_params},
+                    **self.get_endpoint_configs(endpoint),
 
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
@@ -536,7 +551,6 @@ class EdFiResourceDAG:
 
     def build_dynamic_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
-        configs: Dict[str, dict],
         group_id: str,
 
         *,
@@ -551,7 +565,6 @@ class EdFiResourceDAG:
         Bulk copy the data to its respective table in Snowflake.
 
         :param endpoints:
-        :param configs:
         :param group_id:
         :param s3_destination_dir:
         :param table:
@@ -574,7 +587,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
-                    endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
+                    endpoints=[self.get_endpoint_configs(endpoint, 'namespace') for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
@@ -582,12 +595,8 @@ class EdFiResourceDAG:
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
                     'resource': endpoint__cv[0],
                     'min_change_version': endpoint__cv[1],
-                    'namespace': configs[endpoint__cv[0]].get('namespace', self.DEFAULT_NAMESPACE),
-                    'page_size': configs[endpoint__cv[0]].get('page_size', self.DEFAULT_PAGE_SIZE),
-                    'num_retries': configs[endpoint__cv[0]].get('num_retries', self.DEFAULT_MAX_RETRIES),
-                    'change_version_step_size': configs[endpoint__cv[0]].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-                    'query_parameters': {**configs[endpoint__cv[0]].get('params', {}), **self.default_params},
                     's3_destination_filename': f"{endpoint__cv[0]}.jsonl",
+                    **self.get_endpoint_configs(endpoint__cv[0]),
                 })
             
             # Otherwise, iterate all endpoints.
@@ -597,12 +606,8 @@ class EdFiResourceDAG:
                 kwargs_dicts = list(map(lambda endpoint: {
                     'resource': endpoint,
                     'min_change_version': None,
-                    'namespace': configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE),
-                    'page_size': configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE),
-                    'num_retries': configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES),
-                    'change_version_step_size': configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE),
-                    'query_parameters': {**configs[endpoint].get('params', {}), **self.default_params},
                     's3_destination_filename': f"{endpoint}.jsonl",
+                    **self.get_endpoint_configs(endpoint),
                 }, endpoints))
 
 
@@ -667,7 +672,6 @@ class EdFiResourceDAG:
 
     def build_bulk_edfi_to_snowflake_task_group(self,
         endpoints: List[str],
-        configs: Dict[str, dict],
         group_id: str,
 
         *,
@@ -682,7 +686,6 @@ class EdFiResourceDAG:
         Bulk copy the data to its respective table in Snowflake.
 
         :param endpoints:
-        :param configs:
         :param group_id:
         :param s3_destination_dir:
         :param table:
@@ -705,7 +708,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions",
-                    endpoints=[(configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE), endpoint) for endpoint in endpoints],
+                    endpoints=[self.get_endpoint_configs(endpoint, 'namespace') for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
@@ -722,6 +725,12 @@ class EdFiResourceDAG:
                 enabled_endpoints = endpoints
 
             ### EDFI TO S3: Output Dict[endpoint, filename] with all successful tasks
+            # Build a dictionary of lists to pass into bulk operator.
+            endpoint_config_lists = {
+                key: [self.get_endpoint_configs(endpoint, key) for endpoint in endpoints]
+                for key in self.get_endpoint_configs().keys()  # Retrieve default keys.
+            }
+
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
                 task_id=f"pull_all_endpoints_to_s3",
                 edfi_conn_id=self.edfi_conn_id,
@@ -737,12 +746,10 @@ class EdFiResourceDAG:
                 # Arguments that are required to be lists in Ed-Fi bulk-operator.
                 resource=endpoints,
                 min_change_version=min_change_versions,
-                namespace=[configs[endpoint].get('namespace', self.DEFAULT_NAMESPACE) for endpoint in endpoints],
-                page_size=[configs[endpoint].get('page_size', self.DEFAULT_PAGE_SIZE) for endpoint in endpoints],
-                num_retries=[configs[endpoint].get('num_retries', self.DEFAULT_MAX_RETRIES) for endpoint in endpoints],
-                change_version_step_size=[configs[endpoint].get('change_version_step_size', self.DEFAULT_CHANGE_VERSION_STEP_SIZE) for endpoint in endpoints],
-                query_parameters=[{**configs[endpoint].get('params', {}), **self.default_params} for endpoint in endpoints],
                 s3_destination_filename=[f"{endpoint}.jsonl" for endpoint in endpoints],
+
+                # Optional config-specified run-attributes (overridden by those in configs)
+                **endpoint_config_lists,
 
                 # Only run endpoints specified at DAG or delta-level.
                 enabled_endpoints=enabled_endpoints,
