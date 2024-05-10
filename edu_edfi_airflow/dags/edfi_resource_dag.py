@@ -110,11 +110,11 @@ class EdFiResourceDAG:
         descriptor_configs = self.parse_endpoint_configs(descriptor_configs)
         self.endpoint_configs = {**resource_configs, **descriptor_configs}
         
-        # Build lists of each enabled endpoint type. (only collect deletes and key-changes for resources).
-        self.resources = set([resource for resource, config in resource_configs.items() if config.get('enabled')])
-        self.descriptors = set([resource for resource, config in descriptor_configs.items() if config.get('enabled')])
-        self.deletes_to_ingest = set([resource for resource in self.resources if self.get_endpoint_configs(resource, 'fetch_deletes')])
-        self.key_changes_to_ingest = set([resource for resource in self.resources if self.get_endpoint_configs(resource, 'fetch_deletes')])
+        # Build lists of each enabled endpoint type (only collect deletes and key-changes for resources).
+        self.resources = set(resource for resource, config in resource_configs.items() if config['enabled'])
+        self.descriptors = set(resource for resource, config in descriptor_configs.items() if config['enabled'])
+        self.deletes_to_ingest = set(resource for resource in self.resources if self.endpoint_configs[resource]['fetch_deletes'])
+        self.key_changes_to_ingest = set(resource for resource in self.resources if self.endpoint_configs[resource]['fetch_deletes'])
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         dag_params = {
@@ -133,7 +133,21 @@ class EdFiResourceDAG:
         self.dag = EACustomDAG(params=dag_params, **kwargs)
 
 
-    # Helper methods for putting and getting DAG endpointconfigs.
+    # Helper methods for parsing and building DAG endpoint configs.
+    def build_endpoint_configs(self, **kwargs):
+        """
+        Unify kwargs with default config arguments.
+        Add schoolYear filter in multiYear ODSes.
+        """
+        configs = {**self.DEFAULT_CONFIGS, **kwargs}
+
+        ### For a multiyear ODS, we need to specify school year as an additional query parameter.
+        # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
+        if self.multiyear:
+            configs['query_parameters']['schoolYear'] = self.api_year
+
+        return configs
+
     def parse_endpoint_configs(self, configs: Optional[Union[dict, list]] = None) -> Dict[str, dict]:
         """
         Parse endpoint configs into dictionaries if passed.
@@ -143,59 +157,37 @@ class EdFiResourceDAG:
             return {}
         
         elif isinstance(configs, dict):
-            return {camel_to_snake(endpoint): config for endpoint, config in configs.items()}
+            return {camel_to_snake(endpoint): self.build_endpoint_configs(**config) for endpoint, config in configs.items()}
         
         # A list of resources has been passed without run-metadata
         elif isinstance(configs, list):
             # All other endpoint configs will be set to defaults during gets.
-            return {camel_to_snake(endpoint): {'namespace': ns} for endpoint, ns in configs}
+            return {camel_to_snake(endpoint): self.build_endpoint_configs(namespace=ns) for endpoint, ns in configs}
         
         else:
             raise ValueError(
                 f"Passed configs are an unknown datatype! Expected Dict[endpoint: metadata] or List[(namespace, endpoint)] but received {type(configs)}"
             )
-        
-    def get_endpoint_configs(self,
-        endpoint: Optional[str],
-        key: Optional[str] = None
-    ) -> Union[dict, object]:
-        """
-        Helper to retrieve endpoint metadata from globally-defined configs.
-        The keys to this dictionary align with arguments passed in EdFiToS3Operator.
-
-        Pass a key to get a specific value from the dictionary.
-        """
-        configs = {**self.DEFAULT_CONFIGS, **self.endpoint_configs.get(endpoint, {})}
-
-        ### For a multiyear ODS, we need to specify school year as an additional query parameter.
-        # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
-        if self.multiyear:
-            configs['query_parameters']['schoolYear'] = self.api_year
-
-        if key:
-            return configs.get(key)
-        else:
-            return configs
-
-
-    # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs`).
+    
+    # Original methods to manually build task-groups (deprecated in favor of `resource_configs` and `descriptor_configs` DAG arguments).
     def add_resource(self, resource: str, **kwargs):
         snake_resource = camel_to_snake(resource)
         if kwargs.get('enabled'):
             self.resources.add(snake_resource)
-        self.endpoint_configs[snake_resource] = kwargs
+        self.endpoint_configs[snake_resource] = self.build_endpoint_configs(**kwargs)
 
     def add_descriptor(self, resource: str, **kwargs):
         snake_resource = camel_to_snake(resource)
         if kwargs.get('enabled'):
             self.descriptors.add(snake_resource)
-        self.endpoint_configs[snake_resource] = kwargs
+        self.endpoint_configs[snake_resource] = self.build_endpoint_configs(**kwargs)
 
     def add_resource_deletes(self, resource: str, **kwargs):
         snake_resource = camel_to_snake(resource)
         if kwargs.get('enabled'):
             self.deletes_to_ingest.add(snake_resource)
             self.key_changes_to_ingest.add(snake_resource)
+
 
     def chain_task_groups_into_dag(self):
         """
@@ -475,7 +467,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
-                    endpoints=[(self.get_endpoint_configs(endpoint, 'namespace'), endpoint) for endpoint in endpoints],
+                    endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                 )
@@ -504,7 +496,7 @@ class EdFiResourceDAG:
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
 
                     # Optional config-specified run-attributes (overridden by those in configs)
-                    **self.get_endpoint_configs(endpoint),
+                    **self.endpoint_configs[endpoint],
 
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
@@ -588,7 +580,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
-                    endpoints=[(self.get_endpoint_configs(endpoint, 'namespace'), endpoint) for endpoint in endpoints],
+                    endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
@@ -597,7 +589,7 @@ class EdFiResourceDAG:
                     'resource': endpoint__cv[0],
                     'min_change_version': endpoint__cv[1],
                     's3_destination_filename': f"{endpoint__cv[0]}.jsonl",
-                    **self.get_endpoint_configs(endpoint__cv[0]),
+                    **self.endpoint_configs[endpoint__cv[0]],
                 })
             
             # Otherwise, iterate all endpoints.
@@ -608,7 +600,7 @@ class EdFiResourceDAG:
                     'resource': endpoint,
                     'min_change_version': None,
                     's3_destination_filename': f"{endpoint}.jsonl",
-                    **self.get_endpoint_configs(endpoint),
+                    **self.endpoint_configs[endpoint],
                 }, endpoints))
 
 
@@ -709,7 +701,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions",
-                    endpoints=[(self.get_endpoint_configs(endpoint, 'namespace'), endpoint) for endpoint in endpoints],
+                    endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes
                 )
@@ -728,7 +720,7 @@ class EdFiResourceDAG:
             ### EDFI TO S3: Output Dict[endpoint, filename] with all successful tasks
             # Build a dictionary of lists to pass into bulk operator.
             endpoint_config_lists = {
-                key: [self.get_endpoint_configs(endpoint, key) for endpoint in endpoints]
+                key: [self.endpoint_configs[endpoint][key] for endpoint in endpoints]
                 for key in self.DEFAULT_CONFIGS.keys()  # Create lists for all keys in config.
             }
 
