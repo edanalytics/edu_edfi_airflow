@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from airflow.exceptions import AirflowFailException
 from airflow.models.param import Param
@@ -145,7 +145,7 @@ class EdFiResourceDAG:
 
         return configs
 
-    def parse_endpoint_configs(self, raw_configs: Optional[Union[dict, list]] = None) -> Tuple[Dict[str, dict], List[str], List[str]]:
+    def parse_endpoint_configs(self, raw_configs: Optional[Union[dict, list]] = None) -> Tuple[Dict[str, dict], Set[str], Set[str]]:
         """
         Parse endpoint configs into kwarg bundles if passed.
         Keep list of deletes and keyChanges to fetch.
@@ -153,7 +153,7 @@ class EdFiResourceDAG:
         Return only enabled configs (enabled by default).
         """
         if not raw_configs:
-            return {}, [], []
+            return {}, set(), set()
         
         elif isinstance(configs, dict):
             # Collect enabled configs before extracting deletes and keyChanges.
@@ -162,16 +162,16 @@ class EdFiResourceDAG:
                 for endpoint, kwargs in raw_configs.items()
                 if kwargs.get('enabled', True)
             }
-            deletes = [endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True)]
-            key_changes = [endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True)]  # Use fetch_deletes for keyChanges as well.
+            deletes = set(endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True))
+            key_changes = set(endpoint for endpoint in configs if raw_configs[endpoint].get('fetch_deletes', True))  # Use fetch_deletes for keyChanges as well.
             return configs, deletes, key_changes
 
         # A list of resources has been passed without run-metadata
         elif isinstance(configs, list):
             # All other endpoint configs will be set to defaults during gets.
             configs = {camel_to_snake(endpoint): self.build_endpoint_configs(namespace=ns) for endpoint, ns in raw_configs}
-            deletes = list(configs.keys())
-            key_changes = list(configs.keys())
+            deletes = set(configs.keys())
+            key_changes = set(configs.keys())
             return configs, deletes, key_changes
         
         else:
