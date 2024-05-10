@@ -46,7 +46,7 @@ class EdFiResourceDAG:
         'namespace': 'ed-fi',
         'page_size': 500,
         'change_version_step_size': 50000,
-        'max_retries': 5,
+        'num_retries': 5,
         'query_parameters': {},
     }
 
