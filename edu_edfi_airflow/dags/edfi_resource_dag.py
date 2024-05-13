@@ -1,7 +1,7 @@
 import os
 from typing import Dict, List, Optional, Set, Tuple, Union
 
-from airflow.exceptions import AirflowFailException
+from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
@@ -387,6 +387,8 @@ class EdFiResourceDAG:
         def fail_if_xcom(xcom_value, **context):
             if xcom_value:
                 raise AirflowFailException
+            else:
+                raise AirflowSkipException  # Force a skip to not mark the taskgroup as a success when all tasks skip.
 
         failed_sentinel = PythonOperator(
             task_id=f"{task_id}__failed_total_counts",
