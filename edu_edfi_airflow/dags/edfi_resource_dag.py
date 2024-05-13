@@ -104,13 +104,15 @@ class EdFiResourceDAG:
         self.dbt_incrementer_var = dbt_incrementer_var
         
         ### Parse optional config objects (improved performance over adding resources manually).
+        resource_configs, resource_deletes, resource_key_changes = self.parse_endpoint_configs(resource_configs)
+        descriptor_configs, descriptor_deletes, descriptor_key_changes = self.parse_endpoint_configs(descriptor_configs)
+        self.endpoint_configs = {**resource_configs, **descriptor_configs}
+
         # Build lists of each enabled endpoint type (only collect deletes and key-changes for resources).
-        resource_configs, self.deletes_to_ingest, self.key_changes_to_ingest = self.parse_endpoint_configs(resource_configs)
-        descriptor_configs, _, _ = self.parse_endpoint_configs(descriptor_configs)
-        
         self.resources = set(resource_configs.keys())
         self.descriptors = set(descriptor_configs.keys())
-        self.endpoint_configs = {**resource_configs, **descriptor_configs}
+        self.deletes_to_ingest = resource_deletes
+        self.key_changes_to_ingest = resource_key_changes
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         dag_params = {
@@ -120,7 +122,7 @@ class EdFiResourceDAG:
                 description="If true, deletes endpoint data in Snowflake before ingestion"
             ),
             "endpoints": Param(
-                default=sorted(list(self.resources.union(self.descriptors))),
+                default=sorted(list(self.resources | self.descriptors)),
                 type="array",
                 description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
             ),
@@ -164,7 +166,7 @@ class EdFiResourceDAG:
             for endpoint, kwargs in raw_configs.items():
                 if not kwargs.get('enabled', True):
                     continue
-                
+
                 snake_endpoint = camel_to_snake(endpoint)
                 configs[snake_endpoint] = self.build_endpoint_configs(**kwargs)
                 if kwargs.get('fetch_deletes'):
@@ -175,7 +177,7 @@ class EdFiResourceDAG:
 
         # A list of resources has been passed without run-metadata
         elif isinstance(raw_configs, list):
-            # All other endpoint configs will be set to defaults during gets.
+            # Use default configs and mark all as enabled with deletes/keyChanges.
             configs = {camel_to_snake(endpoint): self.build_endpoint_configs(namespace=ns) for endpoint, ns in raw_configs}
             deletes = set(configs.keys())
             key_changes = set(configs.keys())
