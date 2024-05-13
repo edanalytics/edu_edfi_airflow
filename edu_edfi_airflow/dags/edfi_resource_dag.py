@@ -1,4 +1,5 @@
 import os
+from functools import partial
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from airflow.exceptions import AirflowFailException, AirflowSkipException
@@ -128,7 +129,11 @@ class EdFiResourceDAG:
             ),
         }
 
-        self.dag = EACustomDAG(params=dag_params, **kwargs)
+        user_defined_macros={
+            "is_scheduled_full_refresh": partial(airflow_util.run_matches_cron, cron=self.schedule_interval_full_refresh)
+        }
+
+        self.dag = EACustomDAG(params=dag_params, user_defined_macros=user_defined_macros, **kwargs)
 
 
     # Helper methods for parsing and building DAG endpoint configs.
