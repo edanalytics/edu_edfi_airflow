@@ -12,6 +12,8 @@
 - Copies from S3 to Snowflake in `EdFiResourceDAG` are now completed in a single bulk task (instead of one per endpoint)
 - `EdFiResourceDAG` and `EarthbeamDAG` now inherit from `ea_airflow_util` DAG factory `EACustomDAG`
 - Streamline XCom passing between tasks in `EdFiResourceDAG`
+- Change-version window delta counts are made when checking change versions in Snowflake.
+  - Only resources with rows-to-ingest are passed to the Ed-Fi operator.
 
 
 # edu_edfi_airflow v0.2.5
