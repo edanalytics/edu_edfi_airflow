@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 from airflow.exceptions import AirflowFailException
 from airflow.models import Connection
-from airflow.models.baseoperator import chain_linear
+from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
 
@@ -145,7 +145,7 @@ def chain_tasks(*tasks):
     Alias of airflow's built-in chain, but remove Nones if present.
     Note: this recurses only one level.
     """
-    chain_linear(*recursive_filter(None, tasks))
+    chain(*recursive_filter(None, tasks))
 
 def recursive_filter(func, iterable):
     """

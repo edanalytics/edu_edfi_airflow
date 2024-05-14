@@ -314,8 +314,9 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-        # Chain tasks and taskgroups into the DAG
-        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, [dbt_var_increment_operator, dag_state_sentinel])
+        # Chain tasks and taskgroups into the DAG; chain sentinel after all task groups.
+        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, dbt_var_increment_operator)
+        airflow_util.chain_tasks(edfi_task_groups, dag_state_sentinel)
 
 
     ### Internal methods that should not be called directly.
