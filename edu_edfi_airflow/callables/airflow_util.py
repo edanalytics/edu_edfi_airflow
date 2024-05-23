@@ -40,7 +40,8 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    if full_refresh_macro := context["dag"].user_defined_macros.get("is_scheduled_full_refresh", False):
+    # If user_defined_macros are not defined in DAG init, their context attribute is None.
+    if full_refresh_macro := (context["dag"].user_defined_macros or {}).get("is_scheduled_full_refresh", False):
         if full_refresh_macro(**context):
             logging.info("Scheduled full-refresh criteria met! Triggering a full-refresh run.")
             return True
