@@ -143,8 +143,7 @@ def fail_if_any_task_failed(**context):
 
 def chain_tasks(*tasks):
     """
-    Alias of airflow's built-in chain, but remove Nones if present.
-    Note: this recurses only one level.
+    Alias of airflow's built-in chain, but recursively remove Nones if present.
     """
     chain(*recursive_filter(None, tasks))
 
