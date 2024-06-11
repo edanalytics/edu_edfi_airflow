@@ -1,22 +1,17 @@
 import croniter
-import inspect
 import logging
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
+from airflow.exceptions import AirflowFailException
 from airflow.models import Connection
+from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
 
-
-def build_display_name(resource: str, is_deletes: bool = False) -> str:
-    """
-    Universal helper method for building the display name of a resource.
-    """
-    if is_deletes:
-        return f"{resource}_deletes"
-    else:
-        return resource
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from airflow.models.operator import Operator
 
 
 def get_context_variable(context, variable_name: str, default: object):
@@ -45,7 +40,8 @@ def is_full_refresh(context) -> bool:
     :param context:
     :return:
     """
-    if full_refresh_macro := context["dag"].user_defined_macros.get("is_scheduled_full_refresh", False):
+    # If user_defined_macros are not defined in DAG init, their context attribute is None.
+    if full_refresh_macro := (context["dag"].user_defined_macros or {}).get("is_scheduled_full_refresh", False):
         if full_refresh_macro(**context):
             logging.info("Scheduled full-refresh criteria met! Triggering a full-refresh run.")
             return True
@@ -84,8 +80,10 @@ def get_config_endpoints(context) -> List[str]:
 
 
 def xcom_pull_template(
-    task_ids: str,
-    key: str = 'return_value'
+    task_ids: Union[str, 'Operator', List[str], List['Operator']],
+    key: str = 'return_value',
+    prefix: str = "",
+    suffix: str = ""
 ) -> str:
     """
     Generate a Jinja template to pull a particular xcom key from a task_id
@@ -93,8 +91,21 @@ def xcom_pull_template(
     :param key: The key to retrieve. Default: return_value
     :return: A formatted Jinja string for the xcom pull
     """
-    xcom_string = f"ti.xcom_pull(task_ids='{task_ids}', key='{key}')"
+    # Retrieve string representations for each XCom in a list.
+    if isinstance(task_ids, (list, tuple)):
+        task_ids = [
+            task_id.task_id if hasattr(task_id, 'task_id') else task_id
+            for task_id in task_ids
+        ]
+        task_ids_string = "['{}']".format("','".join(task_ids))
+    
+    # Or retrieve string representation of a single XCom.
+    else:
+        if hasattr(task_ids, 'task_id'):
+            task_ids = task_ids.task_id
+        task_ids_string = f"'{task_ids}'"
 
+    xcom_string = f"{prefix} ti.xcom_pull(task_ids={task_ids_string}, key='{key}') {suffix}"
     return '{{ ' + xcom_string + ' }}'
 
 
@@ -121,17 +132,34 @@ def get_snowflake_params_from_conn(
         raise undefined_snowflake_error
 
 
-def subset_kwargs_to_class(class_: object, kwargs: dict) -> dict:
+def fail_if_any_task_failed(**context):
     """
-    Helper function to remove unexpected arguments from kwargs,
-    based on the actual arguments of the class.
+    Simple Python callable that raises an AirflowFailException if any task in the DAG has failed.
+    """
+    for ti in context["dag_run"].get_task_instances():
+        if ti.state == "failed":
+            raise AirflowFailException("One or more tasks in the DAG failed.")
 
-    :param class_:
-    :param kwargs:
-    :return:
+
+def chain_tasks(*tasks):
     """
-    class_parameters = list(inspect.signature(class_).parameters.keys())
-    return {
-        arg: val for arg, val in kwargs.items()
-        if arg in class_parameters
-    }
+    Alias of airflow's built-in chain, but recursively remove Nones if present.
+    """
+    chain(*recursive_filter(None, tasks))
+
+def recursive_filter(func, iterable):
+    """
+    Taken from here: https://www.mycompiler.io/view/CDbwWjY
+    """
+    results = []
+    for elem in iterable:
+        if isinstance(elem, (list, tuple)):
+            result = recursive_filter(func, elem)
+            if result:
+                results.append(result)
+        elif func is None:
+            if elem:
+                results.append(elem)
+        elif func(elem):
+            results.append(elem)
+    return results

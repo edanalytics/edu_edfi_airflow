@@ -16,41 +16,89 @@ Although the DAG-implementation is designed for Ed-Fi3, it will work for Ed-Fi2 
 
 ![EdFiResourceDAG](./images/EdFiResourceDAG.png)
 
-To ingest only a subset of endpoints, populate the `endpoints` DAG-level config.
+When initializing the DAG, pass an `{endpoint: metadata}` dictionary into `resource_configs` or `descriptor_configs`.
+The following metadata are customizable per endpoint:
+- enabled (default `True`)
+- fetch_deletes (default `True`)
+- namespace (default `'ed-fi'`)
+- page_size (default `500`)
+- num_retries (default `5`)
+- change_version_step_size (default `50000`)
+- query_parameters (default `{}`)
+
+Note: Historically, the `add_resource()`, `add_resource_deletes()`, and `add_descriptor()` methods were used to populate endpoint metadata.
+These methods will be deprecated in a future release.
+
+To trigger a subset-ingestion of endpoints, populate the `endpoints` DAG-level config.
 The names of the endpoints can be in any casing and will be forced to snake_case before being processed.
 
 Set `full_refresh` to `True` in DAG-level configs to reset the change-version table for the specified (tenant, year).
 This forces a full drop-replace of a given endpoint's data in Snowflake.
 This functionality can be paired with the `endpoints` DAG-level config to run a full-refresh on a subset of endpoints.
+Alternatively, use argument `schedule_interval_full_refresh` to set an automatic refresh cadence.
 
 
 <details>
-<summary>Arguments:</summary>
+<summary>Class Arguments:</summary>
 
-| Argument                       | Description                                                                                                                        |
-|:-------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------|
-| tenant_code                    | ODS-tenant representation to be saved in Snowflake tables                                                                          |
-| api_year                       | ODS API-year to be saved in Snowflake tables                                                                                       |
-| edfi_conn_id                   | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                           |
-| s3_conn_id                     | Airflow connection with S3 bucket defined under `schema`                                                                           |
-| snowflake_conn_id              | Airflow connection with Snowflake credentials, database, and schema defined                                                        |
-| pool                           | Airflow pool to assign EdFi-to-S3 pulls for this DAG (designed to prevent the ODS from being overwhelmed)                          |
-| tmp_dir                        | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3                            |
-| multiyear                      | Boolean flag for whether the ODS has multiple years of data within one API year (defaults to `False`; dispreferred implementation) |
-| use_change_version             | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                           |
-| change_version_table           | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                          |
-| slack_conn_id                  | Optional Airflow connection with Slack webhook credentials (default None)                                                          |
-| dbt_incrementer_var            | Optional Airflow variable to increment upon a finished run                                                                         |
-| schedule_interval_full_refresh | Optional CRON schedule to automatically trigger a full-refresh run (defaults to `None`)                                            |
+| Argument                       | Description                                                                                                                                        |
+|:-------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------|
+| tenant_code                    | ODS-tenant representation to be saved in Snowflake tables                                                                                          |
+| api_year                       | ODS API-year to be saved in Snowflake tables                                                                                                       |
+| edfi_conn_id                   | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                                           |
+| s3_conn_id                     | Airflow connection with S3 bucket defined under `schema`                                                                                           |
+| snowflake_conn_id              | Airflow connection with Snowflake credentials, database, and schema defined                                                                        |
+| pool                           | Airflow pool to assign EdFi-to-S3 pulls for this DAG (designed to prevent the ODS from being overwhelmed)                                          |
+| tmp_dir                        | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3                                            |
+| multiyear                      | Boolean flag for whether the ODS has multiple years of data within one API year (defaults to `False`; dispreferred implementation)                 |
+| schedule_interval_full_refresh | CRON schedule that automatically triggers a full-refresh, instead of the default delta run (default `None`)                                        |
+| use_change_version             | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                                           |
+| get_key_changes                | Boolean flag for whether to build a /keyChanges task-group (only applicable in newer ODSes; default `False`)                                       |
+| run_type                       | Specifies the run-type for the Ed-Fi task groups in the DAG (default `'default'`)                                                                  |
+| resource_configs               | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_resource()` and `add_resource_deletes()` methods; default `None`) |
+| descriptor_configs             | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_descriptor()` method; default `None`)                             |
+| change_version_table           | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                                          |
+| deletes_table                  | Name of the table to record resource deletes on Snowflake (defaults to `'_deletes'`)                                                               |
+| key_changes_table              | Name of the table to record resource keyChanges on Snowflake (defaults to `'_key_changes'`)                                                        |
+| descriptors_table              | Name of the table to record descriptors on Snowflake (defaults to `'_descriptors'`)                                                                |
+| dbt_incrementer_var            | Optional Airflow variable to increment upon a finished run                                                                                         |
 
-Additional Airflow DAG parameters (e.g. `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
+Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
 
 -----
 
 </details>
 
 
-Default instantiation of these in our `int_edfi_project_template` come in the following YAML structure:
+<details>
+<summary>Run-Type Overview:</summary>
+
+The `run_type` argument determines the task-logic used when ingesting data from Ed-Fi to S3.
+
+- `default`: one task is created for each endpoint (default behavior)
+- `bulk`: one task is created, and each endpoint is looped-over within this task
+- `dynamic`: one dynamically-mapped task is created for each endpoint **with new data to ingest**
+
+No matter the approach, copies from S3 to Snowflake always occur in bulk to reduce Snowflake connection-time. Dynamic runs can only be used when `use_change_version` is true.
+
+Dynamic and bulk task groups trade visibility for performance: both drastically reduce the number of tasks run each day, but more digging in the Airflow UI is required to identify failures.
+Here are some recommendations for when to use each run-type:
+
+| run_type | DAG count | data volume |
+|----------|-----------|-------------|
+| default  | low       | low         |
+| bulk     | high      | low         |
+| dynamic  | high      | high        |
+
+-----
+
+</details>
+
+
+<details>
+<summary>Example DAG-factory YAML instantiation:</summary>
+
+Default instantiation of these in our `edu_project_template` come in the following YAML structure:
 ```yaml
 edfi_resource_dags__default_args: &default_dag_args
   default_args: *default_task_args
@@ -87,6 +135,8 @@ edfi_resource_dags:
       schedule_interval: null
       <<: *edfi_resource_dags__default_args
 ```
+
+</details>
 
 -----
 
@@ -394,10 +444,9 @@ Set `force` to `True` in DAG-level configs or under a task-group's `lightbeam_kw
 | pool            | Airflow pool against which all operations are applied                                                          |
 | earthmover_pool | Optional Airflow pool against which all Earthmover operations are applied (default `pool`)                     |
 | lightbeam_pool  | Optional Airflow pool against which all Lightbeam operations are applied (default `pool`)                      |
-| slack_conn_id   | Optional Airflow connection with Slack webhook credentials (default None)                                      |
 | fast_cleanup    | Boolean flag for whether to remove local files immediately upon failure, or only after success (default False) |
 
-Additional Airflow DAG parameters (e.g. `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
+Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
 
 -----
 
