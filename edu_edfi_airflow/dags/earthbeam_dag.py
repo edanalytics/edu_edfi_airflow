@@ -1,10 +1,14 @@
-from typing import Callable, List, Optional
+from pathlib import Path, PurePath
+from typing import Callable, List, Optional, Union
 
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
+import dask
+import dask.dataframe as dd
+import pandas as pd
 
 import edfi_api_client
 from ea_airflow_util import EACustomDAG
@@ -61,7 +65,6 @@ class EarthbeamDAG:
 
         self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
-
     def build_local_raw_dir(self, tenant_code: str, api_year: int, grain_update: Optional[str] = None) -> str:
         """
         Helper function to force consistency when building raw filepathing in Python operators.
@@ -78,6 +81,62 @@ class EarthbeamDAG:
         )
         return raw_dir
 
+    @staticmethod
+    def partition_on_tenant_and_year(
+        csv_paths: Union[str, List[str]],
+        output_dir: str,
+        tenant_col: str = "tenant_code",
+        tenant_map: dict = None,
+        year_col: str = "api_year",
+        year_map: dict = None,
+    ):
+        tenant_code = "tenant_code"
+        api_year = "api_year"
+
+        input_is_list = True if isinstance(csv_paths, list) else False
+
+        final_csv_paths = []
+        if input_is_list:
+            final_csv_paths = csv_paths
+        else:
+            # otherwise we have a string, so wrap it in a list
+            final_csv_paths = [csv_paths]
+
+        for csv_path in final_csv_paths:
+            if not csv_path.endswith(".csv"):
+                raise ValueError(f"Input path '{csv_path}' does not end with '.csv'")
+
+        path_mapping = {
+            # use the input file basenames as the parquet directory names
+            csv_path: PurePath(output_dir, PurePath(csv_path).name).with_suffix('')
+            for csv_path in final_csv_paths
+        }
+
+        Path(output_dir).mkdir(exist_ok=True)
+
+        with dask.config.set({
+            "temporary_directory": "./dask_temp/",
+            "dataframe.convert-string": True,
+            }), pd.option_context("mode.string_storage", "pyarrow"):
+
+            for csv_path, parquet_path in path_mapping.items():
+                df = dd.read_csv(csv_path, dtype=str, na_filter=False).fillna('')
+
+                # FIXME: should be able to map even if names match, ugh
+                # if needed, add tenant_code and api_year as columns so we can partition on them
+                if tenant_col != tenant_code:
+                    if tenant_map is not None:
+                        df[tenant_code] = df[tenant_col].map(lambda x: tenant_map[x], meta=dd.utils.make_meta(df[tenant_col]))
+                    else:
+                        df[tenant_code] = df[tenant_col]
+
+                if year_col != api_year:
+                    if year_map is not None:
+                        df[api_year] = df[year_col].map(lambda x: year_map[x], meta=dd.utils.make_meta(df[year_col]))
+                    else:
+                        df[api_year] = df[year_col]
+
+                df.to_parquet(parquet_path, write_index=False, overwrite=True, partition_on=[tenant_code, api_year])
 
     def build_python_preprocessing_operator(self,
         python_callable: Callable,
@@ -123,7 +182,6 @@ class EarthbeamDAG:
             pool=self.pool,
             dag=self.dag
         )
-
 
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
@@ -214,7 +272,6 @@ class EarthbeamDAG:
             elif s3_conn_id:         # Earthmover-to-S3
                 group_id += "_to_s3"
 
-
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=prefix_group_id,
@@ -238,7 +295,6 @@ class EarthbeamDAG:
 
                 task_order.append(python_preprocess)
                 paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
-
 
             ### Raw to S3
             if s3_conn_id:
@@ -268,7 +324,6 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(raw_to_s3)
-
 
             ### EarthmoverOperator: Required
             em_output_dir = edfi_api_client.url_join(
@@ -305,7 +360,6 @@ class EarthbeamDAG:
             task_order.append(run_earthmover)
             paths_to_clean.append(airflow_util.xcom_pull_template(run_earthmover.task_id))
 
-
             ### Earthmover logs to Snowflake
             if logging_table:
                 if not snowflake_conn_id:
@@ -332,7 +386,6 @@ class EarthbeamDAG:
                 )
 
                 run_earthmover >> log_earthmover_to_snowflake
-
 
             ### Earthmover to S3
             if s3_conn_id:
@@ -362,7 +415,6 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(em_to_s3)
-
 
             ### LightbeamOperator
             if edfi_conn_id:
@@ -419,7 +471,6 @@ class EarthbeamDAG:
                     )
 
                     run_lightbeam >> log_lightbeam_to_snowflake
-
 
             ### Alternate route: Bypassing the ODS directly into Snowflake
             if snowflake_conn_id and not edfi_conn_id:
@@ -480,7 +531,6 @@ class EarthbeamDAG:
 
                 task_order.append(s3_to_snowflake_task_group)
 
-
             ### Final cleanup
             cleanup_local_disk = PythonOperator(
                 task_id=f"{taskgroup_grain}_cleanup_disk",
@@ -500,7 +550,6 @@ class EarthbeamDAG:
             chain(*task_order)
 
         return tenant_year_task_group
-
 
     def insert_earthbeam_result_to_logging_table(self,
         snowflake_conn_id: str,
