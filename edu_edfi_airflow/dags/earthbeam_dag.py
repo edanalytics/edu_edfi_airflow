@@ -122,19 +122,16 @@ class EarthbeamDAG:
             for csv_path, parquet_path in path_mapping.items():
                 df = dd.read_csv(csv_path, dtype=str, na_filter=False).fillna('')
 
-                # FIXME: should be able to map even if names match, ugh
                 # if needed, add tenant_code and api_year as columns so we can partition on them
-                if tenant_col != tenant_code:
-                    if tenant_map is not None:
-                        df[tenant_code] = df[tenant_col].map(lambda x: tenant_map[x], meta=dd.utils.make_meta(df[tenant_col]))
-                    else:
-                        df[tenant_code] = df[tenant_col]
+                if tenant_map is not None:
+                    df[tenant_code] = df[tenant_col].map(lambda x: tenant_map[x], meta=dd.utils.make_meta(df[tenant_col]))
+                else:
+                    df[tenant_code] = df[tenant_col]
 
-                if year_col != api_year:
-                    if year_map is not None:
-                        df[api_year] = df[year_col].map(lambda x: year_map[x], meta=dd.utils.make_meta(df[year_col]))
-                    else:
-                        df[api_year] = df[year_col]
+                if year_map is not None:
+                    df[api_year] = df[year_col].map(lambda x: year_map[x], meta=dd.utils.make_meta(df[year_col]))
+                else:
+                    df[api_year] = df[year_col]
 
                 df.to_parquet(parquet_path, write_index=False, overwrite=True, partition_on=[tenant_code, api_year])
 
