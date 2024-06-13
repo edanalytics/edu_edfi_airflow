@@ -18,7 +18,7 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
-from util.dynamic_python_operator import DynamicPythonOperator
+from edu_edfi_airflow.callables.dynamic_python_operator import DynamicPythonOperator
 
 # Function to evaluate the callable and kwargs template
 def evaluate_kwargs(kwargs_template_str, context):
