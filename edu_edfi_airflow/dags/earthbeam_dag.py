@@ -97,10 +97,11 @@ class EarthbeamDAG:
         task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
 
         # Wrap the callable with log capturing
-        wrapped_callable = capture_logs(
+        wrapped_callable = self.capture_logs(
             python_callable,
             snowflake_conn_id=snowflake_conn_id,
             preprocess_logging_table=preprocess_logging_table
+
         )
 
         return PythonOperator(
@@ -159,6 +160,7 @@ class EarthbeamDAG:
 
         snowflake_conn_id: Optional[str] = None,
         logging_table: Optional[str] = None,
+        preprocess_logging_table: Optional[str] = None,
 
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
@@ -237,9 +239,24 @@ class EarthbeamDAG:
 
             ### PythonOperator Preprocess
             if python_callable:
+
+                if preprocess_logging_table:
+                    # Wrap the callable with log capturing
+                    wrapped_callable = self.capture_logs(
+                        python_callable,
+                        snowflake_conn_id=snowflake_conn_id,
+                        preprocess_logging_table=preprocess_logging_table,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update
+                    )
+                else:
+                    wrapped_callable = python_callable
+
+
                 python_preprocess = PythonOperator(
                     task_id=f"{taskgroup_grain}_preprocess_python",
-                    python_callable=python_callable,
+                    python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
                     pool=self.pool,
@@ -564,7 +581,7 @@ class EarthbeamDAG:
             sql=qry_insert_into
         )
 
-    def format_log_record(record):
+    def format_log_record(self, record):
         log_record = {
             'timestamp': datetime.utcnow().isoformat(),
             'name': record.name,
@@ -575,7 +592,15 @@ class EarthbeamDAG:
         }
         return json.dumps(log_record)
     
-    def capture_logs(python_callable: Callable, snowflake_conn_id, preprocess_logging_table):
+    def capture_logs(self, python_callable: Callable,
+        snowflake_conn_id: str,
+        preprocess_logging_table: str,
+        
+        tenant_code: str,
+        api_year: int,
+        grain_update: Optional[str] = None,
+        **kwargs
+    ):
         def wrapper(*args, **kwargs):
             # Create a logger
             logger = logging.getLogger(python_callable.__name__)
@@ -620,8 +645,13 @@ class EarthbeamDAG:
                         args=None,
                         exc_info=None
                     )
-                    log_data = json.loads(format_log_record(record))
-                    send_log_to_snowflake(log_data, snowflake_conn_id, database, schema, table)
+                    log_data = json.loads(self.format_log_record(record))
+                    self.insert_preprocess_log_to_snowflake(snowflake_conn_id=snowflake_conn_id,
+                                                            preprocess_logging_table=preprocess_logging_table,
+                                                            log_data=log_data,
+                                                            tenant_code=tenant_code,
+                                                            api_year=api_year,
+                                                            grain_update=grain_update)
             
             return result
         return wrapper
