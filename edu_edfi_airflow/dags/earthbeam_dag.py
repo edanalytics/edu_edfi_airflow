@@ -6,9 +6,6 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
-import dask
-import dask.dataframe as dd
-import pandas as pd
 
 import edfi_api_client
 from ea_airflow_util import EACustomDAG
@@ -90,6 +87,11 @@ class EarthbeamDAG:
         year_col: str = "api_year",
         year_map: dict = None,
     ):
+        # (expensive) imports here so that the airflow scheduler doesn't have to deal with them
+        import dask
+        import dask.dataframe as dd
+        import pandas as pd
+
         tenant_code = "tenant_code"
         api_year = "api_year"
 
