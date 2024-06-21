@@ -14,7 +14,6 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
-from datetime import datetime
 
 class EarthbeamDAG:
     """
@@ -582,6 +581,10 @@ class EarthbeamDAG:
         )
 
     def format_log_record(self, record):
+
+        from datetime import datetime
+        import json
+
         log_record = {
             'timestamp': datetime.utcnow().isoformat(),
             'name': record.name,
@@ -601,7 +604,14 @@ class EarthbeamDAG:
         grain_update: Optional[str] = None,
         **kwargs
     ):
+
         def wrapper(*args, **kwargs):
+            
+            import logging
+            import json
+            import io
+            import sys
+
             # Create a logger
             logger = logging.getLogger(python_callable.__name__)
             logger.setLevel(logging.DEBUG)
@@ -671,6 +681,7 @@ class EarthbeamDAG:
 
         :return:
         """
+        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
         # Retrieve the database and schema from the Snowflake hook and build the insert-query.
         database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
