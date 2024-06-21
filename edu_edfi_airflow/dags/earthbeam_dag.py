@@ -14,6 +14,7 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
+from datetime import datetime
 
 class EarthbeamDAG:
     """
@@ -81,6 +82,8 @@ class EarthbeamDAG:
 
     def build_python_preprocessing_operator(self,
         python_callable: Callable,
+        snowflake_conn_id: Optional[str] = None,
+        preprocess_logging_table: Optional[str] = None,
         **kwargs
     ) -> PythonOperator:
         """
@@ -93,9 +96,16 @@ class EarthbeamDAG:
         callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
         task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
 
+        # Wrap the callable with log capturing
+        wrapped_callable = capture_logs(
+            python_callable,
+            snowflake_conn_id=snowflake_conn_id,
+            preprocess_logging_table=preprocess_logging_table
+        )
+
         return PythonOperator(
             task_id=task_id,
-            python_callable=python_callable,
+            python_callable=wrapped_callable,
             op_kwargs=kwargs,
             provide_context=True,
             pool=self.pool,
@@ -546,6 +556,108 @@ class EarthbeamDAG:
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
                 PARSE_JSON($${results}$$) AS result
+        """
+
+        # Insert each row into the table, passing the values as parameters.
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
+        snowflake_hook.run(
+            sql=qry_insert_into
+        )
+
+    def format_log_record(record):
+        log_record = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'name': record.name,
+            'level': record.levelname,
+            'message': record.getMessage(),
+            'pathname': record.pathname,
+            'lineno': record.lineno,
+        }
+        return json.dumps(log_record)
+    
+    def capture_logs(python_callable: Callable, snowflake_conn_id, preprocess_logging_table):
+        def wrapper(*args, **kwargs):
+            # Create a logger
+            logger = logging.getLogger(python_callable.__name__)
+            logger.setLevel(logging.DEBUG)
+            
+            # Create StringIO stream to capture logs
+            log_capture_string = io.StringIO()
+            ch = logging.StreamHandler(log_capture_string)
+            ch.setLevel(logging.DEBUG)
+            logger.addHandler(ch)
+
+            # Redirect stdout and stderr
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            sys.stdout = log_capture_string
+            sys.stderr = log_capture_string
+
+            try:
+                result = python_callable(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error in {python_callable.__name__}: {e}")
+                raise
+            finally:
+                # Reset stdout and stderr
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+                
+                # Log captured output
+                log_contents = log_capture_string.getvalue()
+                log_capture_string.close()
+                logger.debug(log_contents)
+
+                # Send logs to Snowflake
+                log_entries = log_contents.splitlines()
+                for entry in log_entries:
+                    record = logging.LogRecord(
+                        name=python_callable.__name__,
+                        level=logging.DEBUG,
+                        pathname='',
+                        lineno=0,
+                        msg=entry,
+                        args=None,
+                        exc_info=None
+                    )
+                    log_data = json.loads(format_log_record(record))
+                    send_log_to_snowflake(log_data, snowflake_conn_id, database, schema, table)
+            
+            return result
+        return wrapper
+
+    def insert_preprocess_log_to_snowflake(self,
+        snowflake_conn_id: str,
+        preprocess_logging_table: str,
+        
+        log_data: {},
+
+        tenant_code: str,
+        api_year: int,
+        grain_update: Optional[str] = None,
+        **kwargs
+    ):
+        """
+
+        :return:
+        """
+
+        # Retrieve the database and schema from the Snowflake hook and build the insert-query.
+        database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+
+        grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
+
+        qry_insert_into = f"""
+            INSERT INTO {database}.{schema}.{preprocess_logging_table}
+                (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
+            SELECT
+                '{tenant_code}' AS tenant_code,
+                '{api_year}' AS api_year,
+                {grain_update_str} AS grain_update,
+                '{self.run_type}' AS run_type,
+                '{kwargs['ds']}' AS run_date,
+                '{kwargs['ts']}' AS run_timestamp,
+                PARSE_JSON($${log_data}$$) AS result
         """
 
         # Insert each row into the table, passing the values as parameters.
