@@ -580,10 +580,17 @@ class EarthbeamDAG:
             sql=qry_insert_into
         )
 
-    def format_log_record(self, record):
+    def format_log_record(self, record, args, kwargs):
 
         from datetime import datetime
         import json
+
+        def serialize_argument(arg):
+            try:
+                return json.dumps(arg)
+            except TypeError:
+                return str(arg)
+
 
         log_record = {
             'timestamp': datetime.utcnow().isoformat(),
@@ -592,6 +599,8 @@ class EarthbeamDAG:
             'message': record.getMessage(),
             'pathname': record.pathname,
             'lineno': record.lineno,
+            'args': {k: serialize_argument(v) for k, v in enumerate(args)},
+            'kwargs': {k: serialize_argument(v) for k, v in kwargs.items()},
         }
         return json.dumps(log_record)
     
@@ -610,7 +619,6 @@ class EarthbeamDAG:
             import logging
             import json
             import io
-            import sys
 
             # Create a logger
             logger = logging.getLogger(python_callable.__name__)
@@ -622,26 +630,19 @@ class EarthbeamDAG:
             ch.setLevel(logging.DEBUG)
             logger.addHandler(ch)
 
-            # Redirect stdout and stderr
-            old_stdout = sys.stdout
-            old_stderr = sys.stderr
-            sys.stdout = log_capture_string
-            sys.stderr = log_capture_string
-
             try:
                 result = python_callable(*args, **kwargs)
             except Exception as e:
                 logger.error(f"Error in {python_callable.__name__}: {e}")
                 raise
             finally:
-                # Reset stdout and stderr
-                sys.stdout = old_stdout
-                sys.stderr = old_stderr
-                
-                # Log captured output
+                # Ensure all log entries are flushed before closing the stream
+                ch.flush()
                 log_contents = log_capture_string.getvalue()
+            
+                # Remove the handler and close the StringIO stream
+                logger.removeHandler(ch)
                 log_capture_string.close()
-                logger.debug(log_contents)
 
                 # Send logs to Snowflake
                 log_entries = log_contents.splitlines()
@@ -655,13 +656,14 @@ class EarthbeamDAG:
                         args=None,
                         exc_info=None
                     )
-                    log_data = json.loads(self.format_log_record(record))
+                    log_data = json.loads(self.format_log_record(record, args, kwargs))
                     self.insert_preprocess_log_to_snowflake(snowflake_conn_id=snowflake_conn_id,
                                                             preprocess_logging_table=preprocess_logging_table,
                                                             log_data=log_data,
                                                             tenant_code=tenant_code,
                                                             api_year=api_year,
-                                                            grain_update=grain_update)
+                                                            grain_update=grain_update,
+                                                            **kwargs)
             
             return result
         return wrapper
