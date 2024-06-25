@@ -80,6 +80,7 @@ class EarthbeamDAG:
 
     @staticmethod
     def partition_on_tenant_and_year(
+        # FIXME: can take a path too
         csv_paths: Union[str, List[str]],
         output_dir: str,
         tenant_col: str = "tenant_code",
@@ -87,6 +88,18 @@ class EarthbeamDAG:
         year_col: str = "api_year",
         year_map: dict = None,
     ):
+        """
+        Preprocessing function to shard data to parquet on disk
+
+        :param csv_paths: one or more complete file paths pointing to input data
+        :param output_dir: root directory of the parquet
+        :param tenant_col: (optional) name of the column to use as tenant code
+        :param tenant_map: (optional) map values from the contents of tenant_col to valid tenant codes
+        :param year_col: (optional) name of the column to use as API year
+        :param year_map: (optional) map values from the contents of api_col to valid API years
+
+        :return:
+        """
         # (expensive) imports here so that the airflow scheduler doesn't have to deal with them
         import dask
         import dask.dataframe as dd
@@ -105,8 +118,8 @@ class EarthbeamDAG:
             final_csv_paths = [csv_paths]
 
         for csv_path in final_csv_paths:
-            if not csv_path.endswith(".csv"):
-                raise ValueError(f"Input path '{csv_path}' does not end with '.csv'")
+            if not Path(csv_path).is_file() or not Path(csv_path).suffix == '.csv':
+                raise ValueError(f"Input path '{csv_path}' is not a path to a file whose name ends with '.csv'")
 
         path_mapping = {
             # use the input file basenames as the parquet directory names
@@ -124,6 +137,11 @@ class EarthbeamDAG:
             for csv_path, parquet_path in path_mapping.items():
                 df = dd.read_csv(csv_path, dtype=str, na_filter=False).fillna('')
 
+                if tenant_col not in df:
+                    raise KeyError(f"provided tenant_code column '{tenant_col}' not present in data")
+                if year_col not in df:
+                    raise KeyError(f"provided api_year column '{year_col}' not present in data")    
+            
                 # if needed, add tenant_code and api_year as columns so we can partition on them
                 if tenant_map is not None:
                     df[tenant_code] = df[tenant_col].map(lambda x: tenant_map[x], meta=dd.utils.make_meta(df[tenant_col]))
