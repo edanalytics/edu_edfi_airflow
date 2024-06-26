@@ -80,8 +80,7 @@ class EarthbeamDAG:
 
     @staticmethod
     def partition_on_tenant_and_year(
-        # FIXME: can take a path too
-        csv_paths: Union[str, List[str]],
+        csv_paths: Union[Union[str, Path], List[Union[str, Path]]],
         output_dir: str,
         tenant_col: str = "tenant_code",
         tenant_map: dict = None,
