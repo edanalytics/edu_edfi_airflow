@@ -199,6 +199,7 @@ class EarthbeamDAG:
             dag=self.dag
         )
 
+
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
@@ -288,6 +289,7 @@ class EarthbeamDAG:
             elif s3_conn_id:         # Earthmover-to-S3
                 group_id += "_to_s3"
 
+
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=prefix_group_id,
@@ -311,6 +313,7 @@ class EarthbeamDAG:
 
                 task_order.append(python_preprocess)
                 paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
+
 
             ### Raw to S3
             if s3_conn_id:
@@ -340,6 +343,7 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(raw_to_s3)
+
 
             ### EarthmoverOperator: Required
             em_output_dir = edfi_api_client.url_join(
@@ -376,6 +380,7 @@ class EarthbeamDAG:
             task_order.append(run_earthmover)
             paths_to_clean.append(airflow_util.xcom_pull_template(run_earthmover.task_id))
 
+
             ### Earthmover logs to Snowflake
             if logging_table:
                 if not snowflake_conn_id:
@@ -402,6 +407,7 @@ class EarthbeamDAG:
                 )
 
                 run_earthmover >> log_earthmover_to_snowflake
+
 
             ### Earthmover to S3
             if s3_conn_id:
@@ -431,6 +437,7 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(em_to_s3)
+
 
             ### LightbeamOperator
             if edfi_conn_id:
@@ -487,6 +494,7 @@ class EarthbeamDAG:
                     )
 
                     run_lightbeam >> log_lightbeam_to_snowflake
+
 
             ### Alternate route: Bypassing the ODS directly into Snowflake
             if snowflake_conn_id and not edfi_conn_id:
@@ -547,6 +555,7 @@ class EarthbeamDAG:
 
                 task_order.append(s3_to_snowflake_task_group)
 
+
             ### Final cleanup
             cleanup_local_disk = PythonOperator(
                 task_id=f"{taskgroup_grain}_cleanup_disk",
@@ -566,6 +575,7 @@ class EarthbeamDAG:
             chain(*task_order)
 
         return tenant_year_task_group
+
 
     def insert_earthbeam_result_to_logging_table(self,
         snowflake_conn_id: str,
