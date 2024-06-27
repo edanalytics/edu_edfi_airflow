@@ -1,9 +1,10 @@
 from typing import Callable, List, Optional
+import logging
 import os
-import yaml
-from jinja2 import Template
+import re
 
 
+from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
@@ -17,20 +18,6 @@ from edu_edfi_airflow.callables.s3 import local_filepath_to_s3, remove_filepaths
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
-
-from edu_edfi_airflow.callables.dynamic_python_operator import DynamicPythonOperator
-
-# Function to evaluate the callable and kwargs template
-def evaluate_kwargs(kwargs_template_str, context):
-    
-    # Render the kwargs template string using Jinja2
-    template = Template(kwargs_template_str)
-    rendered_kwargs = template.render(context)
-    
-    # Parse the rendered kwargs as a dictionary
-    out_kwargs = yaml.safe_load(rendered_kwargs)
-    
-    return out_kwargs
 
 
 class EarthbeamDAG:
@@ -97,21 +84,38 @@ class EarthbeamDAG:
         return raw_dir
     
     
-    def list_files_in_raw_dir(self, raw_dir: str, ds_nodash_string, ts_nodash_string):
+    def list_files_in_raw_dir(self, raw_dir: str, file_pattern: Optional[str] = None, **context):
         """
         List files in a raw directory. Skip if no files found
         """
+        if not os.path.exists(raw_dir):
+            raise AirflowSkipException(f"Directory {raw_dir} not found.")
+        
+        return_files = []
+        unmatched_files = []
+        
+        for file in os.listdir(raw_dir):
 
-        if os.path.exists(raw_dir):
-            return[{'local_filepath': os.path.join(raw_dir, f),
-                    'ds_nodash_string': ds_nodash_string,
-                    'ts_nodash_string': ts_nodash_string
-                   } for f in os.listdir(raw_dir)]
-        else:
-            raise AirflowSkipException(
-                f"Directory {raw_dir} not found."
-            )  
+            if file_pattern and not re.search(file_pattern, file):
+                logging.warning(f"File does not match file_pattern: {file}")
+                unmatched_files.append(file)
+                continue
 
+            return_files.append(os.path.join(raw_dir, file))
+
+        # Push an XCom regardless of the success of the task.
+        context['ti'].xcom_push(key='return_value', value=return_files)
+
+        if unmatched_files:
+            files_string = '\n'.join(map(lambda file: f"  - {file}", unmatched_files))
+            raise AirflowFailException(
+                f"One or more files did not match file pattern `{file_pattern}`:\n{files_string}"
+            )
+        
+        if not return_files:
+            raise AirflowSkipException(f"No files were found in directory: {raw_dir}")
+
+        return return_files
 
     def build_python_preprocessing_operator(self,
         python_callable: Callable,
@@ -159,7 +163,7 @@ class EarthbeamDAG:
         )
 
 
-    def build_default_tenant_year_taskgroup(self,
+    def build_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
         raw_dir: str,
@@ -535,6 +539,21 @@ class EarthbeamDAG:
 
         return tenant_year_task_group
 
+
+    ### Dynamic Earthbeam across multiple files
+    @staticmethod
+    def inject_input_file_into_kwargs(input_file: str, earthmover_kwargs: Optional[dict]) -> dict:
+        """
+        Helper for injecting INPUT_FILE into kwargs passed to Earthmover in dynamic runs.
+        """
+        copied_kwargs = dict(earthmover_kwargs or ())
+
+        if not 'parameters' in copied_kwargs:
+            copied_kwargs['parameters'] = {}
+
+        earthmover_kwargs['parameters']['INPUT_FILE'] = input_file
+        return earthmover_kwargs
+
     def build_dynamic_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
@@ -550,12 +569,14 @@ class EarthbeamDAG:
 
         edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
+        
+        # Unique to dynamic version: fails list task if any files don't match pattern.
+        file_pattern: Optional[str] = None, 
 
         s3_conn_id: Optional[str] = None,
         s3_filepath: Optional[str] = None,
 
         python_callable: Optional[Callable] = None,
-        python_task_name: Optional[str] = None,
         python_kwargs: Optional[dict] = None,
 
         snowflake_conn_id: Optional[str] = None,
@@ -569,6 +590,8 @@ class EarthbeamDAG:
         **kwargs
     ):
         """
+        IMPORTANT: This approach assumes a template will use 'INPUT_FILE' as its only input parameter!
+
         (Python) -> (S3: Raw) -> Earthmover -> (S3: EM Output) -> (Snowflake: EM Logs) +-> (Lightbeam) -> (Snowflake: LB Logs) +-> Clean-up
                                                                                        +-> (Snowflake: EM Output)
 
@@ -597,7 +620,6 @@ class EarthbeamDAG:
         :param s3_filepath:
 
         :param python_callable:
-        :param python_task_name:
         :param python_kwargs:
 
         :param snowflake_conn_id:
@@ -640,7 +662,7 @@ class EarthbeamDAG:
             ### PythonOperator Preprocess
             if python_callable:
                 python_preprocess = PythonOperator(
-                    task_id= f"{taskgroup_grain}_{python_task_name}" if python_task_name else f"{taskgroup_grain}_preprocess_python",
+                    task_id=f"{taskgroup_grain}_preprocess_python",
                     python_callable=python_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
@@ -658,8 +680,7 @@ class EarthbeamDAG:
                 python_callable=self.list_files_in_raw_dir,
                 op_kwargs={
                     'raw_dir': airflow_util.xcom_pull_template(python_preprocess.task_id) if python_callable else raw_dir,
-                    'ds_nodash_string': '{{ ds_nodash }}',
-                    'ts_nodash_string': '{{ ts_nodash }}'
+                    'file_pattern': file_pattern,
                 },
                 provide_context=True
             )
@@ -678,19 +699,21 @@ class EarthbeamDAG:
                     '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
 
-                raw_to_s3_kwargs = list_files_task.output.map(lambda raw_dir: {'local_filepath': raw_dir['local_filepath'] })
-                raw_to_s3 = DynamicPythonOperator.partial(
+                raw_to_s3_kwargs = list_files_task.output.map(lambda filepath: {
+                    's3_conn_id': s3_conn_id,
+                    's3_destination_key': s3_raw_filepath,
+                    'local_filepath': filepath,
+                    'remove_local_filepath': False,
+                })
+
+                raw_to_s3 = PythonOperator.partial(
                     task_id=f"{taskgroup_grain}_upload_raw_to_s3",
                     python_callable=local_filepath_to_s3,
-                    static_kwargs={
-                        's3_conn_id': s3_conn_id,
-                        's3_destination_key': s3_raw_filepath,
-                        'remove_local_filepath': False,
-                    },
                     provide_context=True,
                     pool=self.pool,
+                    trigger_rule='none_skipped',
                     dag=self.dag,
-                    sla=None
+                    sla=None  # Required in dynamic task mapping
                 ).expand(op_kwargs=raw_to_s3_kwargs)
 
                 task_order.append(raw_to_s3)
@@ -700,6 +723,7 @@ class EarthbeamDAG:
             em_output_dir = edfi_api_client.url_join(
                 self.em_output_directory,
                 tenant_code, self.run_type, api_year, grain_update,
+                '{{ ds_nodash }}', '{{ ts_nodash }}'
             )
 
             em_state_file = edfi_api_client.url_join(
@@ -708,37 +732,30 @@ class EarthbeamDAG:
                 'earthmover.csv'
             )
 
-            run_earthmover_kwargs = list_files_task.output.map(lambda input_file:
-                evaluate_kwargs(str(earthmover_kwargs),
-                    context={
-                        'input_file': input_file['local_filepath'],
-                        'output_dir': edfi_api_client.url_join(
-                            em_output_dir,
-                            input_file['ds_nodash_string'],
-                            input_file['ts_nodash_string'],
-                            os.path.basename(input_file['local_filepath'])
-                        ),
-                        'results_file': edfi_api_client.url_join(
-                            em_output_dir,
-                            input_file['ds_nodash_string'],
-                            input_file['ts_nodash_string'],
-                            os.path.basename(input_file['local_filepath']),
-                            'earthmover_results.json'
-                        ) if logging_table else None
-                    })
-            )
+            # Create a unique Earthmover output directory per file.
+            run_earthmover_kwargs = list_files_task.output.map(lambda filepath: {
+                'output_dir': edfi_api_client.url_join(
+                    em_output_dir, os.path.basename(filepath)
+                ),
+                'results_file': edfi_api_client.url_join(
+                    em_output_dir, os.path.basename(filepath), 'earthmover_results.json'
+                ) if logging_table else None,
+                **self.inject_input_file_into_kwargs(filepath, earthmover_kwargs)
+            })
+
             run_earthmover = EarthmoverOperator.partial(
                 task_id=f"{taskgroup_grain}_run_earthmover",
                 earthmover_path=self.earthmover_path,
                 state_file=em_state_file,
                 database_conn_id=database_conn_id,
                 pool=self.earthmover_pool,
+                trigger_rule='none_skipped',
                 dag=self.dag,
-                sla=None
+                sla=None  # Required in dynamic task mapping
             ).expand_kwargs(run_earthmover_kwargs)
 
             task_order.append(run_earthmover)
-            paths_to_clean.append(run_earthmover.output.map(lambda results_dir: results_dir))
+            paths_to_clean.append(run_earthmover.output)  # TODO: I expect this will fail.
 
             ### Earthmover logs to Snowflake
             if logging_table:
@@ -747,22 +764,27 @@ class EarthbeamDAG:
                         "Snowflake connection required to copy Earthmover logs into Snowflake."
                     )
 
-                log_em_to_snowflake_kwargs = run_earthmover.output.map(lambda results_dir: 
-                    {'results_filepath': edfi_api_client.url_join(results_dir, 'earthmover_results.json'),
-                     'snowflake_conn_id': snowflake_conn_id,
-                     'logging_table': logging_table,
-                     'tenant_code': tenant_code,
-                     'api_year': api_year,
-                     'grain_update': grain_update,
-                     })
+                log_em_to_snowflake_kwargs = run_earthmover.output.map(lambda results_dir: {
+                    'snowflake_conn_id': snowflake_conn_id,
+                    'logging_table': logging_table,
+                    'results_filepath': edfi_api_client.url_join(results_dir, 'earthmover_results.json'),
+                    
+                    'tenant_code': tenant_code,
+                    'api_year': api_year,
+                    'grain_update': grain_update,
+                })
+
                 log_earthmover_to_snowflake = PythonOperator.partial(
                     task_id=f"{taskgroup_grain}_log_earthmover_to_snowflake",
                     python_callable=self.insert_earthbeam_result_to_logging_table,
                     pool=self.pool,
                     trigger_rule="all_done",
                     dag=self.dag,
-                    sla=None
+                    sla=None  # Required in dynamic task mapping
                 ).expand(op_kwargs=log_em_to_snowflake_kwargs)
+
+                run_earthmover >> log_earthmover_to_snowflake
+
 
             ### Earthmover to S3
             if s3_conn_id:
@@ -774,23 +796,25 @@ class EarthbeamDAG:
                 s3_em_filepath = edfi_api_client.url_join(
                     s3_filepath, 'earthmover',
                     tenant_code, self.run_type, api_year, grain_update,
+                    '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
 
-                em_to_s3_kwargs = run_earthmover.output.map(lambda output_dir:
-                    {'s3_conn_id': s3_conn_id,
-                     's3_destination_key': edfi_api_client.url_join(
+                em_to_s3_kwargs = run_earthmover.output.map(lambda output_dir: {
+                    's3_conn_id': s3_conn_id,
+                    's3_destination_key': edfi_api_client.url_join(
                         s3_em_filepath,
-                        '/'.join(output_dir.split('/')[-3:])
-                      ),
-                     'local_filepath': output_dir,
-                     'remove_local_filepath': False,
-                    })
+                        os.path.basename(output_dir),
+                    ),
+                    'local_filepath': output_dir,
+                    'remove_local_filepath': False,
+                })
+                
                 em_to_s3 = PythonOperator.partial(
                     task_id=f"{taskgroup_grain}_upload_earthmover_to_s3",
                     python_callable=local_filepath_to_s3,
                     pool=self.pool,
                     dag=self.dag,
-                    sla=None
+                    sla=None  # Required in dynamic task mapping
                 ).expand(op_kwargs=em_to_s3_kwargs)
 
 
@@ -802,14 +826,21 @@ class EarthbeamDAG:
                     'lightbeam'
                 )
 
-                run_lb_kwargs = run_earthmover.output.map(lambda output_dir:
-                    {'data_dir': output_dir,
-                     'results_file': edfi_api_client.url_join(
-                        em_output_dir,
-                        '/'.join(output_dir.split('/')[-3:]),
+                lb_results_dir = edfi_api_client.url_join(
+                    self.emlb_results_directory,
+                    tenant_code, self.run_type, api_year, grain_update,
+                    '{{ ds_nodash }}', '{{ ts_nodash }}',
+                )
+
+                run_lb_kwargs = run_earthmover.output.map(lambda output_dir: {
+                    'data_dir': output_dir,
+                    'results_file': edfi_api_client.url_join(
+                        lb_results_dir,
+                        os.path.basename(output_dir),
                         'lightbeam_results.json'
-                     ) if logging_table else None
-                    })
+                    ) if logging_table else None
+                })
+                
                 run_lightbeam = LightbeamOperator.partial(
                     task_id=f"{taskgroup_grain}_send_via_lightbeam",
                     lightbeam_path=self.lightbeam_path,
@@ -818,7 +849,7 @@ class EarthbeamDAG:
                     **(lightbeam_kwargs or {}),
                     pool=self.lightbeam_pool,
                     dag=self.dag,
-                    sla=None
+                    sla=None  # Required in dynamic task mapping
                 ).expand_kwargs(run_lb_kwargs)
 
                 task_order.append(run_lightbeam)
@@ -830,22 +861,23 @@ class EarthbeamDAG:
                             "Snowflake connection required to copy Lightbeam logs into Snowflake."
                         )
 
-                    log_lb_to_snowflake_kwargs = run_lightbeam.output.map(lambda results_dir: 
-                        {'results_filepath': edfi_api_client.url_join(results_dir, 'lightbeam_results.json'),
+                    log_lb_to_snowflake_kwargs = run_lightbeam.output.map(lambda results_dir: {
                         'snowflake_conn_id': snowflake_conn_id,
                         'logging_table': logging_table,
+                        'results_filepath': edfi_api_client.url_join(results_dir, 'lightbeam_results.json'),
+                        
                         'tenant_code': tenant_code,
                         'api_year': api_year,
                         'grain_update': grain_update,
-                        }
-                    )
+                    })
+
                     log_lightbeam_to_snowflake = PythonOperator.partial(
                         task_id=f"{taskgroup_grain}_log_lightbeam_to_snowflake",
                         python_callable=self.insert_earthbeam_result_to_logging_table,
                         pool=self.pool,
                         trigger_rule="all_done",
                         dag=self.dag,
-                        sla=None
+                        sla=None  # Required in dynamic task mapping
                     ).expand(op_kwargs=log_lb_to_snowflake_kwargs)
 
                     run_lightbeam >> log_lightbeam_to_snowflake
@@ -885,9 +917,6 @@ class EarthbeamDAG:
                         else:
                             table_name = snake_endpoint
 
-                        em_to_snowflake_kwargs = em_to_s3.output.map(lambda output_dir:
-                            {'s3_destination_dir': edfi_api_client.url_join(output_dir)}
-                        )
                         em_to_snowflake = S3ToSnowflakeOperator.partial(
                             task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{camel_endpoint}",
 
@@ -896,7 +925,7 @@ class EarthbeamDAG:
                             resource=f"{snake_endpoint}__{self.run_type}",
                             table_name=table_name,
 
-                            s3_destination_filename=camel_endpoint +'.jsonl',
+                            s3_destination_filename=f"{camel_endpoint}.jsonl",
 
                             snowflake_conn_id=snowflake_conn_id,
                             ods_version=ods_version,
@@ -904,8 +933,8 @@ class EarthbeamDAG:
                             full_refresh=full_refresh,
 
                             dag=self.dag,
-                            sla=None
-                        ).expand_kwargs(em_to_snowflake_kwargs)
+                            sla=None  # Required in dynamic task mapping
+                        ).expand_kwargs(s3_destination_dir=em_to_s3.output)
 
                 task_order.append(s3_to_snowflake_task_group)
 
@@ -929,6 +958,7 @@ class EarthbeamDAG:
             chain(*task_order)
 
         return dynamic_tenant_year_task_group
+
 
     def insert_earthbeam_result_to_logging_table(self,
         snowflake_conn_id: str,
