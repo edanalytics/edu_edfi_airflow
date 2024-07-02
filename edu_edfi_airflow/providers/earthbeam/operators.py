@@ -109,12 +109,10 @@ class EarthmoverOperator(BashOperator):
         for key, val in self.arguments.items():
             if not val:
                 cli_arguments.append(key)
-            elif isinstance(val, str):
-                cli_arguments.append(f"{key} '{val}'")
             elif isinstance(val, dict):
                 cli_arguments.append(f"{key} '{json.dumps(val)}'")
             else:
-                cli_arguments.append(f"{key} {val}")
+                cli_arguments.append(f"{key} '{val}'")
         
         self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
@@ -267,12 +265,10 @@ class LightbeamOperator(BashOperator):
         for key, val in self.arguments.items():
             if not val:
                 cli_arguments.append(key)
-            elif isinstance(val, str):
-                cli_arguments.append(f"{key} '{val}'")
             elif isinstance(val, dict):
                 cli_arguments.append(f"{key} '{json.dumps(val)}'")
             else:
-                cli_arguments.append(f"{key} {val}")
+                cli_arguments.append(f"{key} '{val}'")
         
         self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
