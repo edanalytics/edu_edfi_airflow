@@ -44,20 +44,20 @@ class EarthmoverOperator(BashOperator):
 
         # Dynamic arguments
         if config_file:
-            self.arguments['--config-file'] = f"'{config_file}'"
+            self.arguments['--config-file'] = config_file
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            self.arguments['--selector'] = f"'{selector}'"
+            self.arguments['--selector'] = selector
 
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = f"'{json.dumps(parameters)}'"  # Force double-quotes around JSON keys
+            self.arguments['--params'] = json.dumps(parameters)  # Force double-quotes around JSON keys
 
         if results_file:
-            self.arguments['--results-file'] = f"'{results_file}'"
+            self.arguments['--results-file'] = results_file
 
         # Boolean arguments
         if force:
@@ -103,6 +103,7 @@ class EarthmoverOperator(BashOperator):
         # Update final Earthmover command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.arguments = context['task'].render_template(self.arguments, context)  # Force render in dynamic task mapping.
+        self.arguments = {key: f"'{val}'" if val else '' for key, val in self.arguments.items()}  # Force all CLI arguments to be wrapped in single quotes.
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
         self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
@@ -162,25 +163,25 @@ class LightbeamOperator(BashOperator):
 
         # Dynamic arguments
         if config_file:
-            self.arguments['--config-file'] = f"'{config_file}'"
+            self.arguments['--config-file'] = config_file
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            self.arguments['--selector'] = f"'{selector}'"
+            self.arguments['--selector'] = selector
 
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = f"'{json.dumps(parameters)}'"  # Force double-quotes around JSON keys
+            self.arguments['--params'] = json.dumps(parameters)  # Force double-quotes around JSON keys
 
         if results_file:
-            self.arguments['--results-file'] = f"'{results_file}'"
+            self.arguments['--results-file'] = results_file
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
                 resend_status_codes = ",".join(resend_status_codes)
-            self.arguments['--resend-status-codes'] = f"'{resend_status_codes}'"
+            self.arguments['--resend-status-codes'] = resend_status_codes
 
         # Boolean arguments
         if wipe:
@@ -190,9 +191,9 @@ class LightbeamOperator(BashOperator):
 
         # Optional string arguments
         if older_than:
-            self.arguments['--older-than'] = f"'{older_than}'"
+            self.arguments['--older-than'] = older_than
         if newer_than:
-            self.arguments['--newer-than'] = f"'{newer_than}'"
+            self.arguments['--newer-than'] = newer_than
 
         ### Environment variables
         # Pass required `data_dir`
@@ -249,8 +250,8 @@ class LightbeamOperator(BashOperator):
         # Update final Lightbeam command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.arguments = context['task'].render_template(self.arguments, context)  # Force render in dynamic task mapping.
+        self.arguments = {key: f"'{val}'" if val else '' for key, val in self.arguments.items()}  # Force all CLI arguments to be wrapped in single quotes.
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
-        self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 
         super().execute(context)
