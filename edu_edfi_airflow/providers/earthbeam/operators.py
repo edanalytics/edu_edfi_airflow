@@ -52,9 +52,9 @@ class EarthmoverOperator(BashOperator):
             self.arguments['--selector'] = f"'{selector}'"
 
         if parameters:  # JSON string or dictionary
-            if not isinstance(parameters, str):
-                parameters = json.dumps(parameters)
-            self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
+            if isinstance(parameters, str):
+                parameters = json.loads(parameters)
+            self.arguments['--params'] = f"'{json.dumps(parameters)}'"  # Force double-quotes around JSON keys
 
         if results_file:
             self.arguments['--results-file'] = f"'{results_file}'"
@@ -170,9 +170,9 @@ class LightbeamOperator(BashOperator):
             self.arguments['--selector'] = f"'{selector}'"
 
         if parameters:  # JSON string or dictionary
-            if not isinstance(parameters, str):
-                parameters = json.dumps(parameters)
-            self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
+            if isinstance(parameters, str):
+                parameters = json.loads(parameters)
+            self.arguments['--params'] = f"'{json.dumps(parameters)}'"  # Force double-quotes around JSON keys
 
         if results_file:
             self.arguments['--results-file'] = f"'{results_file}'"
