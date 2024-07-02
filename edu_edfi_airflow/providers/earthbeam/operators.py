@@ -44,12 +44,12 @@ class EarthmoverOperator(BashOperator):
 
         # Dynamic arguments
         if config_file:
-            self.arguments['--config-file'] = config_file
+            self.arguments['--config-file'] = f"'{config_file}'"
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            self.arguments['--selector'] = selector
+            self.arguments['--selector'] = f"'{selector}'"
 
         if parameters:  # JSON string or dictionary
             if not isinstance(parameters, str):
@@ -57,7 +57,7 @@ class EarthmoverOperator(BashOperator):
             self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
 
         if results_file:
-            self.arguments['--results-file'] = results_file
+            self.arguments['--results-file'] = f"'{results_file}'"
 
         # Boolean arguments
         if force:
@@ -162,12 +162,12 @@ class LightbeamOperator(BashOperator):
 
         # Dynamic arguments
         if config_file:
-            self.arguments['--config-file'] = config_file
+            self.arguments['--config-file'] = f"'{config_file}'"
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            self.arguments['--selector'] = selector
+            self.arguments['--selector'] = f"'{selector}'"
 
         if parameters:  # JSON string or dictionary
             if not isinstance(parameters, str):
@@ -175,12 +175,12 @@ class LightbeamOperator(BashOperator):
             self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
 
         if results_file:
-            self.arguments['--results-file'] = results_file
+            self.arguments['--results-file'] = f"'{results_file}'"
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
                 resend_status_codes = ",".join(resend_status_codes)
-            self.arguments['--resend-status-codes'] = resend_status_codes
+            self.arguments['--resend-status-codes'] = f"'{resend_status_codes}'"
 
         # Boolean arguments
         if wipe:
@@ -190,9 +190,9 @@ class LightbeamOperator(BashOperator):
 
         # Optional string arguments
         if older_than:
-            self.arguments['--older-than'] = older_than
+            self.arguments['--older-than'] = f"'{older_than}'"
         if newer_than:
-            self.arguments['--newer-than'] = newer_than
+            self.arguments['--newer-than'] = f"'{newer_than}'"
 
         ### Environment variables
         # Pass required `data_dir`
