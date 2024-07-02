@@ -54,7 +54,7 @@ class EarthmoverOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = json.dumps(parameters)  # Force double-quotes around JSON keys
+            self.arguments['--params'] = parameters
 
         if results_file:
             self.arguments['--results-file'] = results_file
@@ -103,9 +103,20 @@ class EarthmoverOperator(BashOperator):
         # Update final Earthmover command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.arguments = context['task'].render_template(self.arguments, context)  # Force render in dynamic task mapping.
-        self.arguments = {key: f"'{val}'" if val else '' for key, val in self.arguments.items()}  # Force all CLI arguments to be wrapped in single quotes.
-        self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
-        self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
+
+        # Format values before adding to the bash command.
+        cli_arguments = []
+        for key, val in self.arguments.items():
+            if not val:
+                cli_arguments.append(key)
+            elif isinstance(val, str):
+                cli_arguments.append(f"{key} '{val}'")
+            elif isinstance(val, dict):
+                cli_arguments.append(f"{key} '{json.dumps(val)}'")
+            else:
+                cli_arguments.append(f"{key} {val}")
+        
+        self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
 
         # Create state_dir if not already defined in filespace
@@ -173,7 +184,7 @@ class LightbeamOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = json.dumps(parameters)  # Force double-quotes around JSON keys
+            self.arguments['--params'] = parameters
 
         if results_file:
             self.arguments['--results-file'] = results_file
@@ -250,8 +261,20 @@ class LightbeamOperator(BashOperator):
         # Update final Lightbeam command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
         self.arguments = context['task'].render_template(self.arguments, context)  # Force render in dynamic task mapping.
-        self.arguments = {key: f"'{val}'" if val else '' for key, val in self.arguments.items()}  # Force all CLI arguments to be wrapped in single quotes.
-        self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
+
+        # Format values before adding to the bash command.
+        cli_arguments = []
+        for key, val in self.arguments.items():
+            if not val:
+                cli_arguments.append(key)
+            elif isinstance(val, str):
+                cli_arguments.append(f"{key} '{val}'")
+            elif isinstance(val, dict):
+                cli_arguments.append(f"{key} '{json.dumps(val)}'")
+            else:
+                cli_arguments.append(f"{key} {val}")
+        
+        self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 
         super().execute(context)
