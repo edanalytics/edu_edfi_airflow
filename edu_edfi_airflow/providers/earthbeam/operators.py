@@ -54,7 +54,7 @@ class EarthmoverOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = parameters
+            self.arguments['--params'] = {key: str(val) for key, val in parameters.items()}  # Force all params to strings.
 
         if results_file:
             self.arguments['--results-file'] = results_file
@@ -182,7 +182,7 @@ class LightbeamOperator(BashOperator):
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = parameters
+            self.arguments['--params'] = {key: str(val) for key, val in parameters.items()}  # Force all params to strings.
 
         if results_file:
             self.arguments['--results-file'] = results_file
