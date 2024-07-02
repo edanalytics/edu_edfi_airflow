@@ -94,14 +94,14 @@ class EarthbeamDAG:
         return_files = []
         unmatched_files = []
         
-        for file in os.listdir(raw_dir):
+        for root, _, files in os.walk(raw_dir):
+            for file in files:
+                if file_pattern and not re.search(file_pattern, file):
+                    logging.warning(f"File does not match file_pattern: {file}")
+                    unmatched_files.append(os.path.join(root, file))
+                    continue
 
-            if file_pattern and not re.search(file_pattern, file):
-                logging.warning(f"File does not match file_pattern: {file}")
-                unmatched_files.append(file)
-                continue
-
-            return_files.append(os.path.join(raw_dir, file))
+                return_files.append(os.path.join(root, file))
 
         # Push an XCom regardless of the success of the task.
         context['ti'].xcom_push(key='return_value', value=return_files)
@@ -709,7 +709,6 @@ class EarthbeamDAG:
                 raw_to_s3 = PythonOperator.partial(
                     task_id=f"{taskgroup_grain}_upload_raw_to_s3",
                     python_callable=local_filepath_to_s3,
-                    provide_context=True,
                     pool=self.pool,
                     trigger_rule='none_skipped',
                     dag=self.dag,
@@ -934,7 +933,7 @@ class EarthbeamDAG:
 
                             dag=self.dag,
                             sla=None  # Required in dynamic task mapping
-                        ).expand_kwargs(s3_destination_dir=em_to_s3.output)
+                        ).expand(s3_destination_dir=em_to_s3.output)
 
                 task_order.append(s3_to_snowflake_task_group)
 
