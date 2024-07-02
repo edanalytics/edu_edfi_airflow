@@ -102,6 +102,7 @@ class EarthmoverOperator(BashOperator):
 
         # Update final Earthmover command with any passed arguments
         # This update occurs here instead of init to allow context parameters to be passed.
+        self.arguments = context['task'].render_template(self.arguments, context)  # Force render in dynamic task mapping.
         self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
         self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
