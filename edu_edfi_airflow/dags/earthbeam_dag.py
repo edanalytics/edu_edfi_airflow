@@ -379,7 +379,24 @@ class EarthbeamDAG:
                     "lightbeam_results.json"
                 )
 
-                run_lightbeam = LightbeamOperator(
+                if full_refresh:
+                    # clear previously sent records
+                    lightbeam_delete = LightbeamOperator(
+                        command="delete",
+                        task_id=f"{taskgroup_grain}_delete_via_lightbeam",
+                        lightbeam_path=self.lightbeam_path,
+                        data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
+                        state_dir=lb_state_dir,
+                        results_file=lb_results_file if logging_table else None,
+                        edfi_conn_id=edfi_conn_id,
+                        **(lightbeam_kwargs or {}),
+                        pool=self.lightbeam_pool,
+                        dag=self.dag
+                    )
+
+                    task_order.append(lightbeam_delete)
+
+                lightbeam_send = LightbeamOperator(
                     task_id=f"{taskgroup_grain}_send_via_lightbeam",
                     lightbeam_path=self.lightbeam_path,
                     data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
@@ -391,7 +408,7 @@ class EarthbeamDAG:
                     dag=self.dag
                 )
 
-                task_order.append(run_lightbeam)
+                task_order.append(lightbeam_send)
 
                 ### Lightbeam logs to Snowflake
                 if logging_table:
