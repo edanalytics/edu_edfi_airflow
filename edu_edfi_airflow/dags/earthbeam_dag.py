@@ -103,19 +103,26 @@ class EarthbeamDAG:
 
                 return_files.append(os.path.join(root, file))
 
-        # Push an XCom regardless of the success of the task.
-        context['ti'].xcom_push(key='return_value', value=return_files)
-
+        # Push an additional XCom if one or more files failed the file-pattern check.
         if unmatched_files:
             files_string = '\n'.join(map(lambda file: f"  - {file}", unmatched_files))
-            raise AirflowFailException(
+            logging.warning(
                 f"One or more files did not match file pattern `{file_pattern}`:\n{files_string}"
             )
+            context['ti'].xcom_push(key='failed_files', value=unmatched_files)
         
         if not return_files:
             raise AirflowSkipException(f"No files were found in directory: {raw_dir}")
 
         return return_files
+    
+    # One or more endpoints can fail total-get count. Create a second operator to track that failed status.
+    # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
+    def fail_if_xcom(xcom_value, **context):
+        if xcom_value:
+            raise AirflowFailException(f"XCom value: {xcom_value}")
+        else:
+            raise AirflowSkipException  # Force a skip to not mark the taskgroup as a success when all tasks skip.
 
     def build_python_preprocessing_operator(self,
         python_callable: Callable,
@@ -686,6 +693,17 @@ class EarthbeamDAG:
             )
             task_order.append(list_files_task)
 
+            # Optional task to fail when unexpected files were found in ShareFile.
+            if file_pattern:
+                failed_sentinel = PythonOperator(
+                    task_id=f"{taskgroup_grain}__failed_file_pattern",
+                    python_callable=self.fail_if_xcom,
+                    op_args=[airflow_util.xcom_pull_template(list_files_task, key='failed_files')],
+                    trigger_rule='all_done',
+                    dag=self.dag
+                )
+                list_files_task >> failed_sentinel
+
             ### Raw to S3
             if s3_conn_id:
                 if not s3_filepath:
@@ -710,7 +728,7 @@ class EarthbeamDAG:
                     task_id=f"{taskgroup_grain}_upload_raw_to_s3",
                     python_callable=local_filepath_to_s3,
                     pool=self.pool,
-                    trigger_rule='none_skipped',
+                    trigger_rule='all_success',
                     dag=self.dag,
                     sla=None  # Required in dynamic task mapping
                 ).expand(op_kwargs=raw_to_s3_kwargs)
@@ -748,7 +766,7 @@ class EarthbeamDAG:
                 state_file=em_state_file,
                 database_conn_id=database_conn_id,
                 pool=self.earthmover_pool,
-                trigger_rule='none_skipped',
+                trigger_rule='all_success',
                 dag=self.dag,
                 sla=None  # Required in dynamic task mapping
             ).expand_kwargs(run_earthmover_kwargs)
