@@ -118,6 +118,7 @@ class EarthbeamDAG:
     
     # One or more endpoints can fail total-get count. Create a second operator to track that failed status.
     # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
+    @staticmethod
     def fail_if_xcom(xcom_value, **context):
         if xcom_value:
             raise AirflowFailException(f"XCom value: {xcom_value}")
