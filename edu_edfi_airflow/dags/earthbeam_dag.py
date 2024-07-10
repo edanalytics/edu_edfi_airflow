@@ -379,7 +379,23 @@ class EarthbeamDAG:
                     "lightbeam_results.json"
                 )
 
-                run_lightbeam = LightbeamOperator(
+                validate_lightbeam = LightbeamOperator(
+                    task_id=f"{taskgroup_grain}_validate_via_lightbeam",
+                    lightbeam_path=self.lightbeam_path,
+                    data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
+                    state_dir=lb_state_dir,
+                    results_file=lb_results_file if logging_table else None,
+                    edfi_conn_id=edfi_conn_id,
+                    **(lightbeam_kwargs or {}),
+                    pool=self.lightbeam_pool,
+                    command='validate',
+                    trigger_rule='always',
+                    dag=self.dag
+                )
+                
+                task_order.append(validate_lightbeam)
+                
+                send_lightbeam = LightbeamOperator(
                     task_id=f"{taskgroup_grain}_send_via_lightbeam",
                     lightbeam_path=self.lightbeam_path,
                     data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
@@ -388,10 +404,11 @@ class EarthbeamDAG:
                     edfi_conn_id=edfi_conn_id,
                     **(lightbeam_kwargs or {}),
                     pool=self.lightbeam_pool,
+                    command='send'
                     dag=self.dag
                 )
 
-                task_order.append(run_lightbeam)
+                task_order.append(send_lightbeam)
 
                 ### Lightbeam logs to Snowflake
                 if logging_table:
@@ -418,7 +435,7 @@ class EarthbeamDAG:
                         dag=self.dag
                     )
 
-                    run_lightbeam >> log_lightbeam_to_snowflake
+                    validate_lightbeam >> send_lightbeam >> log_lightbeam_to_snowflake
 
 
             ### Alternate route: Bypassing the ODS directly into Snowflake
