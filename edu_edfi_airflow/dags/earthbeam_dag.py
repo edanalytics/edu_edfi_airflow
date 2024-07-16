@@ -31,6 +31,21 @@ class EarthbeamDAG:
             type="boolean",
             description="If true, passes `--force` flag to Earthmover and Lightbeam"
         ),
+        "validate": Param(
+            default=False,
+            type="boolean",
+            description="If true, passes `--validate` flag to Earthmover and Lightbeam"
+        ),
+        "validate_methods": Param(
+            default=["schema", "descriptors", "uniqueness", "references"],
+            type="array",
+            description="Validation methods to use: schema, descriptors, uniqueness, references"
+        ),
+        "validate_reference_fail_fast": Param(
+            default=10,
+            type="int",
+            description="If provided, enables fail-fast mode for references validation"
+        )
     }
 
     def __init__(self,
@@ -214,7 +229,6 @@ class EarthbeamDAG:
             elif s3_conn_id:         # Earthmover-to-S3
                 group_id += "_to_s3"
 
-
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=prefix_group_id,
@@ -372,28 +386,41 @@ class EarthbeamDAG:
                     'lightbeam'
                 )
 
+                lb_validate_results_file = edfi_api_client.url_join(
+                    self.emlb_results_directory,
+                    tenant_code, self.run_type, api_year, grain_update,
+                    '{{ ds_nodash }}', '{{ ts_nodash }}',
+                    "lightbeam_results.json"
+                )
+                
                 lb_results_file = edfi_api_client.url_join(
                     self.emlb_results_directory,
                     tenant_code, self.run_type, api_year, grain_update,
                     '{{ ds_nodash }}', '{{ ts_nodash }}',
                     "lightbeam_results.json"
                 )
-
-                validate_lightbeam = LightbeamOperator(
-                    task_id=f"{taskgroup_grain}_validate_via_lightbeam",
-                    lightbeam_path=self.lightbeam_path,
-                    data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
-                    state_dir=lb_state_dir,
-                    results_file=lb_results_file if logging_table else None,
-                    edfi_conn_id=edfi_conn_id,
-                    **(lightbeam_kwargs or {}),
-                    pool=self.lightbeam_pool,
-                    command='validate',
-                    trigger_rule='always',
-                    dag=self.dag
-                )
                 
-                task_order.append(validate_lightbeam)
+                if self.dag.params['validate']:
+
+                    validate_lightbeam = LightbeamOperator(
+                        task_id=f"{taskgroup_grain}_validate_via_lightbeam",
+                        lightbeam_path=self.lightbeam_path,
+                        data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
+                        state_dir=lb_state_dir,
+                        results_file=lb_validate_results_file if logging_table else None,
+                        edfi_conn_id=edfi_conn_id,
+                        validate_methods=self.dag.params['validate_methods'],
+                        validate_reference_fail_fast=self.dag.params['validate_reference_fail_fast'],
+                        fail_fast=self.dag.params['fail_fast'],
+                        **(lightbeam_kwargs or {}),
+                        pool=self.lightbeam_pool,
+                        command='validate',
+                        dag=self.dag
+                    )
+                    
+                    task_order.append(validate_lightbeam)
+                    
+                    validate_lightbeam >> send_lightbeam
                 
                 send_lightbeam = LightbeamOperator(
                     task_id=f"{taskgroup_grain}_send_via_lightbeam",
@@ -435,7 +462,7 @@ class EarthbeamDAG:
                         dag=self.dag
                     )
 
-                    validate_lightbeam >> send_lightbeam >> log_lightbeam_to_snowflake
+                    send_lightbeam >> log_lightbeam_to_snowflake
 
 
             ### Alternate route: Bypassing the ODS directly into Snowflake
