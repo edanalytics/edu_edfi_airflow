@@ -81,8 +81,6 @@ class EarthbeamDAG:
 
     def build_python_preprocessing_operator(self,
         python_callable: Callable,
-        snowflake_conn_id: Optional[str] = None,
-        preprocess_logging_table: Optional[str] = None,
         **kwargs
     ) -> PythonOperator:
         """
@@ -95,17 +93,9 @@ class EarthbeamDAG:
         callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
         task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
 
-        # Wrap the callable with log capturing
-        wrapped_callable = self.capture_logs(
-            python_callable,
-            snowflake_conn_id=snowflake_conn_id,
-            preprocess_logging_table=preprocess_logging_table
-
-        )
-
         return PythonOperator(
             task_id=task_id,
-            python_callable=wrapped_callable,
+            python_callable=python_callable,
             op_kwargs=kwargs,
             provide_context=True,
             pool=self.pool,
