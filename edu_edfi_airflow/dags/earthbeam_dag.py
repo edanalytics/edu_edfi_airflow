@@ -149,7 +149,6 @@ class EarthbeamDAG:
 
         snowflake_conn_id: Optional[str] = None,
         logging_table: Optional[str] = None,
-        preprocess_logging_table: Optional[str] = None,
 
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
@@ -229,19 +228,18 @@ class EarthbeamDAG:
             ### PythonOperator Preprocess
             if python_callable:
 
-                if preprocess_logging_table:
+                if logging_table:
                     # Wrap the callable with log capturing
                     wrapped_callable = self.capture_logs(
                         python_callable,
                         snowflake_conn_id=snowflake_conn_id,
-                        preprocess_logging_table=preprocess_logging_table,
+                        logging_table=logging_table,
                         tenant_code=tenant_code,
                         api_year=api_year,
                         grain_update=grain_update
                     )
                 else:
                     wrapped_callable = python_callable
-
 
                 python_preprocess = PythonOperator(
                     task_id=f"{taskgroup_grain}_preprocess_python",
@@ -331,11 +329,11 @@ class EarthbeamDAG:
 
                 log_earthmover_to_snowflake = PythonOperator(
                     task_id=f"{taskgroup_grain}_log_earthmover_to_snowflake",
-                    python_callable=self.insert_earthbeam_result_to_logging_table,
+                    python_callable=self.log_to_snowflake,
                     op_kwargs={
                         'snowflake_conn_id': snowflake_conn_id,
                         'logging_table': logging_table,
-                        'results_filepath': em_results_file,
+                        'log_filepath': em_results_file,
 
                         'tenant_code': tenant_code,
                         'api_year': api_year,
@@ -418,11 +416,11 @@ class EarthbeamDAG:
 
                     log_lightbeam_to_snowflake = PythonOperator(
                         task_id=f"{taskgroup_grain}_log_lightbeam_to_snowflake",
-                        python_callable=self.insert_earthbeam_result_to_logging_table,
+                        python_callable=self.log_to_snowflake,
                         op_kwargs={
                             'snowflake_conn_id': snowflake_conn_id,
                             'logging_table': logging_table,
-                            'results_filepath': lb_results_file,
+                            'log_filepath': lb_results_file,
 
                             'tenant_code': tenant_code,
                             'api_year': api_year,
@@ -518,14 +516,16 @@ class EarthbeamDAG:
         return tenant_year_task_group
 
 
-    def insert_earthbeam_result_to_logging_table(self,
+    def log_to_snowflake(self,
         snowflake_conn_id: str,
         logging_table: str,
-        results_filepath: str,
-
         tenant_code: str,
         api_year: int,
         grain_update: Optional[str] = None,
+
+        # Mutually-exclusive arguments
+        log_filepath: Optional[str] = None,
+        log_data: Optional[dict] = None,
         **kwargs
     ):
         """
@@ -535,16 +535,17 @@ class EarthbeamDAG:
         from airflow.exceptions import AirflowSkipException
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
-        # Assume the results file is overwritten at every run.
-        # If not found, raise a skip-exception instead of failing.
-        try:
-            with open(results_filepath, 'r') as fp:
-                results = fp.read()
-        except FileNotFoundError:
-            raise AirflowSkipException(
-                f"Results file not found: {results_filepath}\n"
-                "Did Earthmover/Lightbeam run without error?"
-            )
+        if log_filepath:
+            # Assume the results file is overwritten at every run.
+            # If not found, raise a skip-exception instead of failing.
+            try:
+                with open(log_filepath, 'r') as fp:
+                    log_data = fp.read()
+            except FileNotFoundError:
+                raise AirflowSkipException(
+                    f"Results file not found: {log_filepath}\n"
+                    "Did Earthmover/Lightbeam run without error?"
+                )
 
         # Retrieve the database and schema from the Snowflake hook and build the insert-query.
         database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
@@ -561,7 +562,7 @@ class EarthbeamDAG:
                 '{self.run_type}' AS run_type,
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
-                PARSE_JSON($${results}$$) AS result
+                PARSE_JSON($${log_data}$$) AS result
         """
 
         # Insert each row into the table, passing the values as parameters.
@@ -570,7 +571,8 @@ class EarthbeamDAG:
             sql=qry_insert_into
         )
 
-    def format_log_record(self, record, args, kwargs):
+    @staticmethod
+    def format_log_record(record, args, kwargs):
 
         from datetime import datetime
         import json
@@ -581,9 +583,8 @@ class EarthbeamDAG:
             except TypeError:
                 return str(arg)
 
-
         log_record = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(datetime.UTC).isoformat(),
             'name': record.name,
             'level': record.levelname,
             'message': record.getMessage(),
@@ -594,16 +595,16 @@ class EarthbeamDAG:
         }
         return json.dumps(log_record)
     
-    def capture_logs(self, python_callable: Callable,
+
+    def capture_logs(self,
+        python_callable: Callable,
         snowflake_conn_id: str,
-        preprocess_logging_table: str,
+        logging_table: Optional[str],
         
         tenant_code: str,
         api_year: int,
         grain_update: Optional[str] = None,
-        **kwargs
     ):
-
         def wrapper(*args, **kwargs):
             
             import logging
@@ -622,9 +623,11 @@ class EarthbeamDAG:
 
             try:
                 result = python_callable(*args, **kwargs)
-            except Exception as e:
-                logger.error(f"Error in {python_callable.__name__}: {e}")
+            
+            except Exception as err:
+                logger.error(f"Error in {python_callable.__name__}: {err}")
                 raise
+
             finally:
                 # Ensure all log entries are flushed before closing the stream
                 ch.flush()
@@ -647,54 +650,15 @@ class EarthbeamDAG:
                         exc_info=None
                     )
                     log_data = json.loads(self.format_log_record(record, args, kwargs))
-                    self.insert_preprocess_log_to_snowflake(snowflake_conn_id=snowflake_conn_id,
-                                                            preprocess_logging_table=preprocess_logging_table,
-                                                            log_data=log_data,
-                                                            tenant_code=tenant_code,
-                                                            api_year=api_year,
-                                                            grain_update=grain_update,
-                                                            **kwargs)
+                    self.log_to_snowflake(
+                        snowflake_conn_id=snowflake_conn_id,
+                        logging_table=logging_table,
+                        log_data=log_data,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update,
+                        **kwargs
+                    )
             
             return result
         return wrapper
-
-    def insert_preprocess_log_to_snowflake(self,
-        snowflake_conn_id: str,
-        preprocess_logging_table: str,
-        
-        log_data: {},
-
-        tenant_code: str,
-        api_year: int,
-        grain_update: Optional[str] = None,
-        **kwargs
-    ):
-        """
-
-        :return:
-        """
-        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-
-        # Retrieve the database and schema from the Snowflake hook and build the insert-query.
-        database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
-
-        grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
-
-        qry_insert_into = f"""
-            INSERT INTO {database}.{schema}.{preprocess_logging_table}
-                (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
-            SELECT
-                '{tenant_code}' AS tenant_code,
-                '{api_year}' AS api_year,
-                {grain_update_str} AS grain_update,
-                '{self.run_type}' AS run_type,
-                '{kwargs['ds']}' AS run_date,
-                '{kwargs['ts']}' AS run_timestamp,
-                PARSE_JSON($${log_data}$$) AS result
-        """
-
-        # Insert each row into the table, passing the values as parameters.
-        snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
-        snowflake_hook.run(
-            sql=qry_insert_into
-        )
