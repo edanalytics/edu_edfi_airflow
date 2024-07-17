@@ -1,5 +1,6 @@
 from typing import Callable, List, Optional
 
+from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
@@ -46,6 +47,8 @@ class EarthbeamDAG:
 
         fast_cleanup: bool = False,
 
+        student_id_config_table: Optional[str] = None,
+
         **kwargs
     ):
         self.run_type = run_type
@@ -58,6 +61,8 @@ class EarthbeamDAG:
         self.lightbeam_pool = lightbeam_pool or self.pool
 
         self.fast_cleanup = fast_cleanup
+
+        self.student_id_config_table = student_id_config_table
 
         self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
@@ -553,3 +558,60 @@ class EarthbeamDAG:
         snowflake_hook.run(
             sql=qry_insert_into
         )
+
+    def build_student_id_xwalking_taskgroup(self,
+        tenant_code: str,
+        api_year: int,
+        grain_update: str,
+        snowflake_conn_id: Optional[str] = None
+    ) -> Optional['TaskGroup']:
+        """
+        This taskgroup does the following:
+        - Check for student ID xwalk config in Snowflake (TODO: What is this table?)
+          - If not exists, run Earthmover student ID xwalk bundle and output config to Snowflake
+        - Pass config to Earthmover parameters
+        """
+        if not self.student_id_config_table:
+            return None
+        
+        if not snowflake_conn_id:
+            raise AirflowFailException(
+                "No snowflake_conn_id defined for retrieving student ID xwalking configs!"
+            )
+        
+        with TaskGroup(
+            group_id="retrieve_student_id_xwalking_config",
+            prefix_group_id=True,
+            dag=self.dag
+        ) as tenant_year_task_group:
+            
+            ### Pull record from Snowflake for the run grain
+            pull_config_from_snowflake = PythonOperator(
+                task_id="",
+                python_callable="",
+                op_kwargs={
+
+                },
+                dag=self.dag
+            )
+
+            ### If no record found, run Earthmover student ID xwalk bundle.
+
+
+            # Send record to Snowflake
+            push_config_to_snowflake = PythonOperator(
+                task_id="",
+                python_callable="",
+                op_kwargs={
+
+                },
+                dag=self.dag
+            )
+
+            # Return record configs to be injected into params in Earthmover
+
+
+
+    def skip_if_none(self, none_var: Optional[object], **kwargs):
+        if none_var is None:
+            raise AirflowSkipException()
