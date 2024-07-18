@@ -386,12 +386,12 @@ class EarthbeamDAG:
                     'lightbeam'
                 )
 
-                lb_validate_results_file = edfi_api_client.url_join(
-                    self.emlb_results_directory,
-                    tenant_code, self.run_type, api_year, grain_update,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}',
-                    "lightbeam_results.json"
-                )
+                # lb_validate_results_file = edfi_api_client.url_join(
+                #     self.emlb_results_directory,
+                #     tenant_code, self.run_type, api_year, grain_update,
+                #     '{{ ds_nodash }}', '{{ ts_nodash }}',
+                #     "lightbeam_results.json"
+                # )
                 
                 lb_results_file = edfi_api_client.url_join(
                     self.emlb_results_directory,
@@ -399,28 +399,6 @@ class EarthbeamDAG:
                     '{{ ds_nodash }}', '{{ ts_nodash }}',
                     "lightbeam_results.json"
                 )
-                
-                if self.dag.params['validate']:
-
-                    validate_lightbeam = LightbeamOperator(
-                        task_id=f"{taskgroup_grain}_validate_via_lightbeam",
-                        lightbeam_path=self.lightbeam_path,
-                        data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
-                        state_dir=lb_state_dir,
-                        results_file=lb_validate_results_file if logging_table else None,
-                        edfi_conn_id=edfi_conn_id,
-                        validate_methods=self.dag.params['validate_methods'],
-                        validate_reference_fail_fast=self.dag.params['validate_reference_fail_fast'],
-                        fail_fast=self.dag.params['fail_fast'],
-                        **(lightbeam_kwargs or {}),
-                        pool=self.lightbeam_pool,
-                        command='validate',
-                        dag=self.dag
-                    )
-                    
-                    task_order.append(validate_lightbeam)
-                    
-                    validate_lightbeam >> send_lightbeam
                 
                 send_lightbeam = LightbeamOperator(
                     task_id=f"{taskgroup_grain}_send_via_lightbeam",
@@ -436,7 +414,28 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(send_lightbeam)
+                
+                if self.dag.params['validate']:
 
+                    validate_lightbeam = LightbeamOperator(
+                        task_id=f"{taskgroup_grain}_validate_via_lightbeam",
+                        lightbeam_path=self.lightbeam_path,
+                        data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
+                        state_dir=lb_state_dir,
+                        results_file=lb_validate_results_file if logging_table else None,
+                        edfi_conn_id=edfi_conn_id,
+                        validate_methods=self.dag.params['validate_methods'],
+                        validate_reference_fail_fast=self.dag.params['validate_reference_fail_fast'],
+                        **(lightbeam_kwargs or {}),
+                        pool=self.lightbeam_pool,
+                        command='validate',
+                        dag=self.dag
+                    )
+                    
+                    task_order.append(validate_lightbeam)
+                    
+                    validate_lightbeam >> send_lightbeam
+                
                 ### Lightbeam logs to Snowflake
                 if logging_table:
                     if not snowflake_conn_id:
