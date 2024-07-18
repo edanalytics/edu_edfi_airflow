@@ -409,7 +409,7 @@ class EarthbeamDAG:
                     edfi_conn_id=edfi_conn_id,
                     **(lightbeam_kwargs or {}),
                     pool=self.lightbeam_pool,
-                    command='send'
+                    command='send',
                     dag=self.dag
                 )
 
