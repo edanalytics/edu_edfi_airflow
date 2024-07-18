@@ -986,7 +986,7 @@ class EarthbeamDAG:
 
         ### Raw to S3
         if s3_conn_id:
-            raw_to_s3_operator = upload_raw_to_s3(local_filepath, subdirectory="raw")
+            raw_to_s3_operator = upload_raw_to_s3(local_filepath)
             
         ### EarthmoverOperator: Required
         earthmover_operator = run_earthmover(local_filepath)
@@ -998,7 +998,7 @@ class EarthbeamDAG:
 
         ### Earthmover to S3
         if s3_conn_id:
-            em_to_s3_operator = upload_em_to_s3(earthmover_operator, subdirectory="earthmover")
+            em_to_s3_operator = upload_em_to_s3(earthmover_operator)
 
         ### LightbeamOperator
         if edfi_conn_id:
