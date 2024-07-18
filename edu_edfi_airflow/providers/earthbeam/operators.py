@@ -77,7 +77,7 @@ class EarthmoverOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.earthmover_path} run "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
     def get_env(self, context):
         """
@@ -86,7 +86,7 @@ class EarthmoverOperator(BashOperator):
         self.env = context['task'].render_template(self.env, context)
         return super().get_env(context)
 
-    def execute(self, context) -> str:
+    def execute(self, conf=None, **context) -> str:
         """
 
         :param context:
@@ -212,7 +212,7 @@ class LightbeamOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.lightbeam_path} {command} "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
     def get_env(self, context):
         """
@@ -221,7 +221,7 @@ class LightbeamOperator(BashOperator):
         self.env = context['task'].render_template(self.env, context)
         return super().get_env(context)
 
-    def execute(self, context) -> str:
+    def execute(self, conf=None, **context) -> str:
         """
 
         :param context:
