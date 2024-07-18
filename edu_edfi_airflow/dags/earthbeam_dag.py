@@ -31,6 +31,11 @@ class EarthbeamDAG:
             type="boolean",
             description="If true, passes `--force` flag to Earthmover and Lightbeam"
         ),
+        "send": Param(
+            default=True,
+            type="boolean",
+            description="If true, passes `--send` flag to Earthmover and Lightbeam"
+        ),
         "validate": Param(
             default=False,
             type="boolean",
@@ -400,20 +405,22 @@ class EarthbeamDAG:
                     "lightbeam_results.json"
                 )
                 
-                send_lightbeam = LightbeamOperator(
-                    task_id=f"{taskgroup_grain}_send_via_lightbeam",
-                    lightbeam_path=self.lightbeam_path,
-                    data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
-                    state_dir=lb_state_dir,
-                    results_file=lb_results_file if logging_table else None,
-                    edfi_conn_id=edfi_conn_id,
-                    **(lightbeam_kwargs or {}),
-                    pool=self.lightbeam_pool,
-                    command='send',
-                    dag=self.dag
-                )
+                if self.dag.params['send']:
+                
+                    send_lightbeam = LightbeamOperator(
+                        task_id=f"{taskgroup_grain}_send_via_lightbeam",
+                        lightbeam_path=self.lightbeam_path,
+                        data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
+                        state_dir=lb_state_dir,
+                        results_file=lb_results_file if logging_table else None,
+                        edfi_conn_id=edfi_conn_id,
+                        **(lightbeam_kwargs or {}),
+                        pool=self.lightbeam_pool,
+                        command='send',
+                        dag=self.dag
+                    )
 
-                task_order.append(send_lightbeam)
+                    task_order.append(send_lightbeam)
                 
                 if self.dag.params['validate']:
 
@@ -433,8 +440,6 @@ class EarthbeamDAG:
                     )
                     
                     task_order.append(validate_lightbeam)
-                    
-                    validate_lightbeam >> send_lightbeam
                 
                 ### Lightbeam logs to Snowflake
                 if logging_table:
@@ -461,7 +466,7 @@ class EarthbeamDAG:
                         dag=self.dag
                     )
 
-                    send_lightbeam >> log_lightbeam_to_snowflake
+                    task_order.append(log_lightbeam_to_snowflake)
 
 
             ### Alternate route: Bypassing the ODS directly into Snowflake
