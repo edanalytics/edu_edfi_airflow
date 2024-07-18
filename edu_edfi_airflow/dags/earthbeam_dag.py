@@ -991,11 +991,11 @@ class EarthbeamDAG:
 
         ### Earthmover to S3
         if s3_conn_id:
-            em_to_s3_operator = upload_to_s3(earthmover_operator.output, subdirectory="earthmover")
+            em_to_s3_operator = upload_to_s3(earthmover_operator, subdirectory="earthmover")
 
         ### LightbeamOperator
         if edfi_conn_id:
-            lightbeam_operator = run_lightbeam(earthmover_operator.output)
+            lightbeam_operator = run_lightbeam(earthmover_operator)
 
             ### Lightbeam logs to Snowflake
             if logging_table:
@@ -1005,7 +1005,7 @@ class EarthbeamDAG:
 
         ### Alternate route: Bypassing the ODS directly into Snowflake
         if snowflake_conn_id and not edfi_conn_id:
-            stadium_operator = sideload_to_stadium(em_to_s3_operator.output)
+            stadium_operator = sideload_to_stadium(em_to_s3_operator)
 
 
         # ### Final cleanup
