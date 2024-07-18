@@ -727,8 +727,6 @@ class EarthbeamDAG:
                 data_model_version=data_model_version,
                 endpoints=endpoints,
                 full_refresh=full_refresh,
-
-                parent_group=dynamic_tenant_year_task_group,
             ).expand(
                 local_filepath=list_files_task.output
             )
@@ -793,7 +791,6 @@ class EarthbeamDAG:
         )
     
 
-
     def file_to_edfi_taskgroup(self,
         local_filepath: str,
 
@@ -818,13 +815,9 @@ class EarthbeamDAG:
         data_model_version: Optional[str] = None,
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
-
-        group_id: Optional[str] = None,
-        dag: Optional['DAG'] = None,
-        parent_group: Optional[str] = None,
         **kwargs
     ):
-        @task_group(prefix_group_id=True, group_id=group_id, dag=dag, parent_group=parent_group)
+        @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
         def wrapper():
 
             @task()
@@ -1032,7 +1025,7 @@ class EarthbeamDAG:
             # # Chain all defined operators into task-order.
             # chain(*task_order)
 
-        return wrapper()
+        return wrapper
 
     @staticmethod
     def get_filename(filepath: str) -> str:
