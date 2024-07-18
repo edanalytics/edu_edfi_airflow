@@ -1047,6 +1047,7 @@ class EarthbeamDAG:
 
         s3_conn_id: str,
         s3_filepath: str,
+        **context
     ):
         if not s3_filepath:
             raise ValueError(
@@ -1063,5 +1064,6 @@ class EarthbeamDAG:
             s3_conn_id=s3_conn_id,
             s3_destination_key=s3_full_filepath,
             local_filepath=filepath,
-            remove_local_filepath=False
+            remove_local_filepath=False,
+            **context
         )
