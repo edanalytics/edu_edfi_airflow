@@ -857,7 +857,7 @@ class EarthbeamDAG:
                 grain_update=grain_update
             )
         
-        @task
+        @task(multiple_outputs=True)
         def run_earthmover(filepath: str, **context):
             file_basename = self.get_filename(filepath)
             
@@ -896,7 +896,7 @@ class EarthbeamDAG:
             context['ti'].xcom_push("results_file", em_results_file)
             return earthmover_operator.execute(**context)
         
-        @task
+        @task(multiple_outputs=True)
         def run_lightbeam(data_dir: str, **context):
             dir_basename = self.get_filename(data_dir)
 
