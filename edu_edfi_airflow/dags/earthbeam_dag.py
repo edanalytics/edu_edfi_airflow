@@ -757,13 +757,14 @@ class EarthbeamDAG:
 
         :return:
         """
-        from airflow.exceptions import AirflowSkipException
-        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-
+        # Short-circuit fail before imports.
         if not snowflake_conn_id:
             raise Exception(
                 "Snowflake connection required to copy logs into Snowflake."
             )
+
+        from airflow.exceptions import AirflowSkipException
+        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
         # Assume the results file is overwritten at every run.
         # If not found, raise a skip-exception instead of failing.
@@ -828,36 +829,31 @@ class EarthbeamDAG:
         **kwargs
     ):
         @task
-        def upload_raw_to_s3(filepath: str):
-            return self.upload_to_s3(
-                filepath=filepath, subdirectory="raw",
-                tenant_code=tenant_code, api_year=api_year, grain_update=grain_update,
-                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath,
+        def upload_to_s3(self,
+            filepath: str,
+            subdirectory: str
+        ):
+            if not s3_filepath:
+                raise ValueError(
+                    "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
+                )
+
+            s3_full_filepath = edfi_api_client.url_join(
+                s3_filepath, subdirectory,
+                tenant_code, self.run_type, api_year, grain_update,
+                '{{ ds_nodash }}', '{{ ts_nodash }}'
+            )
+
+            return local_filepath_to_s3(
+                s3_conn_id=s3_conn_id,
+                s3_destination_key=s3_full_filepath,
+                local_filepath=filepath,
+                remove_local_filepath=False,
                 **get_current_context()
             )
         
         @task
-        def upload_em_to_s3(filepath: str):
-            return self.upload_to_s3(
-                filepath=filepath, subdirectory="earthmover",
-                tenant_code=tenant_code, api_year=api_year, grain_update=grain_update,
-                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath,
-                **get_current_context()
-            )
-        
-        @task
-        def log_em_to_snowflake(results_filepath: str):
-            return self.insert_earthbeam_result_to_logging_table(
-                snowflake_conn_id=snowflake_conn_id,
-                logging_table=logging_table,
-                results_filepath=results_filepath,
-                tenant_code=tenant_code,
-                api_year=api_year,
-                grain_update=grain_update
-            )
-        
-        @task
-        def log_lb_to_snowflake(results_filepath: str):
+        def log_to_snowflake(results_filepath: str):
             return self.insert_earthbeam_result_to_logging_table(
                 snowflake_conn_id=snowflake_conn_id,
                 logging_table=logging_table,
@@ -989,7 +985,7 @@ class EarthbeamDAG:
 
         ### Raw to S3
         if s3_conn_id:
-            raw_to_s3_operator = upload_raw_to_s3(local_filepath)
+            raw_to_s3_operator = upload_to_s3.override(task_id="upload_raw_to_s3")(local_filepath)
             
         ### EarthmoverOperator: Required
         earthmover_operator = run_earthmover(local_filepath)
@@ -997,11 +993,11 @@ class EarthbeamDAG:
         ### Earthmover logs to Snowflake
         if logging_table:
             em_results_filepath = airflow_util.xcom_pull_template(earthmover_operator.task_id, key="results_file")
-            em_to_snowflake_operator = log_em_to_snowflake(em_results_filepath)
+            em_to_snowflake_operator = log_to_snowflake.ovveride(task_id="log_em_to_snowflake")(em_results_filepath)
 
         ### Earthmover to S3
         if s3_conn_id:
-            em_to_s3_operator = upload_em_to_s3(earthmover_operator)
+            em_to_s3_operator = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_operator)
 
         ### LightbeamOperator
         if edfi_conn_id:
@@ -1010,11 +1006,10 @@ class EarthbeamDAG:
             ### Lightbeam logs to Snowflake
             if logging_table:
                 lb_results_filepath = airflow_util.xcom_pull_template(lightbeam_operator.task_id, key="results_file")
-                lb_to_snowflake_operator = log_lb_to_snowflake(lb_results_filepath)
-
+                lb_to_snowflake_operator = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lb_results_filepath)
 
         ### Alternate route: Bypassing the ODS directly into Snowflake
-        if snowflake_conn_id and not edfi_conn_id:
+        elif snowflake_conn_id and not edfi_conn_id:
             stadium_operator = sideload_to_stadium(em_to_s3_operator)
 
 
@@ -1039,34 +1034,3 @@ class EarthbeamDAG:
     @staticmethod
     def get_filename(filepath: str) -> str:
         return os.path.splitext(os.path.basename(filepath))[0]
-    
-    def upload_to_s3(self,
-        filepath: str,
-        subdirectory: str,
-
-        tenant_code: str,
-        api_year: str,
-        grain_update: Optional[str],
-
-        s3_conn_id: str,
-        s3_filepath: str,
-        **context
-    ):
-        if not s3_filepath:
-            raise ValueError(
-                "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
-            )
-
-        s3_full_filepath = edfi_api_client.url_join(
-            s3_filepath, subdirectory,
-            tenant_code, self.run_type, api_year, grain_update,
-            '{{ ds_nodash }}', '{{ ts_nodash }}'
-        )
-
-        return local_filepath_to_s3(
-            s3_conn_id=s3_conn_id,
-            s3_destination_key=s3_full_filepath,
-            local_filepath=filepath,
-            remove_local_filepath=False,
-            **context
-        )
