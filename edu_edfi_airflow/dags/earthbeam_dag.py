@@ -660,18 +660,18 @@ class EarthbeamDAG:
 
         with TaskGroup(
             group_id=group_id,
-            prefix_group_id=prefix_group_id,
+            prefix_group_id=True,
             dag=self.dag
         ) as dynamic_tenant_year_task_group:
 
             # Dynamically build a task-order as tasks are defined.
             task_order = []
-            paths_to_clean = []
+            # paths_to_clean = []
 
             ### PythonOperator Preprocess
             if python_callable:
                 python_preprocess = PythonOperator(
-                    task_id=f"{taskgroup_grain}_preprocess_python",
+                    task_id=f"preprocess_python",
                     python_callable=python_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
@@ -680,11 +680,11 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(python_preprocess)
-                paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
+                # paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
 
             ## List Raw files for dynamic task mapping
             list_files_task = PythonOperator(
-                task_id = f'{taskgroup_grain}_list_files_in_dir',
+                task_id = f'list_files_in_dir',
                 dag=self.dag,
                 python_callable=self.list_files_in_raw_dir,
                 op_kwargs={
@@ -698,7 +698,7 @@ class EarthbeamDAG:
             # Optional task to fail when unexpected files were found in ShareFile.
             if file_pattern:
                 failed_sentinel = PythonOperator(
-                    task_id=f"{taskgroup_grain}__failed_file_pattern",
+                    task_id=f"failed_file_pattern",
                     python_callable=self.fail_if_xcom,
                     op_args=[airflow_util.xcom_pull_template(list_files_task, key='failed_files')],
                     trigger_rule='all_done',
@@ -706,7 +706,7 @@ class EarthbeamDAG:
                 )
                 list_files_task >> failed_sentinel
 
-            task_group = self.file_to_edfi_taskgroup.partial(
+            em_task_group = self.file_to_edfi_taskgroup.partial(
                 tenant_code=tenant_code,
                 api_year=api_year,
                 grain_update=grain_update,
@@ -727,9 +727,15 @@ class EarthbeamDAG:
                 data_model_version=data_model_version,
                 endpoints=endpoints,
                 full_refresh=full_refresh,
-            ).expand(local_filepath=list_files_task.output)
-            
-            return task_group
+            ).expand(
+                local_filepath=list_files_task.output
+            )
+            task_order.append(em_task_group)
+
+            # Chain all defined operators into task-order.
+            chain(*task_order)
+
+            return dynamic_tenant_year_task_group
 
 
     def insert_earthbeam_result_to_logging_table(self,
@@ -921,7 +927,7 @@ class EarthbeamDAG:
             context['ti'].xcom_push("results_file", lb_results_file)
             return lightbeam_operator.execute(**context)
     
-        @task_group()
+        @task_group(prefix_group_id=True, dag=self.dag)
         def sideload_to_stadium(s3_directory: str):
             if not s3_conn_id:
                 raise Exception(
