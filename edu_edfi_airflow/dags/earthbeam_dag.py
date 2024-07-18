@@ -829,10 +829,7 @@ class EarthbeamDAG:
         **kwargs
     ):
         @task
-        def upload_to_s3(self,
-            filepath: str,
-            subdirectory: str
-        ):
+        def upload_to_s3(filepath: str, subdirectory: str):
             if not s3_filepath:
                 raise ValueError(
                     "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
