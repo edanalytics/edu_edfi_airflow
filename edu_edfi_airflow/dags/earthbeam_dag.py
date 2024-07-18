@@ -828,8 +828,6 @@ class EarthbeamDAG:
         full_refresh: bool = False,
         **kwargs
     ):
-        file_basename = os.path.splitext(os.path.basename(local_filepath))[0]
-
         @task
         def upload_to_s3(filepath: str, subdirectory: str):
             if not s3_filepath:
@@ -864,6 +862,8 @@ class EarthbeamDAG:
         
         @task
         def run_earthmover(filepath: str, **context):
+            file_basename = self.get_filename(filepath)
+            
             em_output_dir = edfi_api_client.url_join(
                 self.em_output_directory,
                 tenant_code, self.run_type, api_year, grain_update,
@@ -901,17 +901,19 @@ class EarthbeamDAG:
         
         @task
         def run_lightbeam(data_dir: str, **context):
+            dir_basename = self.get_filename(data_dir)
+
             lb_state_dir = edfi_api_client.url_join(
                 self.emlb_state_directory,
                 tenant_code, self.run_type, api_year, grain_update,
-                file_basename, 'lightbeam'
+                dir_basename, 'lightbeam'
             )
 
             lb_results_file = edfi_api_client.url_join(
                 self.emlb_results_directory,
                 tenant_code, self.run_type, api_year, grain_update,
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
-                file_basename, 'lightbeam_results.json'
+                dir_basename, 'lightbeam_results.json'
             ) if logging_table else None
 
             lightbeam_operator = LightbeamOperator(
@@ -1025,3 +1027,7 @@ class EarthbeamDAG:
 
         # # Chain all defined operators into task-order.
         # chain(*task_order)
+
+    @staticmethod
+    def get_filename(filepath: str) -> str:
+        return os.path.splitext(os.path.basename(filepath))[0]
