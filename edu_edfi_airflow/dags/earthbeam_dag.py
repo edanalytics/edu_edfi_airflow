@@ -9,6 +9,7 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
+from airflow.operators.python import get_current_context
 from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
@@ -831,7 +832,8 @@ class EarthbeamDAG:
             return self.upload_to_s3(
                 filepath=filepath, subdirectory="raw",
                 tenant_code=tenant_code, api_year=api_year, grain_update=grain_update,
-                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath
+                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath,
+                **get_current_context()
             )
         
         @task
@@ -839,7 +841,8 @@ class EarthbeamDAG:
             return self.upload_to_s3(
                 filepath=filepath, subdirectory="earthmover",
                 tenant_code=tenant_code, api_year=api_year, grain_update=grain_update,
-                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath
+                s3_conn_id=s3_conn_id, s3_filepath=s3_filepath,
+                **get_current_context()
             )
         
         @task
