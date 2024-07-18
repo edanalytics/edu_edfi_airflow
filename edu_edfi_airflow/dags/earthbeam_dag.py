@@ -828,6 +828,8 @@ class EarthbeamDAG:
         full_refresh: bool = False,
         **kwargs
     ):
+        file_basename = os.path.splitext(os.path.basename(local_filepath))[0]
+
         @task
         def upload_to_s3(filepath: str, subdirectory: str):
             if not s3_filepath:
@@ -862,8 +864,6 @@ class EarthbeamDAG:
         
         @task
         def run_earthmover(filepath: str, **context):
-            file_basename = self.get_filename(filepath)
-            
             em_output_dir = edfi_api_client.url_join(
                 self.em_output_directory,
                 tenant_code, self.run_type, api_year, grain_update,
@@ -901,19 +901,17 @@ class EarthbeamDAG:
         
         @task
         def run_lightbeam(data_dir: str, **context):
-            dir_basename = self.get_filename(data_dir)
-
             lb_state_dir = edfi_api_client.url_join(
                 self.emlb_state_directory,
                 tenant_code, self.run_type, api_year, grain_update,
-                dir_basename, 'lightbeam'
+                file_basename, 'lightbeam'
             )
 
             lb_results_file = edfi_api_client.url_join(
                 self.emlb_results_directory,
                 tenant_code, self.run_type, api_year, grain_update,
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
-                dir_basename, 'lightbeam_results.json'
+                file_basename, 'lightbeam_results.json'
             ) if logging_table else None
 
             lightbeam_operator = LightbeamOperator(
@@ -982,7 +980,7 @@ class EarthbeamDAG:
 
         ### Raw to S3
         if s3_conn_id:
-            raw_to_s3_operator = upload_to_s3.override(task_id="upload_raw_to_s3")(local_filepath)
+            raw_to_s3_operator = upload_to_s3.override(task_id="upload_raw_to_s3")(local_filepath, "raw")
             
         ### EarthmoverOperator: Required
         earthmover_operator = run_earthmover(local_filepath)
@@ -990,7 +988,7 @@ class EarthbeamDAG:
         ### Earthmover logs to Snowflake
         if logging_table:
             em_results_filepath = airflow_util.xcom_pull_template(earthmover_operator.task_id, key="results_file")
-            em_to_snowflake_operator = log_to_snowflake.ovveride(task_id="log_em_to_snowflake")(em_results_filepath)
+            em_to_snowflake_operator = log_to_snowflake.ovveride(task_id="log_em_to_snowflake")(em_results_filepath, "earthmover")
 
         ### Earthmover to S3
         if s3_conn_id:
@@ -1027,7 +1025,3 @@ class EarthbeamDAG:
 
         # # Chain all defined operators into task-order.
         # chain(*task_order)
-
-    @staticmethod
-    def get_filename(filepath: str) -> str:
-        return os.path.splitext(os.path.basename(filepath))[0]
