@@ -995,29 +995,55 @@ class EarthbeamDAG:
                 )
 
 
+        all_tasks = []
+        paths_to_clean = [local_filepath]
+
         # Raw to S3
         if s3_conn_id:
             upload_to_s3.override(task_id="upload_raw_to_s3")(local_filepath, "raw")
+            all_tasks.append(upload_to_s3)
             
         # EarthmoverOperator: Required
         earthmover_results = run_earthmover(local_filepath)
+        all_tasks.append(earthmover_results)
+        paths_to_clean.append(earthmover_results["results_file"])
 
         # Earthmover logs to Snowflake
         if logging_table:
             log_to_snowflake.override(task_id="log_em_to_snowflake")(earthmover_results["results_file"])
+            all_tasks.append(log_to_snowflake)
 
         # Earthmover to S3
         if s3_conn_id:
             em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
+            all_tasks.append(em_s3_filepath)
 
             # Option 1: Bypass the ODS and sideload into Stadium
             if snowflake_conn_id and not edfi_conn_id:
-                em_s3_filepath >> sideload_to_stadium(em_s3_filepath)
+                sideload_operator = sideload_to_stadium(em_s3_filepath)
+                em_s3_filepath >> sideload_operator
+                all_tasks.append(sideload_operator)
 
         # Option 2: LightbeamOperator
         if edfi_conn_id:
             lightbeam_results = run_lightbeam(earthmover_results["data_dir"])
+            all_tasks.append(lightbeam_results)
 
             # Lightbeam logs to Snowflake
             if logging_table:
                 log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
+                all_tasks.append(log_to_snowflake)
+
+        # Final cleanup (apply at very end of the taskgroup)
+        remove_files_operator = PythonOperator(
+            task_id=f"remove_files",
+            python_callable=remove_filepaths,
+            op_kwargs={
+                "filepaths": paths_to_clean,
+            },
+            provide_context=True,
+            pool=self.pool,
+            trigger_rule="all_done" if self.fast_cleanup else "all_success",
+            dag=self.dag
+        )
+        all_tasks[-1] >> remove_files_operator
