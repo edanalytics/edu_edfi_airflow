@@ -988,32 +988,33 @@ class EarthbeamDAG:
                 )
 
 
-        ### Raw to S3
+        # Raw to S3
         if s3_conn_id:
-            raw_to_s3_operator = upload_to_s3.override(task_id="upload_raw_to_s3")(local_filepath, "raw")
+            upload_to_s3.override(task_id="upload_raw_to_s3")(local_filepath, "raw")
             
-        ### EarthmoverOperator: Required
-        earthmover_operator = run_earthmover(local_filepath)
+        # EarthmoverOperator: Required
+        earthmover_results = run_earthmover(local_filepath)
 
-        ### Earthmover logs to Snowflake
+        # Earthmover logs to Snowflake
         if logging_table:
-            em_to_snowflake_operator = log_to_snowflake.override(task_id="log_em_to_snowflake")(earthmover_operator["results_file"])
+            log_to_snowflake.override(task_id="log_em_to_snowflake")(earthmover_results["results_file"])
 
-        ### Earthmover to S3
+        # Earthmover to S3
         if s3_conn_id:
-            em_to_s3_operator = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_operator["data_dir"], "earthmover")
+            em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
 
-        ### LightbeamOperator
+            # Option 1: Bypass the ODS and sideload into Stadium
+            if snowflake_conn_id and not edfi_conn_id:
+                sideload_to_stadium(em_s3_filepath)
+
+        # Option 2: LightbeamOperator
         if edfi_conn_id:
-            lightbeam_operator = run_lightbeam(earthmover_operator)
+            lightbeam_results = run_lightbeam(earthmover_results["data_dir"])
 
-            ### Lightbeam logs to Snowflake
+            # Lightbeam logs to Snowflake
             if logging_table:
-                lb_to_snowflake_operator = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_operator["results_file"])
-
-        ### Alternate route: Bypassing the ODS directly into Snowflake
-        elif snowflake_conn_id and not edfi_conn_id:
-            stadium_operator = sideload_to_stadium(em_to_s3_operator)
+                log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
+        
 
 
         # ### Final cleanup
