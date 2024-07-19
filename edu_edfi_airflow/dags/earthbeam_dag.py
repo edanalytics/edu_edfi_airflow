@@ -995,7 +995,6 @@ class EarthbeamDAG:
 
                     dag=self.dag
                 )
-                em_to_snowflake.execute(context)
 
 
         # Raw to S3
