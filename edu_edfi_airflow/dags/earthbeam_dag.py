@@ -969,8 +969,6 @@ class EarthbeamDAG:
                 snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
                 camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
 
-                endpoint_output_path = edfi_api_client.url_join(s3_directory, camel_endpoint + ".jsonl")
-
                 # Descriptors have their own table
                 if 'descriptor' in snake_endpoint:
                     table_name = '_descriptors'
@@ -985,7 +983,8 @@ class EarthbeamDAG:
                     resource=f"{snake_endpoint}__{self.run_type}",
                     table_name=table_name,
 
-                    s3_destination_key=endpoint_output_path,
+                    s3_destination_dir=s3_directory,
+                    s3_destination_filename=f"{camel_endpoint}.jsonl",
 
                     snowflake_conn_id=snowflake_conn_id,
                     ods_version=ods_version,
@@ -1022,23 +1021,3 @@ class EarthbeamDAG:
             # Lightbeam logs to Snowflake
             if logging_table:
                 log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
-        
-
-
-        # ### Final cleanup
-        # cleanup_local_disk = PythonOperator(
-        #     task_id=f"{taskgroup_grain}_cleanup_disk",
-        #     python_callable=remove_filepaths,
-        #     op_kwargs={
-        #         "filepaths": paths_to_clean,
-        #     },
-        #     provide_context=True,
-        #     pool=self.pool,
-        #     trigger_rule="all_done" if self.fast_cleanup else "all_success",
-        #     dag=self.dag
-        # )
-
-        # task_order.append(cleanup_local_disk)
-
-        # # Chain all defined operators into task-order.
-        # chain(*task_order)
