@@ -900,7 +900,7 @@ class EarthbeamDAG:
             )
             
             return {
-                "data_dir": em_output_dir,
+                "data_dir": earthmover_operator.execute(**context),
                 "state_file": em_state_file,
                 "results_file": em_results_file,
             }
@@ -935,6 +935,7 @@ class EarthbeamDAG:
             )
             
             return {
+                "data_dir": lightbeam_operator.execute(**context),
                 "state_dir": lb_state_dir,
                 "results_file": lb_results_file,
             }
