@@ -79,13 +79,6 @@ class EarthmoverOperator(BashOperator):
         bash_command_prefix = f"{self.earthmover_path} run "
         super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
-    def get_env(self, context):
-        """
-        Overload BashOperator.get_env() to force templates to render (necessary for dynamic task mapping).
-        """
-        self.env = context['task'].render_template(self.env, context)
-        return super().get_env(context)
-
     def execute(self, conf=None, **context) -> str:
         """
 
@@ -99,10 +92,6 @@ class EarthmoverOperator(BashOperator):
             db_conn = Connection.get_connection_from_secrets(self.database_conn_id)
             database_conn_string = f"snowflake://{db_conn.login}:{db_conn.password}@{db_conn.extra_dejson['extra__snowflake__account']}"
             self.env['DATABASE_CONNECTION'] = database_conn_string
-
-        # Update final Earthmover command with any passed arguments
-        # This update occurs here instead of init to allow context parameters to be passed.
-        self.arguments = context['task'].render_template(self.arguments, context)  # Force render in dynamic task mapping.
 
         # Format values before adding to the bash command.
         cli_arguments = []
@@ -214,13 +203,6 @@ class LightbeamOperator(BashOperator):
         bash_command_prefix = f"{self.lightbeam_path} {command} "
         super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
-    def get_env(self, context):
-        """
-        Overload BashOperator.get_env() to force templates to render (necessary for dynamic task mapping).
-        """
-        self.env = context['task'].render_template(self.env, context)
-        return super().get_env(context)
-
     def execute(self, conf=None, **context) -> str:
         """
 
@@ -255,10 +237,6 @@ class LightbeamOperator(BashOperator):
 
         # Create state_dir if not already defined in filespace
         os.makedirs(self.state_dir, exist_ok=True)
-
-        # Update final Lightbeam command with any passed arguments
-        # This update occurs here instead of init to allow context parameters to be passed.
-        self.arguments = context['task'].render_template(self.arguments, context)  # Force render in dynamic task mapping.
 
         # Format values before adding to the bash command.
         cli_arguments = []

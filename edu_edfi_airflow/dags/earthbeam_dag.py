@@ -889,6 +889,8 @@ class EarthbeamDAG:
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
                 file_basename, 'earthmover_results.json'
             ) if logging_table else None
+
+            em_output_dir = context['task'].render_template(em_output_dir, context)
             em_results_file = context['task'].render_template(em_results_file, context)
 
             earthmover_operator = EarthmoverOperator(
