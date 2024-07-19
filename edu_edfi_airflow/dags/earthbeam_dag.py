@@ -844,7 +844,7 @@ class EarthbeamDAG:
                 '{{ ds_nodash }}', '{{ ts_nodash }}'
             )
 
-            local_filepath = context['task'].render_template(local_filepath)
+            filepath = context['task'].render_template(filepath, context)
             s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
             return local_filepath_to_s3(
