@@ -997,7 +997,7 @@ class EarthbeamDAG:
 
         ### Earthmover logs to Snowflake
         if logging_table:
-            em_to_snowflake_operator = log_to_snowflake.ovveride(task_id="log_em_to_snowflake")(earthmover_operator["results_file"])
+            em_to_snowflake_operator = log_to_snowflake.override(task_id="log_em_to_snowflake")(earthmover_operator["results_file"])
 
         ### Earthmover to S3
         if s3_conn_id:
