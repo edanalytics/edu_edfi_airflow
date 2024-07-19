@@ -63,9 +63,6 @@ def local_filepath_to_s3(
     :return:
     """
     # Force path template rendering in dynamic mappings.
-    local_filepath = context['task'].render_template(local_filepath, context)
-    s3_destination_key = context['task'].render_template(s3_destination_key, context)
-
     try:
         s3_hook = S3Hook(aws_conn_id=s3_conn_id)
         s3_bucket = s3_hook.get_connection(s3_conn_id).schema

@@ -832,7 +832,7 @@ class EarthbeamDAG:
         **kwargs
     ):
         @task
-        def upload_to_s3(filepath: str, subdirectory: str):
+        def upload_to_s3(filepath: str, subdirectory: str, **context):
             if not s3_filepath:
                 raise ValueError(
                     "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
@@ -843,6 +843,9 @@ class EarthbeamDAG:
                 tenant_code, self.run_type, api_year, grain_update,
                 '{{ ds_nodash }}', '{{ ts_nodash }}'
             )
+
+            local_filepath = context['task'].render_template(local_filepath)
+            s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
             return local_filepath_to_s3(
                 s3_conn_id=s3_conn_id,
@@ -886,6 +889,7 @@ class EarthbeamDAG:
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
                 file_basename, 'earthmover_results.json'
             ) if logging_table else None
+            em_results_file = context['task'].render_template(em_results_file, context)
 
             earthmover_operator = EarthmoverOperator(
                 task_id=f"run_earthmover",
@@ -921,6 +925,7 @@ class EarthbeamDAG:
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
                 dir_basename, 'lightbeam_results.json'
             ) if logging_table else None
+            lb_results_file = context['task'].render_template(lb_results_file, context)
 
             lightbeam_operator = LightbeamOperator(
                 task_id=f"send_via_lightbeam",
