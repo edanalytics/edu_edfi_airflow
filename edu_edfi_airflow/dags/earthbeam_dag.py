@@ -801,6 +801,9 @@ class EarthbeamDAG:
             sql=qry_insert_into
         )
     
+    @staticmethod
+    def get_filename(filepath: str) -> str:
+        return os.path.splitext(os.path.basename(filepath))[0]
 
     def file_to_edfi_taskgroup_tasks(self,
         local_filepath: str,
@@ -860,7 +863,7 @@ class EarthbeamDAG:
                 grain_update=grain_update
             )
         
-        @task
+        @task(multiple_outputs=True)
         def run_earthmover(filepath: str, **context):
             file_basename = self.get_filename(filepath)
             
@@ -895,11 +898,14 @@ class EarthbeamDAG:
                 pool=self.earthmover_pool,
                 dag=self.dag
             )
-
-            context['ti'].xcom_push("results_file", em_results_file)
-            return earthmover_operator.execute(**context)
+            
+            return {
+                "data_dir": em_output_dir,
+                "state_file": em_state_file,
+                "results_file": em_results_file,
+            }
         
-        @task
+        @task(multiple_outputs=True)
         def run_lightbeam(data_dir: str, **context):
             dir_basename = self.get_filename(data_dir)
 
@@ -927,9 +933,11 @@ class EarthbeamDAG:
                 pool=self.lightbeam_pool,
                 dag=self.dag
             )
-
-            context['ti'].xcom_push("results_file", lb_results_file)
-            return lightbeam_operator.execute(**context)
+            
+            return {
+                "state_dir": lb_state_dir,
+                "results_file": lb_results_file,
+            }
     
         @task_group(prefix_group_id=True, dag=self.dag)
         def sideload_to_stadium(s3_directory: str):
@@ -989,12 +997,11 @@ class EarthbeamDAG:
 
         ### Earthmover logs to Snowflake
         if logging_table:
-            em_results_filepath = airflow_util.xcom_pull_template(earthmover_operator.task_id, key="results_file")
-            em_to_snowflake_operator = log_to_snowflake.ovveride(task_id="log_em_to_snowflake")(em_results_filepath, "earthmover")
+            em_to_snowflake_operator = log_to_snowflake.ovveride(task_id="log_em_to_snowflake")(earthmover_operator["results_file"])
 
         ### Earthmover to S3
         if s3_conn_id:
-            em_to_s3_operator = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_operator)
+            em_to_s3_operator = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_operator["data_dir"], "earthmover")
 
         ### LightbeamOperator
         if edfi_conn_id:
@@ -1002,8 +1009,7 @@ class EarthbeamDAG:
 
             ### Lightbeam logs to Snowflake
             if logging_table:
-                lb_results_filepath = airflow_util.xcom_pull_template(lightbeam_operator.task_id, key="results_file")
-                lb_to_snowflake_operator = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lb_results_filepath)
+                lb_to_snowflake_operator = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_operator["results_file"])
 
         ### Alternate route: Bypassing the ODS directly into Snowflake
         elif snowflake_conn_id and not edfi_conn_id:
@@ -1027,7 +1033,3 @@ class EarthbeamDAG:
 
         # # Chain all defined operators into task-order.
         # chain(*task_order)
-
-    @staticmethod
-    def get_filename(filepath: str) -> str:
-        return os.path.splitext(os.path.basename(filepath))[0]
