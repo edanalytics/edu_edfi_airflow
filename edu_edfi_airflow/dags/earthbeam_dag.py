@@ -893,7 +893,6 @@ class EarthbeamDAG:
             ) if logging_table else None
             em_results_file = context['task'].render_template(em_results_file, context)
 
-
             earthmover_operator = EarthmoverOperator(
                 task_id=f"run_earthmover",
                 earthmover_path=self.earthmover_path,
@@ -949,7 +948,7 @@ class EarthbeamDAG:
             }
     
         @task_group(prefix_group_id=True, dag=self.dag)
-        def sideload_to_stadium(s3_directory: str, **context):
+        def sideload_to_stadium(s3_directory: str):
             if not s3_conn_id:
                 raise Exception(
                     "S3 connection required to copy into Snowflake."
@@ -1014,7 +1013,7 @@ class EarthbeamDAG:
 
             # Option 1: Bypass the ODS and sideload into Stadium
             if snowflake_conn_id and not edfi_conn_id:
-                sideload_to_stadium(em_s3_filepath)
+                em_s3_filepath >> sideload_to_stadium(em_s3_filepath)
 
         # Option 2: LightbeamOperator
         if edfi_conn_id:
