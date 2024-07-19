@@ -856,14 +856,15 @@ class EarthbeamDAG:
             )
         
         @task
-        def log_to_snowflake(results_filepath: str):
+        def log_to_snowflake(results_filepath: str, **context):
             return self.insert_earthbeam_result_to_logging_table(
                 snowflake_conn_id=snowflake_conn_id,
                 logging_table=logging_table,
                 results_filepath=results_filepath,
                 tenant_code=tenant_code,
                 api_year=api_year,
-                grain_update=grain_update
+                grain_update=grain_update,
+                **context
             )
         
         @task(multiple_outputs=True)
@@ -876,6 +877,7 @@ class EarthbeamDAG:
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
                 file_basename
             )
+            em_output_dir = context['task'].render_template(em_output_dir, context)
 
             em_state_file = edfi_api_client.url_join(
                 self.emlb_state_directory,
@@ -889,9 +891,8 @@ class EarthbeamDAG:
                 '{{ ds_nodash }}', '{{ ts_nodash }}',
                 file_basename, 'earthmover_results.json'
             ) if logging_table else None
-
-            em_output_dir = context['task'].render_template(em_output_dir, context)
             em_results_file = context['task'].render_template(em_results_file, context)
+
 
             earthmover_operator = EarthmoverOperator(
                 task_id=f"run_earthmover",
@@ -948,7 +949,7 @@ class EarthbeamDAG:
             }
     
         @task_group(prefix_group_id=True, dag=self.dag)
-        def sideload_to_stadium(s3_directory: str):
+        def sideload_to_stadium(s3_directory: str, **context):
             if not s3_conn_id:
                 raise Exception(
                     "S3 connection required to copy into Snowflake."
@@ -994,6 +995,7 @@ class EarthbeamDAG:
 
                     dag=self.dag
                 )
+                em_to_snowflake.execute(**context)
 
 
         # Raw to S3
