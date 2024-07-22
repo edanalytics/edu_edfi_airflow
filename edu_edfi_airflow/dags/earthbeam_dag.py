@@ -144,12 +144,12 @@ class EarthbeamDAG:
             
                 # if needed, add tenant_code and api_year as columns so we can partition on them
                 if tenant_map is not None:
-                    df[tenant_code] = df[tenant_col].map(lambda x: tenant_map[x], meta=dd.utils.make_meta(df[tenant_col]))
+                    df[tenant_code] = df[tenant_col].map(tenant_map, meta=dd.utils.make_meta(df[tenant_col]))
                 else:
                     df[tenant_code] = df[tenant_col]
 
                 if year_map is not None:
-                    df[api_year] = df[year_col].map(lambda x: year_map[x], meta=dd.utils.make_meta(df[year_col]))
+                    df[api_year] = df[year_col].map(year_map, meta=dd.utils.make_meta(df[year_col]))
                 else:
                     df[api_year] = df[year_col]
 
