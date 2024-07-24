@@ -288,44 +288,38 @@ class EarthbeamDAG:
                 )
                 task_order.append(python_preprocess)
             
+            # Infer input file parameters if not explicitly defined.
+            if not input_file_mapping:
+                input_file_mapping = {
+                    key: val for key, val in earthmover_kwargs.get("parameters", {}).items()
+                    if key.lower().startswith("input_file")
+                    and key.lower() != "input_filetype"
+                }
 
-            @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
-            def file_to_edfi_taskgroup(input_file_mapping: Optional[dict]):
+            em_task_group = self.file_to_edfi_taskgroup(
+                input_file_mapping=input_file_mapping,
 
-                # Infer input file parameters if not explicitly defined.
-                if not input_file_mapping:
-                    input_file_mapping = {
-                        key: val for key, val in earthmover_kwargs.get("parameters", {}).items()
-                        if key.lower().startswith("input_file")
-                        and key.lower() != "input_filetype"
-                    }
+                tenant_code=tenant_code,
+                api_year=api_year,
+                grain_update=grain_update,
 
-                return self.file_to_edfi_taskgroup_tasks(
-                    input_file_mapping=input_file_mapping,
+                database_conn_id=database_conn_id,
+                earthmover_kwargs=earthmover_kwargs,
 
-                    tenant_code=tenant_code,
-                    api_year=api_year,
-                    grain_update=grain_update,
+                edfi_conn_id=edfi_conn_id,
+                lightbeam_kwargs=lightbeam_kwargs,
 
-                    database_conn_id=database_conn_id,
-                    earthmover_kwargs=earthmover_kwargs,
+                s3_conn_id=s3_conn_id,
+                s3_filepath=s3_filepath,
 
-                    edfi_conn_id=edfi_conn_id,
-                    lightbeam_kwargs=lightbeam_kwargs,
+                snowflake_conn_id=snowflake_conn_id,
+                logging_table=logging_table,
 
-                    s3_conn_id=s3_conn_id,
-                    s3_filepath=s3_filepath,
-
-                    snowflake_conn_id=snowflake_conn_id,
-                    logging_table=logging_table,
-
-                    ods_version=ods_version,
-                    data_model_version=data_model_version,
-                    endpoints=endpoints,
-                    full_refresh=full_refresh,
-                )
-
-            em_task_group = file_to_edfi_taskgroup(input_file_mapping)
+                ods_version=ods_version,
+                data_model_version=data_model_version,
+                endpoints=endpoints,
+                full_refresh=full_refresh,
+            )
             task_order.append(em_task_group)
 
         # Chain all defined operators into task-order.
@@ -481,37 +475,30 @@ class EarthbeamDAG:
                 )
                 list_files_task >> failed_sentinel
 
-            @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
-            def file_to_edfi_taskgroup(filepath: str):
+            em_task_group = self.file_to_edfi_taskgroup.partial(
+                tenant_code=tenant_code,
+                api_year=api_year,
+                grain_update=grain_update,
 
-                return self.file_to_edfi_taskgroup_tasks(
-                    input_file_mapping={
-                        input_file_var: filepath,
-                    },
+                database_conn_id=database_conn_id,
+                earthmover_kwargs=earthmover_kwargs,
 
-                    tenant_code=tenant_code,
-                    api_year=api_year,
-                    grain_update=grain_update,
+                edfi_conn_id=edfi_conn_id,
+                lightbeam_kwargs=lightbeam_kwargs,
 
-                    database_conn_id=database_conn_id,
-                    earthmover_kwargs=earthmover_kwargs,
+                s3_conn_id=s3_conn_id,
+                s3_filepath=s3_filepath,
 
-                    edfi_conn_id=edfi_conn_id,
-                    lightbeam_kwargs=lightbeam_kwargs,
+                snowflake_conn_id=snowflake_conn_id,
+                logging_table=logging_table,
 
-                    s3_conn_id=s3_conn_id,
-                    s3_filepath=s3_filepath,
-
-                    snowflake_conn_id=snowflake_conn_id,
-                    logging_table=logging_table,
-
-                    ods_version=ods_version,
-                    data_model_version=data_model_version,
-                    endpoints=endpoints,
-                    full_refresh=full_refresh,
-                )
-
-            em_task_group = file_to_edfi_taskgroup.expand(filepath=list_files_task.output)
+                ods_version=ods_version,
+                data_model_version=data_model_version,
+                endpoints=endpoints,
+                full_refresh=full_refresh,
+            ).expand(
+                input_file_mapping=list_files_task.output.map(lambda filepath: {input_file_var: filepath})
+            )
             task_order.append(em_task_group)
 
         # Chain all defined operators into task-order.
@@ -594,7 +581,7 @@ class EarthbeamDAG:
     def get_filename(filepath: str) -> str:
         return os.path.splitext(os.path.basename(filepath))[0]
 
-
+    @task_group(prefix_group_id=True, group_id="file_to_earthbeam")
     def file_to_edfi_taskgroup_tasks(self,
         input_file_mapping: dict,
 
