@@ -552,17 +552,17 @@ class EarthbeamDAG:
 
     ### Dynamic Earthbeam across multiple files
     @staticmethod
-    def inject_input_file_into_kwargs(input_file: str, earthmover_kwargs: Optional[dict]) -> dict:
+    def inject_parameters_into_kwargs(parameters: dict, earthmover_kwargs: Optional[dict]) -> dict:
         """
-        Helper for injecting INPUT_FILE into kwargs passed to Earthmover in dynamic runs.
+        Helper for injecting parameters into kwargs passed to Earthmover in dynamic runs.
         """
         copied_kwargs = dict(earthmover_kwargs or ())
 
         if not 'parameters' in copied_kwargs:
             copied_kwargs['parameters'] = {}
 
-        earthmover_kwargs['parameters']['INPUT_FILE'] = input_file
-        return earthmover_kwargs
+        copied_kwargs['parameters'].update(parameters)
+        return copied_kwargs
 
     def build_dynamic_tenant_year_taskgroup(self,
         tenant_code: str,
@@ -596,6 +596,9 @@ class EarthbeamDAG:
         data_model_version: Optional[str] = None,
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
+
+        # Allows overwrite of expected environment variable.
+        input_file_var: str = "INPUT_FILE",
 
         **kwargs
     ):
@@ -732,6 +735,8 @@ class EarthbeamDAG:
                     data_model_version=data_model_version,
                     endpoints=endpoints,
                     full_refresh=full_refresh,
+
+                    input_file_var=input_file_var,
                 )
 
             em_task_group = file_to_edfi_taskgroup.expand(filepath=list_files_task.output)
@@ -807,6 +812,7 @@ class EarthbeamDAG:
 
     def file_to_edfi_taskgroup_tasks(self,
         local_filepath: str,
+        input_file_var: str,
 
         *,
         tenant_code: str,
@@ -829,6 +835,7 @@ class EarthbeamDAG:
         data_model_version: Optional[str] = None,
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
+
         **kwargs
     ):
         @task
@@ -900,7 +907,7 @@ class EarthbeamDAG:
                 state_file=em_state_file,
                 database_conn_id=database_conn_id,
                 results_file=em_results_file,
-                **self.inject_input_file_into_kwargs(filepath, earthmover_kwargs),
+                **self.inject_parameters_into_kwargs({input_file_var: filepath}, earthmover_kwargs),
                 pool=self.earthmover_pool,
                 dag=self.dag
             )
