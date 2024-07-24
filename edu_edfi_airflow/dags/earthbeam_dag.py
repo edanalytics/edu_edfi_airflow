@@ -9,7 +9,6 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from airflow.operators.python import get_current_context
 from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
@@ -859,7 +858,7 @@ class EarthbeamDAG:
                 s3_destination_key=s3_full_filepath,
                 local_filepath=filepath,
                 remove_local_filepath=False,
-                **get_current_context()
+                **context
             )
         
         @task
