@@ -9,6 +9,7 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
+from airflow.operators.python import get_current_context
 from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
@@ -953,10 +954,12 @@ class EarthbeamDAG:
             }
         
         @task
-        def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
+        def em_to_snowflake(s3_destination_dir: str, endpoint: str):
             # Snowflake tables are snake_cased; Earthmover outputs are camelCased
             snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
             camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
+
+            context = get_current_context()  # Retrieve context manually to exclude conf.
 
             # Descriptors have their own table
             if 'descriptor' in snake_endpoint:
