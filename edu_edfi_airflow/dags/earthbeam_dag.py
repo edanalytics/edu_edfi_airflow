@@ -583,6 +583,7 @@ class EarthbeamDAG:
     def get_filename(filepath: str) -> str:
         return os.path.splitext(os.path.basename(filepath))[0]
 
+    @staticmethod
     @task_group(prefix_group_id=True, group_id="file_to_earthbeam")
     def file_to_edfi_taskgroup(self,
         input_file_mapping: dict,
