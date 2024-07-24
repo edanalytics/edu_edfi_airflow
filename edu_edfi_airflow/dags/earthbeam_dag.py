@@ -297,6 +297,7 @@ class EarthbeamDAG:
                 }
 
             em_task_group = self.file_to_edfi_taskgroup.override(dag=self.dag)(
+                self,
                 input_file_mapping=input_file_mapping,
 
                 tenant_code=tenant_code,
@@ -476,6 +477,7 @@ class EarthbeamDAG:
                 list_files_task >> failed_sentinel
 
             em_task_group = self.file_to_edfi_taskgroup.override(dag=self.dag).partial(
+                self,
                 tenant_code=tenant_code,
                 api_year=api_year,
                 grain_update=grain_update,
