@@ -469,8 +469,8 @@ class EarthbeamDAG:
                     task_order.append(log_lightbeam_to_snowflake)
 
 
-            ### Alternate route: Bypassing the ODS directly into Snowflake
-            if snowflake_conn_id and not edfi_conn_id:
+            ### Alternate route: Bypassing the ODS directly into Snowflake (Do this if not configured to lightbeam send to edfi)
+            if snowflake_conn_id and (not edfi_conn_id or not self.dag.params['send']):
                 if not s3_conn_id:
                     raise Exception(
                         "S3 connection required to copy into Snowflake."
