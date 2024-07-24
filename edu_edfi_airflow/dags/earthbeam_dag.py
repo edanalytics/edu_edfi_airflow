@@ -713,7 +713,10 @@ class EarthbeamDAG:
             def file_to_edfi_taskgroup(filepath: str):
 
                 return self.file_to_edfi_taskgroup_tasks(
-                    local_filepath=filepath,
+                    input_file_mapping={
+                        input_file_var: filepath,
+                    },
+
                     tenant_code=tenant_code,
                     api_year=api_year,
                     grain_update=grain_update,
@@ -734,8 +737,6 @@ class EarthbeamDAG:
                     data_model_version=data_model_version,
                     endpoints=endpoints,
                     full_refresh=full_refresh,
-
-                    input_file_var=input_file_var,
                 )
 
             em_task_group = file_to_edfi_taskgroup.expand(filepath=list_files_task.output)
@@ -810,8 +811,7 @@ class EarthbeamDAG:
         return os.path.splitext(os.path.basename(filepath))[0]
 
     def file_to_edfi_taskgroup_tasks(self,
-        local_filepath: str,
-        input_file_var: str,
+        input_file_mapping: dict,
 
         *,
         tenant_code: str,
@@ -873,8 +873,8 @@ class EarthbeamDAG:
             )
         
         @task(multiple_outputs=True)
-        def run_earthmover(filepath: str, **context):
-            file_basename = self.get_filename(filepath)
+        def run_earthmover(env_mapping: dict, **context):
+            file_basename = self.get_filename(env_mapping.values()[0])
             
             em_output_dir = edfi_api_client.url_join(
                 self.em_output_directory,
@@ -905,7 +905,7 @@ class EarthbeamDAG:
                 state_file=em_state_file,
                 database_conn_id=database_conn_id,
                 results_file=em_results_file,
-                **self.inject_parameters_into_kwargs({input_file_var: filepath}, earthmover_kwargs),
+                **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                 pool=self.earthmover_pool,
                 dag=self.dag
             )
@@ -1001,15 +1001,16 @@ class EarthbeamDAG:
 
 
         all_tasks = []  # Track all tasks to apply cleanup at the very end
-        paths_to_clean = [local_filepath]
+        paths_to_clean = [*input_file_mapping.values()]
 
         # Raw to S3
         if s3_conn_id:
-            upload_to_s3.override(task_id="upload_raw_to_s3")(local_filepath, "raw")
-            all_tasks.append(upload_to_s3)
+            for var, file in input_file_mapping.items():
+                upload_to_s3.override(task_id=f"upload_raw_to_s3__{var}")(file, "raw")
+                all_tasks.append(upload_to_s3)
             
         # EarthmoverOperator: Required
-        earthmover_results = run_earthmover(local_filepath)
+        earthmover_results = run_earthmover(input_file_mapping)
         all_tasks.append(earthmover_results)
         paths_to_clean.append(earthmover_results["data_dir"])
 
