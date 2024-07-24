@@ -946,56 +946,56 @@ class EarthbeamDAG:
                 "state_dir": lb_state_dir,
                 "results_file": lb_results_file,
             }
+        
+        @task
+        def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
+            # Snowflake tables are snake_cased; Earthmover outputs are camelCased
+            snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
+            camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
+
+            # Descriptors have their own table
+            if 'descriptor' in snake_endpoint:
+                table_name = '_descriptors'
+            else:
+                table_name = snake_endpoint
+
+            sideload_op = S3ToSnowflakeOperator(
+                task_id=f"copy_s3_to_snowflake__{camel_endpoint}",
+
+                tenant_code=tenant_code,
+                api_year=api_year,
+                resource=f"{snake_endpoint}__{self.run_type}",
+                table_name=table_name,
+
+                s3_destination_dir=s3_destination_dir,
+                s3_destination_filename=f"{camel_endpoint}.jsonl",
+
+                snowflake_conn_id=snowflake_conn_id,
+                ods_version=ods_version,
+                data_model_version=data_model_version,
+                full_refresh=full_refresh,
+
+                dag=self.dag
+            )
+
+            return sideload_op.execute(**context)
     
         @task_group(prefix_group_id=True, dag=self.dag)
-        def sideload_to_stadium(s3_directory: str):
+        def sideload_to_stadium(s3_destination_dir: str):
             if not s3_conn_id:
-                raise Exception(
-                    "S3 connection required to copy into Snowflake."
-                )
+                raise Exception("S3 connection required to copy into Snowflake.")
 
             if not (ods_version and data_model_version):
-                raise Exception(
-                    "ODS-bypass requires arguments `ods_version` and `data_model_version` to be defined."
-                )
+                raise Exception("ODS-bypass requires arguments `ods_version` and `data_model_version` to be defined.")
 
             if not endpoints:
-                raise Exception(
-                    "No endpoints defined for ODS-bypass!"
-                )
+                raise Exception("No endpoints defined for ODS-bypass!")
 
             for endpoint in endpoints:
-                # Snowflake tables are snake_cased; Earthmover outputs are camelCased
-                snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
-                camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
-
-                # Descriptors have their own table
-                if 'descriptor' in snake_endpoint:
-                    table_name = '_descriptors'
-                else:
-                    table_name = snake_endpoint
-
-                em_to_snowflake = S3ToSnowflakeOperator(
-                    task_id=f"copy_s3_to_snowflake__{camel_endpoint}",
-
-                    tenant_code=tenant_code,
-                    api_year=api_year,
-                    resource=f"{snake_endpoint}__{self.run_type}",
-                    table_name=table_name,
-
-                    s3_destination_dir=s3_directory,
-                    s3_destination_filename=f"{camel_endpoint}.jsonl",
-
-                    snowflake_conn_id=snowflake_conn_id,
-                    ods_version=ods_version,
-                    data_model_version=data_model_version,
-                    full_refresh=full_refresh,
-
-                    dag=self.dag
-                )
+                em_to_snowflake(s3_destination_dir, endpoint)
 
 
-        all_tasks = []
+        all_tasks = []  # Track all tasks to apply cleanup at the very end
         paths_to_clean = [local_filepath]
 
         # Raw to S3
@@ -1006,7 +1006,7 @@ class EarthbeamDAG:
         # EarthmoverOperator: Required
         earthmover_results = run_earthmover(local_filepath)
         all_tasks.append(earthmover_results)
-        paths_to_clean.append(earthmover_results["results_file"])
+        paths_to_clean.append(earthmover_results["data_dir"])
 
         # Earthmover logs to Snowflake
         if logging_table:
@@ -1020,9 +1020,8 @@ class EarthbeamDAG:
 
             # Option 1: Bypass the ODS and sideload into Stadium
             if snowflake_conn_id and not edfi_conn_id:
-                sideload_operator = sideload_to_stadium(em_s3_filepath)
-                em_s3_filepath >> sideload_operator
-                all_tasks.append(sideload_operator)
+                sideload_taskgroup = sideload_to_stadium(em_s3_filepath)
+                all_tasks.append(sideload_taskgroup)
 
         # Option 2: LightbeamOperator
         if edfi_conn_id:
