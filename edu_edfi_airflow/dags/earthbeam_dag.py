@@ -202,6 +202,9 @@ class EarthbeamDAG:
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
 
+        # Allows overwrite of expected environment variable.
+        input_file_mapping: Optional[str] = None,
+
         **kwargs
     ):
         """
@@ -243,6 +246,8 @@ class EarthbeamDAG:
         :param endpoints:
         :param full_refresh:
 
+        :param input_file_mapping:
+
         :return:
         """
         taskgroup_grain = f"{tenant_code}_{api_year}"
@@ -270,7 +275,6 @@ class EarthbeamDAG:
 
             # Dynamically build a task-order as tasks are defined.
             task_order = []
-            paths_to_clean = []
 
             ### PythonOperator Preprocess
             if python_callable:
@@ -284,264 +288,46 @@ class EarthbeamDAG:
                 )
 
                 task_order.append(python_preprocess)
-                paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
+            
 
+            @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
+            def file_to_edfi_taskgroup():
 
-            ### Raw to S3
-            if s3_conn_id:
-                if not s3_filepath:
-                    raise ValueError(
-                        "Argument `s3_filepath` must be defined to upload raw files to S3."
-                    )
+                # Infer input file parameters if not explicitly defined.
+                if not input_file_mapping:
+                    input_file_mapping = {
+                        key: val for key, val in earthmover_kwargs.get("parameters", {}).items()
+                        if key.lower().startswith("input_file")
+                        and key.lower() != "input_filetype"
+                    }
 
-                s3_raw_filepath = edfi_api_client.url_join(
-                    s3_filepath, 'raw',
-                    tenant_code, self.run_type, api_year, grain_update,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}'
-                )
+                return self.file_to_edfi_taskgroup_tasks(
+                    input_file_mapping=input_file_mapping,
 
-                raw_to_s3 = PythonOperator(
-                    task_id=f"{taskgroup_grain}_upload_raw_to_s3",
-                    python_callable=local_filepath_to_s3,
-                    op_kwargs={
-                        's3_conn_id': s3_conn_id,
-                        's3_destination_key': s3_raw_filepath,
-                        'local_filepath': airflow_util.xcom_pull_template(python_preprocess.task_id) if python_callable else raw_dir,
-                        'remove_local_filepath': False,
-                    },
-                    provide_context=True,
-                    pool=self.pool,
-                    dag=self.dag
-                )
+                    tenant_code=tenant_code,
+                    api_year=api_year,
+                    grain_update=grain_update,
 
-                task_order.append(raw_to_s3)
+                    database_conn_id=database_conn_id,
+                    earthmover_kwargs=earthmover_kwargs,
 
-
-            ### EarthmoverOperator: Required
-            em_output_dir = edfi_api_client.url_join(
-                self.em_output_directory,
-                tenant_code, self.run_type, api_year, grain_update,
-                '{{ ds_nodash }}', '{{ ts_nodash }}'
-            )
-
-            em_state_file = edfi_api_client.url_join(
-                self.emlb_state_directory,
-                tenant_code, self.run_type, api_year, grain_update,
-                'earthmover.csv'
-            )
-
-            em_results_file = edfi_api_client.url_join(
-                self.emlb_results_directory,
-                tenant_code, self.run_type, api_year, grain_update,
-                '{{ ds_nodash }}', '{{ ts_nodash }}',
-                "earthmover_results.json"
-            )
-
-            run_earthmover = EarthmoverOperator(
-                task_id=f"{taskgroup_grain}_run_earthmover",
-                earthmover_path=self.earthmover_path,
-                output_dir=em_output_dir,
-                state_file=em_state_file,
-                database_conn_id=database_conn_id,
-                results_file=em_results_file if logging_table else None,
-                **(earthmover_kwargs or {}),
-                pool=self.earthmover_pool,
-                dag=self.dag
-            )
-
-            task_order.append(run_earthmover)
-            paths_to_clean.append(airflow_util.xcom_pull_template(run_earthmover.task_id))
-
-
-            ### Earthmover logs to Snowflake
-            if logging_table:
-                if not snowflake_conn_id:
-                    raise Exception(
-                        "Snowflake connection required to copy Earthmover logs into Snowflake."
-                    )
-
-                log_earthmover_to_snowflake = PythonOperator(
-                    task_id=f"{taskgroup_grain}_log_earthmover_to_snowflake",
-                    python_callable=self.insert_earthbeam_result_to_logging_table,
-                    op_kwargs={
-                        'snowflake_conn_id': snowflake_conn_id,
-                        'logging_table': logging_table,
-                        'results_filepath': em_results_file,
-
-                        'tenant_code': tenant_code,
-                        'api_year': api_year,
-                        'grain_update': grain_update,
-                    },
-                    provide_context=True,
-                    pool=self.pool,
-                    trigger_rule="all_done",
-                    dag=self.dag
-                )
-
-                run_earthmover >> log_earthmover_to_snowflake
-
-
-            ### Earthmover to S3
-            if s3_conn_id:
-                if not s3_filepath:
-                    raise ValueError(
-                        "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
-                    )
-
-                s3_em_filepath = edfi_api_client.url_join(
-                    s3_filepath, 'earthmover',
-                    tenant_code, self.run_type, api_year, grain_update,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}'
-                )
-
-                em_to_s3 = PythonOperator(
-                    task_id=f"{taskgroup_grain}_upload_earthmover_to_s3",
-                    python_callable=local_filepath_to_s3,
-                    op_kwargs={
-                        's3_conn_id': s3_conn_id,
-                        's3_destination_key': s3_em_filepath,
-                        'local_filepath': airflow_util.xcom_pull_template(run_earthmover.task_id),
-                        'remove_local_filepath': False,
-                    },
-                    provide_context=True,
-                    pool=self.pool,
-                    dag=self.dag
-                )
-
-                task_order.append(em_to_s3)
-
-
-            ### LightbeamOperator
-            if edfi_conn_id:
-                lb_state_dir = edfi_api_client.url_join(
-                    self.emlb_state_directory,
-                    tenant_code, self.run_type, api_year, grain_update,
-                    'lightbeam'
-                )
-
-                lb_results_file = edfi_api_client.url_join(
-                    self.emlb_results_directory,
-                    tenant_code, self.run_type, api_year, grain_update,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}',
-                    "lightbeam_results.json"
-                )
-
-                run_lightbeam = LightbeamOperator(
-                    task_id=f"{taskgroup_grain}_send_via_lightbeam",
-                    lightbeam_path=self.lightbeam_path,
-                    data_dir=airflow_util.xcom_pull_template(run_earthmover.task_id),
-                    state_dir=lb_state_dir,
-                    results_file=lb_results_file if logging_table else None,
                     edfi_conn_id=edfi_conn_id,
-                    **(lightbeam_kwargs or {}),
-                    pool=self.lightbeam_pool,
-                    dag=self.dag
+                    lightbeam_kwargs=lightbeam_kwargs,
+
+                    s3_conn_id=s3_conn_id,
+                    s3_filepath=s3_filepath,
+
+                    snowflake_conn_id=snowflake_conn_id,
+                    logging_table=logging_table,
+
+                    ods_version=ods_version,
+                    data_model_version=data_model_version,
+                    endpoints=endpoints,
+                    full_refresh=full_refresh,
                 )
 
-                task_order.append(run_lightbeam)
-
-                ### Lightbeam logs to Snowflake
-                if logging_table:
-                    if not snowflake_conn_id:
-                        raise Exception(
-                            "Snowflake connection required to copy Lightbeam logs into Snowflake."
-                        )
-
-                    log_lightbeam_to_snowflake = PythonOperator(
-                        task_id=f"{taskgroup_grain}_log_lightbeam_to_snowflake",
-                        python_callable=self.insert_earthbeam_result_to_logging_table,
-                        op_kwargs={
-                            'snowflake_conn_id': snowflake_conn_id,
-                            'logging_table': logging_table,
-                            'results_filepath': lb_results_file,
-
-                            'tenant_code': tenant_code,
-                            'api_year': api_year,
-                            'grain_update': grain_update,
-                        },
-                        provide_context=True,
-                        pool=self.pool,
-                        trigger_rule="all_done",
-                        dag=self.dag
-                    )
-
-                    run_lightbeam >> log_lightbeam_to_snowflake
-
-
-            ### Alternate route: Bypassing the ODS directly into Snowflake
-            if snowflake_conn_id and not edfi_conn_id:
-                if not s3_conn_id:
-                    raise Exception(
-                        "S3 connection required to copy into Snowflake."
-                    )
-
-                if not (ods_version and data_model_version):
-                    raise Exception(
-                        "ODS-bypass requires arguments `ods_version` and `data_model_version` to be defined."
-                    )
-
-                if not endpoints:
-                    raise Exception(
-                        "No endpoints defined for ODS-bypass!"
-                    )
-
-                with TaskGroup(
-                    group_id=f"{taskgroup_grain}_copy_s3_to_snowflake",
-                    prefix_group_id=False,
-                    dag=self.dag
-                ) as s3_to_snowflake_task_group:
-
-                    for endpoint in endpoints:
-                        # Snowflake tables are snake_cased; Earthmover outputs are camelCased
-                        snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
-                        camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
-
-                        endpoint_output_path = edfi_api_client.url_join(
-                            airflow_util.xcom_pull_template(em_to_s3.task_id),
-                            camel_endpoint + ".jsonl"
-                        )
-
-                        # Descriptors have their own table
-                        if 'descriptor' in snake_endpoint:
-                            table_name = '_descriptors'
-                        else:
-                            table_name = snake_endpoint
-
-                        em_to_snowflake = S3ToSnowflakeOperator(
-                            task_id=f"{taskgroup_grain}_copy_s3_to_snowflake__{camel_endpoint}",
-
-                            tenant_code=tenant_code,
-                            api_year=api_year,
-                            resource=f"{snake_endpoint}__{self.run_type}",
-                            table_name=table_name,
-
-                            s3_destination_key=endpoint_output_path,
-
-                            snowflake_conn_id=snowflake_conn_id,
-                            ods_version=ods_version,
-                            data_model_version=data_model_version,
-                            full_refresh=full_refresh,
-
-                            dag=self.dag
-                        )
-
-                task_order.append(s3_to_snowflake_task_group)
-
-
-            ### Final cleanup
-            cleanup_local_disk = PythonOperator(
-                task_id=f"{taskgroup_grain}_cleanup_disk",
-                python_callable=remove_filepaths,
-                op_kwargs={
-                    "filepaths": paths_to_clean,
-                },
-                provide_context=True,
-                pool=self.pool,
-                trigger_rule="all_done" if self.fast_cleanup else "all_success",
-                dag=self.dag
-            )
-
-            task_order.append(cleanup_local_disk)
+            em_task_group = file_to_edfi_taskgroup()
+            task_order.append(em_task_group)
 
             # Chain all defined operators into task-order.
             chain(*task_order)
