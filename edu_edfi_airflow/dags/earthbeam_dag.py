@@ -202,8 +202,8 @@ class EarthbeamDAG:
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
 
-        # Allows overwrite of expected environment variable.
-        input_file_mapping: Optional[str] = None,
+        # Mapping of input environment variables to be injected into the taskgroup.
+        input_file_mapping: Optional[dict] = None,
 
         **kwargs
     ):
@@ -286,12 +286,11 @@ class EarthbeamDAG:
                     pool=self.pool,
                     dag=self.dag
                 )
-
                 task_order.append(python_preprocess)
             
 
             @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
-            def file_to_edfi_taskgroup():
+            def file_to_edfi_taskgroup(input_file_mapping: Optional[dict]):
 
                 # Infer input file parameters if not explicitly defined.
                 if not input_file_mapping:
@@ -326,7 +325,7 @@ class EarthbeamDAG:
                     full_refresh=full_refresh,
                 )
 
-            em_task_group = file_to_edfi_taskgroup()
+            em_task_group = file_to_edfi_taskgroup(input_file_mapping)
             task_order.append(em_task_group)
 
             # Chain all defined operators into task-order.
@@ -336,19 +335,6 @@ class EarthbeamDAG:
 
 
     ### Dynamic Earthbeam across multiple files
-    @staticmethod
-    def inject_parameters_into_kwargs(parameters: dict, earthmover_kwargs: Optional[dict]) -> dict:
-        """
-        Helper for injecting parameters into kwargs passed to Earthmover in dynamic runs.
-        """
-        copied_kwargs = dict(earthmover_kwargs or ())
-
-        if not 'parameters' in copied_kwargs:
-            copied_kwargs['parameters'] = {}
-
-        copied_kwargs['parameters'].update(parameters)
-        return copied_kwargs
-
     def build_dynamic_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
@@ -428,6 +414,8 @@ class EarthbeamDAG:
         :param endpoints:
         :param full_refresh:
 
+        :param input_file_var:
+
         :return:
         """
         taskgroup_grain = f"{tenant_code}_{api_year}"
@@ -455,7 +443,6 @@ class EarthbeamDAG:
 
             # Dynamically build a task-order as tasks are defined.
             task_order = []
-            # paths_to_clean = []
 
             ### PythonOperator Preprocess
             if python_callable:
@@ -593,8 +580,22 @@ class EarthbeamDAG:
         )
     
     @staticmethod
+    def inject_parameters_into_kwargs(parameters: dict, earthmover_kwargs: Optional[dict]) -> dict:
+        """
+        Helper for injecting parameters into kwargs passed to Earthmover in dynamic runs.
+        """
+        copied_kwargs = dict(earthmover_kwargs or ())
+
+        if not 'parameters' in copied_kwargs:
+            copied_kwargs['parameters'] = {}
+
+        copied_kwargs['parameters'].update(parameters)
+        return copied_kwargs
+    
+    @staticmethod
     def get_filename(filepath: str) -> str:
         return os.path.splitext(os.path.basename(filepath))[0]
+
 
     def file_to_edfi_taskgroup_tasks(self,
         input_file_mapping: dict,
