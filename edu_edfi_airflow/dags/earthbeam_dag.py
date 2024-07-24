@@ -48,7 +48,7 @@ class EarthbeamDAG:
         ),
         "validate_reference_fail_fast": Param(
             default=10,
-            type="int",
+            type="integer",
             description="If provided, enables fail-fast mode for references validation"
         )
     }
