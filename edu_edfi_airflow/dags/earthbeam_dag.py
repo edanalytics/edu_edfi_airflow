@@ -582,7 +582,7 @@ class EarthbeamDAG:
         return os.path.splitext(os.path.basename(filepath))[0]
 
     @task_group(prefix_group_id=True, group_id="file_to_earthbeam")
-    def file_to_edfi_taskgroup_tasks(self,
+    def file_to_edfi_taskgroup(self,
         input_file_mapping: dict,
 
         *,
