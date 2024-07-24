@@ -328,10 +328,9 @@ class EarthbeamDAG:
             em_task_group = file_to_edfi_taskgroup(input_file_mapping)
             task_order.append(em_task_group)
 
-            # Chain all defined operators into task-order.
-            chain(*task_order)
-
-            return tenant_year_task_group
+        # Chain all defined operators into task-order.
+        chain(*task_order)
+        return tenant_year_task_group
 
 
     ### Dynamic Earthbeam across multiple files
@@ -515,10 +514,9 @@ class EarthbeamDAG:
             em_task_group = file_to_edfi_taskgroup.expand(filepath=list_files_task.output)
             task_order.append(em_task_group)
 
-            # Chain all defined operators into task-order.
-            chain(*task_order)
-
-            return dynamic_tenant_year_task_group
+        # Chain all defined operators into task-order.
+        chain(*task_order)
+        return dynamic_tenant_year_task_group
 
 
     def insert_earthbeam_result_to_logging_table(self,
