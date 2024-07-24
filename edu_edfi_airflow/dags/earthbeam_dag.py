@@ -858,7 +858,7 @@ class EarthbeamDAG:
                 s3_destination_key=s3_full_filepath,
                 local_filepath=filepath,
                 remove_local_filepath=False,
-                **{key: val for key, val in context if key != 'conf'}  # TODO: Why is this necessary?
+                **{key: val for key, val in context.items() if key != 'conf'}  # TODO: Why is this necessary?
             )
         
         @task
