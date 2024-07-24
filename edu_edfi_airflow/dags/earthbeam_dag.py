@@ -331,7 +331,7 @@ class EarthbeamDAG:
             # Chain all defined operators into task-order.
             chain(*task_order)
 
-        return tenant_year_task_group
+            return tenant_year_task_group
 
 
     ### Dynamic Earthbeam across multiple files
