@@ -992,7 +992,7 @@ class EarthbeamDAG:
                 raise Exception("No endpoints defined for ODS-bypass!")
 
             for endpoint in endpoints:
-                em_to_snowflake(s3_destination_dir, endpoint)
+                em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
 
         all_tasks = []  # Track all tasks to apply cleanup at the very end
