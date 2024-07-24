@@ -297,7 +297,6 @@ class EarthbeamDAG:
                 }
 
             em_task_group = self.file_to_edfi_taskgroup.override(dag=self.dag)(
-                self,
                 input_file_mapping=input_file_mapping,
 
                 tenant_code=tenant_code,
@@ -477,7 +476,6 @@ class EarthbeamDAG:
                 list_files_task >> failed_sentinel
 
             em_task_group = self.file_to_edfi_taskgroup.override(dag=self.dag).partial(
-                self,
                 tenant_code=tenant_code,
                 api_year=api_year,
                 grain_update=grain_update,
@@ -583,7 +581,6 @@ class EarthbeamDAG:
     def get_filename(filepath: str) -> str:
         return os.path.splitext(os.path.basename(filepath))[0]
 
-    @staticmethod
     @task_group(prefix_group_id=True, group_id="file_to_earthbeam")
     def file_to_edfi_taskgroup(self,
         input_file_mapping: dict,
