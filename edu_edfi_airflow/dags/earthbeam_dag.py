@@ -175,7 +175,7 @@ class EarthbeamDAG:
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
-        raw_dir: str,
+        raw_dir: str,  # TODO: What role does raw_dir serve? Why was it even here when I first developed this?
 
         *,
         grain_update: Optional[str] = None,
@@ -304,7 +304,10 @@ class EarthbeamDAG:
                 data_model_version=data_model_version,
                 endpoints=endpoints,
                 full_refresh=full_refresh,
-            )(input_file_envs=input_file_mapping.keys(), input_filepaths=input_file_mapping.values())
+            )(
+                input_file_envs=input_file_mapping.keys(),
+                input_filepaths=input_file_mapping.values()
+            )
             task_order.append(em_task_group)
 
         # Chain all defined operators into task-order.
