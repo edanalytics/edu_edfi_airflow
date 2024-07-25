@@ -718,7 +718,7 @@ class EarthbeamDAG:
 
                 return sideload_op.execute(context)
         
-            @task_group(prefix_group_id=True)
+            @task_group(prefix_group_id=True, dag=self.dag)
             def sideload_to_stadium(s3_destination_dir: str):
                 if not s3_conn_id:
                     raise Exception("S3 connection required to copy into Snowflake.")
