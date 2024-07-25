@@ -605,9 +605,9 @@ class EarthbeamDAG:
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], **context):
                 input_file_envs = list(input_file_envs)
                 input_filepaths = list(input_filepaths)
-                env_mapping = dict(zip(input_file_envs, input_filepaths))
                 
-                file_basename = self.get_filename(list(env_mapping.values())[0])
+                file_basename = self.get_filename(input_filepaths[0])
+                env_mapping = dict(zip(input_file_envs, input_filepaths))
                 
                 em_output_dir = edfi_api_client.url_join(
                     self.em_output_directory,
