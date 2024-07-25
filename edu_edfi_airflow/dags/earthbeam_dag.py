@@ -605,7 +605,8 @@ class EarthbeamDAG:
                 )
             
             @task(multiple_outputs=True)
-            def run_earthmover(env_mapping: dict, **context):
+            def run_earthmover(**context):
+                env_mapping = dict(zip(input_file_envs, input_filepaths))
                 file_basename = self.get_filename(env_mapping.values()[0])
                 
                 em_output_dir = edfi_api_client.url_join(
@@ -752,7 +753,7 @@ class EarthbeamDAG:
                 all_tasks.append(upload_to_s3)
                 
             # EarthmoverOperator: Required
-            earthmover_results = run_earthmover(dict(zip(input_file_envs, input_filepaths)))
+            earthmover_results = run_earthmover()
             all_tasks.append(earthmover_results)
             paths_to_clean.append(earthmover_results["data_dir"])
 
