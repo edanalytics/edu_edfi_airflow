@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 import logging
 import os
 import re
@@ -365,49 +365,7 @@ class EarthbeamDAG:
         **kwargs
     ):
         """
-        IMPORTANT: This approach assumes a template will use 'INPUT_FILE' as its only input parameter!
-
-        (Python) -> (S3: Raw) -> Earthmover -> (S3: EM Output) -> (Snowflake: EM Logs) +-> (Lightbeam) -> (Snowflake: LB Logs) +-> Clean-up
-                                                                                       +-> (Snowflake: EM Output)
-
-        Many steps are automatic based on arguments defined:
-        * If `edfi_conn_id` is defined, use Lightbeam to post to ODS.
-        * If `python_callable` is defined, run Python pre-process.
-        * If `s3_conn_id` is defined, upload files raw and post-Earthmover.
-        * If `snowflake_conn_id` is defined and `edfi_conn_id` is NOT defined, copy EM output into raw Snowflake tables.
-        * If `logging_table` is defined, copy EM and LB logs into Snowflake table.
-
-        :param tenant_code:
-        :param api_year:
-        :param raw_dir:
-
-        :param grain_update:
-        :param group_id:
-        :param prefix_group_id:
-
-        :param database_conn_id:
-        :param earthmover_kwargs:
-
-        :param edfi_conn_id:
-        :param lightbeam_kwargs:
-
-        :param s3_conn_id:
-        :param s3_filepath:
-
-        :param python_callable:
-        :param python_kwargs:
-
-        :param snowflake_conn_id:
-        :param logging_table:
-
-        :param ods_version:
-        :param data_model_version:
-        :param endpoints:
-        :param full_refresh:
-
-        :param input_file_var:
-
-        :return:
+        IMPORTANT: This approach assumes a template will use 'input_file_var' as its only input parameter!
         """
         taskgroup_grain = f"{tenant_code}_{api_year}"
         if grain_update:
@@ -494,8 +452,8 @@ class EarthbeamDAG:
                 data_model_version=data_model_version,
                 endpoints=endpoints,
                 full_refresh=full_refresh,
-            ).partial(input_file_envs=[input_file_var]).expand(
-                input_filepaths=list_files_task.output.map(list)
+            ).partial(input_file_envs=input_file_var).expand(
+                input_filepaths=list_files_task.output
             )
             task_order.append(em_task_group)
 
@@ -605,7 +563,13 @@ class EarthbeamDAG:
         **kwargs
     ):
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
-        def file_to_edfi_taskgroup(input_file_envs: List[str], input_filepaths: List[str]):
+        def file_to_edfi_taskgroup(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]]):
+
+            if isinstance(input_file_envs, str):
+                input_file_envs = [input_file_envs]
+            
+            if isinstance(input_filepaths, str):
+                input_filepaths = [input_filepaths]
 
             @task
             def upload_to_s3(filepath: str, subdirectory: str, **context):
