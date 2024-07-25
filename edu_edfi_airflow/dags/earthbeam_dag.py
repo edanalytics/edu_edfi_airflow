@@ -180,7 +180,6 @@ class EarthbeamDAG:
         *,
         grain_update: Optional[str] = None,
         group_id: Optional[str] = None,
-        prefix_group_id: bool = False,
 
         database_conn_id: Optional[str] = None,
         earthmover_kwargs: Optional[dict] = None,
@@ -224,7 +223,6 @@ class EarthbeamDAG:
 
         :param grain_update:
         :param group_id:
-        :param prefix_group_id:
 
         :param database_conn_id:
         :param earthmover_kwargs:
@@ -250,26 +248,15 @@ class EarthbeamDAG:
 
         :return:
         """
-        taskgroup_grain = f"{tenant_code}_{api_year}"
-        if grain_update:
-            taskgroup_grain += f"_{grain_update}"
-
         # Group ID can be defined manually or built dynamically
-        if not group_id:
-            group_id = f"{taskgroup_grain}__earthmover"
-
-            # TaskGroups have three shapes:
-            if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
-                group_id += "_to_lightbeam"
-            elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
-                group_id += "_to_snowflake"
-            elif s3_conn_id:         # Earthmover-to-S3
-                group_id += "_to_s3"
-
+        group_id = group_id or self.build_group_id(
+            tenant_code, api_year, grain_update,
+            edfi_conn_id=edfi_conn_id, snowflake_conn_id=snowflake_conn_id, s3_conn_id=s3_conn_id
+        )
 
         with TaskGroup(
             group_id=group_id,
-            prefix_group_id=prefix_group_id,
+            prefix_group_id=True,
             dag=self.dag
         ) as tenant_year_task_group:
 
@@ -279,7 +266,7 @@ class EarthbeamDAG:
             ### PythonOperator Preprocess
             if python_callable:
                 python_preprocess = PythonOperator(
-                    task_id=f"{taskgroup_grain}_preprocess_python",
+                    task_id=f"preprocess_python",
                     python_callable=python_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
@@ -334,7 +321,6 @@ class EarthbeamDAG:
         *,
         grain_update: Optional[str] = None,
         group_id: Optional[str] = None,
-        prefix_group_id: bool = False,  # Deprecated and unused
 
         database_conn_id: Optional[str] = None,
         earthmover_kwargs: Optional[dict] = None,
@@ -367,21 +353,11 @@ class EarthbeamDAG:
         """
         IMPORTANT: This approach assumes a template will use 'input_file_var' as its only input parameter!
         """
-        taskgroup_grain = f"{tenant_code}_{api_year}"
-        if grain_update:
-            taskgroup_grain += f"_{grain_update}"
-
         # Group ID can be defined manually or built dynamically
-        if not group_id:
-            group_id = f"{taskgroup_grain}__earthmover"
-
-            # TaskGroups have three shapes:
-            if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
-                group_id += "_to_lightbeam"
-            elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
-                group_id += "_to_snowflake"
-            elif s3_conn_id:         # Earthmover-to-S3
-                group_id += "_to_s3"
+        group_id = group_id or self.build_group_id(
+            tenant_code, api_year, grain_update,
+            edfi_conn_id=edfi_conn_id, snowflake_conn_id=snowflake_conn_id, s3_conn_id=s3_conn_id
+        )
 
 
         with TaskGroup(
@@ -460,6 +436,29 @@ class EarthbeamDAG:
         # Chain all defined operators into task-order.
         chain(*task_order)
         return dynamic_tenant_year_task_group
+
+    @staticmethod
+    def build_group_id(
+        tenant_code: str, api_year: str, grain_update: Optional[str], *,
+        edfi_conn_id: bool, snowflake_conn_id: bool, s3_conn_id: bool,
+    ) -> str:
+        taskgroup_grain = f"{tenant_code}_{api_year}"
+        if grain_update:
+            taskgroup_grain += f"_{grain_update}"
+
+        # Group ID can be defined manually or built dynamically
+        if not group_id:
+            group_id = f"{taskgroup_grain}__earthmover"
+
+            # TaskGroups have three shapes:
+            if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
+                group_id += "_to_lightbeam"
+            elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
+                group_id += "_to_snowflake"
+            elif s3_conn_id:         # Earthmover-to-S3
+                group_id += "_to_s3"
+        
+        return group_id
 
 
     def insert_earthbeam_result_to_logging_table(self,
