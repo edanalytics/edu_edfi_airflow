@@ -589,6 +589,8 @@ class EarthbeamDAG:
                         local_filepath=filepath,
                         remove_local_filepath=False
                     )
+
+                return s3_full_filepath
             
             @task
             def log_to_snowflake(results_filepath: str, **context):
