@@ -565,14 +565,8 @@ class EarthbeamDAG:
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
         def file_to_edfi_taskgroup(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]]):
 
-            if isinstance(input_file_envs, str):
-                input_file_envs = [input_file_envs]
-            
-            if isinstance(input_filepaths, str):
-                input_filepaths = [input_filepaths]
-
             @task
-            def upload_to_s3(filepath: str, subdirectory: str, **context):
+            def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, **context):
                 if not s3_filepath:
                     raise ValueError(
                         "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
@@ -583,16 +577,20 @@ class EarthbeamDAG:
                     tenant_code, self.run_type, api_year, grain_update,
                     '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
-
-                filepath = context['task'].render_template(filepath, context)
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
-                return local_filepath_to_s3(
-                    s3_conn_id=s3_conn_id,
-                    s3_destination_key=s3_full_filepath,
-                    local_filepath=filepath,
-                    remove_local_filepath=False
-                )
+                if isinstance(filepaths, str):
+                    filepaths = [filepaths]
+
+                for filepath in filepaths:
+                    filepath = context['task'].render_template(filepath, context)
+
+                    local_filepath_to_s3(
+                        s3_conn_id=s3_conn_id,
+                        s3_destination_key=s3_full_filepath,
+                        local_filepath=filepath,
+                        remove_local_filepath=False
+                    )
             
             @task
             def log_to_snowflake(results_filepath: str, **context):
@@ -750,9 +748,8 @@ class EarthbeamDAG:
 
             # Raw to S3
             if s3_conn_id:
-                for var, file in zip(input_file_envs, input_filepaths):
-                    upload_to_s3.override(task_id=f"upload_raw_to_s3__{var}")(file, "raw")
-                    all_tasks.append(upload_to_s3)
+                upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
+                all_tasks.append(upload_to_s3)
                 
             # EarthmoverOperator: Required
             earthmover_results = run_earthmover(dict(zip(input_file_envs, input_filepaths)))
