@@ -579,7 +579,8 @@ class EarthbeamDAG:
                 )
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
-                for filepath in list(filepaths):
+                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths
+                for filepath in filepaths:
                     filepath = context['task'].render_template(filepath, context)
 
                     local_filepath_to_s3(
@@ -603,9 +604,9 @@ class EarthbeamDAG:
             
             @task(multiple_outputs=True)
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], **context):
-                input_file_envs = list(input_file_envs)
-                input_filepaths = list(input_filepaths)
-                
+                input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
+                input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
+
                 file_basename = self.get_filename(input_filepaths[0])
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
                 
