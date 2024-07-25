@@ -317,7 +317,7 @@ class EarthbeamDAG:
                 data_model_version=data_model_version,
                 endpoints=endpoints,
                 full_refresh=full_refresh,
-            )(input_file_mapping=input_file_mapping)
+            )(input_file_envs=input_file_mapping.keys(), input_filepaths=input_file_mapping.values())
             task_order.append(em_task_group)
 
         # Chain all defined operators into task-order.
@@ -494,8 +494,8 @@ class EarthbeamDAG:
                 data_model_version=data_model_version,
                 endpoints=endpoints,
                 full_refresh=full_refresh,
-            ).expand(
-                input_file_mapping=list_files_task.output.map(lambda filepath: {input_file_var: filepath})
+            ).partial(input_file_envs=[input_file_var]).expand(
+                input_filepaths=list_files_task.output
             )
             task_order.append(em_task_group)
 
@@ -605,7 +605,7 @@ class EarthbeamDAG:
         **kwargs
     ):
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
-        def file_to_edfi_taskgroup(input_file_mapping: dict):
+        def file_to_edfi_taskgroup(input_file_envs: List[str], input_filepaths: List[str]):
 
             @task
             def upload_to_s3(filepath: str, subdirectory: str, **context):
@@ -771,16 +771,16 @@ class EarthbeamDAG:
 
 
             all_tasks = []  # Track all tasks to apply cleanup at the very end
-            paths_to_clean = [*input_file_mapping.values()]
+            paths_to_clean = [*input_filepaths]
 
             # Raw to S3
             if s3_conn_id:
-                for var, file in input_file_mapping.items():
+                for var, file in zip(input_file_envs, input_filepaths):
                     upload_to_s3.override(task_id=f"upload_raw_to_s3__{var}")(file, "raw")
                     all_tasks.append(upload_to_s3)
                 
             # EarthmoverOperator: Required
-            earthmover_results = run_earthmover(input_file_mapping)
+            earthmover_results = run_earthmover(dict(zip(input_file_envs, input_filepaths)))
             all_tasks.append(earthmover_results)
             paths_to_clean.append(earthmover_results["data_dir"])
 
