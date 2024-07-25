@@ -607,7 +607,7 @@ class EarthbeamDAG:
                 input_filepaths = list(input_filepaths)
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
                 
-                file_basename = self.get_filename(env_mapping.values()[0])
+                file_basename = self.get_filename(list(env_mapping.values())[0])
                 
                 em_output_dir = edfi_api_client.url_join(
                     self.em_output_directory,
