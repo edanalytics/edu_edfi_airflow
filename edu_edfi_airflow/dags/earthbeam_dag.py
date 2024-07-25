@@ -359,7 +359,6 @@ class EarthbeamDAG:
             edfi_conn_id=edfi_conn_id, snowflake_conn_id=snowflake_conn_id, s3_conn_id=s3_conn_id
         )
 
-
         with TaskGroup(
             group_id=group_id,
             prefix_group_id=True,
@@ -442,13 +441,12 @@ class EarthbeamDAG:
         tenant_code: str, api_year: str, grain_update: Optional[str], *,
         edfi_conn_id: bool, snowflake_conn_id: bool, s3_conn_id: bool,
     ) -> str:
-        taskgroup_grain = f"{tenant_code}_{api_year}"
+        group_id = f"{tenant_code}_{api_year}"
         if grain_update:
-            taskgroup_grain += f"_{grain_update}"
+            group_id += f"_{grain_update}"
 
         # Group ID can be defined manually or built dynamically
-        if not group_id:
-            group_id = f"{taskgroup_grain}__earthmover"
+            group_id += "__earthmover"
 
             # TaskGroups have three shapes:
             if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
