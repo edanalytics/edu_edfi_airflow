@@ -579,10 +579,7 @@ class EarthbeamDAG:
                 )
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
-                if isinstance(filepaths, str):
-                    filepaths = [filepaths]
-
-                for filepath in filepaths:
+                for filepath in list(filepaths):
                     filepath = context['task'].render_template(filepath, context)
 
                     local_filepath_to_s3(
@@ -605,8 +602,11 @@ class EarthbeamDAG:
                 )
             
             @task(multiple_outputs=True)
-            def run_earthmover(**context):
+            def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], **context):
+                input_file_envs = list(input_file_envs)
+                input_filepaths = list(input_filepaths)
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
+                
                 file_basename = self.get_filename(env_mapping.values()[0])
                 
                 em_output_dir = edfi_api_client.url_join(
@@ -753,7 +753,7 @@ class EarthbeamDAG:
                 all_tasks.append(upload_to_s3)
                 
             # EarthmoverOperator: Required
-            earthmover_results = run_earthmover()
+            earthmover_results = run_earthmover(input_file_envs, input_filepaths)
             all_tasks.append(earthmover_results)
             paths_to_clean.append(earthmover_results["data_dir"])
 
