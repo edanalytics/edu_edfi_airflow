@@ -296,7 +296,7 @@ class EarthbeamDAG:
                     and key.lower() != "input_filetype"
                 }
 
-            em_task_group = self.file_to_edfi_taskgroup(
+            em_task_group = self.build_file_to_edfi_taskgroup(
                 tenant_code=tenant_code,
                 api_year=api_year,
                 grain_update=grain_update,
