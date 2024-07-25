@@ -495,7 +495,7 @@ class EarthbeamDAG:
                 endpoints=endpoints,
                 full_refresh=full_refresh,
             ).partial(input_file_envs=[input_file_var]).expand(
-                input_filepaths=list_files_task.output
+                input_filepaths=list_files_task.output.map(list)
             )
             task_order.append(em_task_group)
 
@@ -769,9 +769,20 @@ class EarthbeamDAG:
                 for endpoint in endpoints:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
+            @task(trigger_rule="all_done" if self.fast_cleanup else "all_success")
+            def remove_files(filepaths):
+                unnested_filepaths = []
+                for filepath in filepaths:
+                    if isinstance(filepath, str):
+                        unnested_filepaths.append(filepath)
+                    else:
+                        unnested_filepaths.extend(filepath)
+                
+                return remove_filepaths(unnested_filepaths)
+
 
             all_tasks = []  # Track all tasks to apply cleanup at the very end
-            paths_to_clean = [*input_filepaths]
+            paths_to_clean = [input_filepaths]
 
             # Raw to S3
             if s3_conn_id:
@@ -810,17 +821,7 @@ class EarthbeamDAG:
                     all_tasks.append(log_to_snowflake)
 
             # Final cleanup (apply at very end of the taskgroup)
-            remove_files_operator = PythonOperator(
-                task_id=f"remove_files",
-                python_callable=remove_filepaths,
-                op_kwargs={
-                    "filepaths": paths_to_clean,
-                },
-                provide_context=True,
-                pool=self.pool,
-                trigger_rule="all_done" if self.fast_cleanup else "all_success",
-                dag=self.dag
-            )
+            remove_files_operator = remove_files(paths_to_clean)
             all_tasks[-1] >> remove_files_operator
 
         return file_to_edfi_taskgroup
