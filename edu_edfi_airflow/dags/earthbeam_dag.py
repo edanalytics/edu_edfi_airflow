@@ -789,12 +789,12 @@ class EarthbeamDAG:
                     log_lb_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
                     all_tasks.append(log_lb_to_snowflake)
             if validate_edfi_conn_id:
-            lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
+                lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
 
-            # Lightbeam Validate logs to Snowflake
-            if logging_table:
-                log_lb_validate_to_snowflake = log_to_snowflake.override(task_id="log_lb_validate_to_snowflake")(lightbeam_validate_results["results_file"])
-                all_tasks.append(log_lb_validate_to_snowflake)
+                # Lightbeam Validate logs to Snowflake
+                if logging_table:
+                    log_lb_validate_to_snowflake = log_to_snowflake.override(task_id="log_lb_validate_to_snowflake")(lightbeam_validate_results["results_file"])
+                    all_tasks.append(log_lb_validate_to_snowflake)
 
             # Final cleanup (apply at very end of the taskgroup)
             remove_files_operator = remove_files(paths_to_clean)
