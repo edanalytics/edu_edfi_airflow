@@ -656,7 +656,7 @@ class EarthbeamDAG:
                 }
             
             @task(multiple_outputs=True)
-           def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
+            def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
                 dir_basename = self.get_filename(data_dir)
 
                 lb_state_dir = edfi_api_client.url_join(
