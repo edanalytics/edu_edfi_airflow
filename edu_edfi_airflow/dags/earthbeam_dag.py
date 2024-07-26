@@ -786,7 +786,7 @@ class EarthbeamDAG:
 
                 # Lightbeam logs to Snowflake
                 if logging_table:
-                    log_lb_to_snowflake = log_to_snowflake..override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
+                    log_lb_to_snowflake = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
                     all_tasks.append(log_lb_to_snowflake)
             if validate_edfi_conn_id:
                 lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
