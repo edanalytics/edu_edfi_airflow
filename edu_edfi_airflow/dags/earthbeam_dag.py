@@ -329,6 +329,7 @@ class EarthbeamDAG:
         earthmover_kwargs: Optional[dict] = None,
 
         edfi_conn_id: Optional[str] = None,
+        validate_edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
         
         # Unique to dynamic version: fails list task if any files don't match pattern.
@@ -418,6 +419,7 @@ class EarthbeamDAG:
                 earthmover_kwargs=earthmover_kwargs,
 
                 edfi_conn_id=edfi_conn_id,
+                validate_edfi_conn_id=validate_edfi_conn_id,
                 lightbeam_kwargs=lightbeam_kwargs,
 
                 s3_conn_id=s3_conn_id,
@@ -547,6 +549,7 @@ class EarthbeamDAG:
         earthmover_kwargs: Optional[dict] = None,
 
         edfi_conn_id: Optional[str] = None,
+        validate_edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
 
         s3_conn_id: Optional[str] = None,
@@ -653,7 +656,7 @@ class EarthbeamDAG:
                 }
             
             @task(multiple_outputs=True)
-            def run_lightbeam(data_dir: str, **context):
+           def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
                 dir_basename = self.get_filename(data_dir)
 
                 lb_state_dir = edfi_api_client.url_join(
@@ -666,24 +669,25 @@ class EarthbeamDAG:
                     self.emlb_results_directory,
                     tenant_code, self.run_type, api_year, grain_update,
                     '{{ ds_nodash }}', '{{ ts_nodash }}',
-                    dir_basename, 'lightbeam_results.json'
+                    dir_basename, f'lightbeam_{command}_results.json'
                 ) if logging_table else None
                 lb_results_file = context['task'].render_template(lb_results_file, context)
 
-                lightbeam_operator = LightbeamOperator(
-                    task_id=f"send_via_lightbeam",
+                run_lightbeam = LightbeamOperator(
+                    task_id=f"run_lightbeam",
                     lightbeam_path=self.lightbeam_path,
                     data_dir=data_dir,
                     state_dir=lb_state_dir,
                     results_file=lb_results_file ,
-                    edfi_conn_id=edfi_conn_id,
+                    edfi_conn_id=lb_edfi_conn_id,
                     **(lightbeam_kwargs or {}),
                     pool=self.lightbeam_pool,
+                    command=command,
                     dag=self.dag
                 )
                 
                 return {
-                    "data_dir": lightbeam_operator.execute(**context),
+                    "data_dir": run_lightbeam.execute(**context),
                     "state_dir": lb_state_dir,
                     "results_file": lb_results_file,
                 }
@@ -762,8 +766,8 @@ class EarthbeamDAG:
 
             # Earthmover logs to Snowflake
             if logging_table:
-                log_to_snowflake.override(task_id="log_em_to_snowflake")(earthmover_results["results_file"])
-                all_tasks.append(log_to_snowflake)
+                log_em_to_snowflake.override(task_id="log_em_to_snowflake")(earthmover_results["results_file"])
+                all_tasks.append(log_em_to_snowflake)
 
             # Earthmover to S3
             if s3_conn_id:
@@ -777,13 +781,20 @@ class EarthbeamDAG:
 
             # Option 2: LightbeamOperator
             if edfi_conn_id:
-                lightbeam_results = run_lightbeam(earthmover_results["data_dir"])
+                lightbeam_results = run_lightbeam(earthmover_results["data_dir"], command="send", lb_edfi_conn_id=edfi_conn_id)
                 all_tasks.append(lightbeam_results)
 
                 # Lightbeam logs to Snowflake
                 if logging_table:
-                    log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
-                    all_tasks.append(log_to_snowflake)
+                    log_lb_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
+                    all_tasks.append(log_lb_to_snowflake)
+            if validate_edfi_conn_id:
+            lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
+
+            # Lightbeam Validate logs to Snowflake
+            if logging_table:
+                log_lb_validate_to_snowflake = log_to_snowflake.override(task_id="log_lb_validate_to_snowflake")(lightbeam_validate_results["results_file"])
+                all_tasks.append(log_lb_validate_to_snowflake)
 
             # Final cleanup (apply at very end of the taskgroup)
             remove_files_operator = remove_files(paths_to_clean)
