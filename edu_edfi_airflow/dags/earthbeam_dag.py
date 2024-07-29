@@ -310,8 +310,8 @@ class EarthbeamDAG:
             )
             task_order.append(em_task_group)
 
-        # Chain all defined operators into task-order.
-        chain(*task_order)
+            chain(*task_order)  # Chain all defined operators into task-order.
+
         return tenant_year_task_group
 
 
@@ -437,8 +437,8 @@ class EarthbeamDAG:
             )
             task_order.append(em_task_group)
 
-        # Chain all defined operators into task-order.
-        chain(*task_order)
+            chain(*task_order)  # Chain all defined operators into task-order.
+        
         return dynamic_tenant_year_task_group
 
     @staticmethod
