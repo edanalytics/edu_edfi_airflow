@@ -568,7 +568,7 @@ class EarthbeamDAG:
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
         def file_to_edfi_taskgroup(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]]):
 
-            @task
+            @task(dag=self.dag)
             def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, **context):
                 if not s3_filepath:
                     raise ValueError(
@@ -595,7 +595,7 @@ class EarthbeamDAG:
 
                 return s3_full_filepath
             
-            @task
+            @task(dag=self.dag)
             def log_to_snowflake(results_filepath: str, **context):
                 return self.insert_earthbeam_result_to_logging_table(
                     snowflake_conn_id=snowflake_conn_id,
@@ -607,7 +607,7 @@ class EarthbeamDAG:
                     **context
                 )
             
-            @task(multiple_outputs=True)
+            @task(multiple_outputs=True, dag=self.dag)
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], **context):
                 input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
                 input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
@@ -655,7 +655,7 @@ class EarthbeamDAG:
                     "results_file": em_results_file,
                 }
             
-            @task(multiple_outputs=True)
+            @task(multiple_outputs=True, dag=self.dag)
             def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
                 dir_basename = self.get_filename(data_dir)
 
@@ -692,7 +692,7 @@ class EarthbeamDAG:
                     "results_file": lb_results_file,
                 }
             
-            @task
+            @task(dag=self.dag)
             def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
                 # Snowflake tables are snake_cased; Earthmover outputs are camelCased
                 snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
@@ -739,7 +739,7 @@ class EarthbeamDAG:
                 for endpoint in endpoints:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
-            @task(trigger_rule="all_done" if self.fast_cleanup else "all_success")
+            @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", dag=self.dag)
             def remove_files(filepaths):
                 unnested_filepaths = []
                 for filepath in filepaths:
