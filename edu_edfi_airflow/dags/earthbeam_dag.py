@@ -451,15 +451,15 @@ class EarthbeamDAG:
             group_id += f"_{grain_update}"
 
         # Group ID can be defined manually or built dynamically
-            group_id += "__earthmover"
+        group_id += "__earthmover"
 
-            # TaskGroups have three shapes:
-            if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
-                group_id += "_to_lightbeam"
-            elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
-                group_id += "_to_snowflake"
-            elif s3_conn_id:         # Earthmover-to-S3
-                group_id += "_to_s3"
+        # TaskGroups have three shapes:
+        if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
+            group_id += "_to_lightbeam"
+        elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
+            group_id += "_to_snowflake"
+        elif s3_conn_id:         # Earthmover-to-S3
+            group_id += "_to_s3"
         
         return group_id
 
@@ -788,6 +788,7 @@ class EarthbeamDAG:
                 if logging_table:
                     log_lb_to_snowflake = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
                     all_tasks.append(log_lb_to_snowflake)
+
             if validate_edfi_conn_id:
                 lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
 
