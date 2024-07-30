@@ -774,28 +774,33 @@ class EarthbeamDAG:
                 em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
                 all_tasks.append(em_s3_filepath)
 
-                # Option 1: Bypass the ODS and sideload into Stadium
-                if snowflake_conn_id and not edfi_conn_id:
-                    sideload_taskgroup = sideload_to_stadium(em_s3_filepath)
-                    all_tasks.append(sideload_taskgroup)
+            # Lightbeam Validate
+            if validate_edfi_conn_id:
+                lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
+                all_tasks.append(lightbeam_validate_results)
+            else:
+                lightbeam_validate_results = None  # Validation must come before sending or sideloading
+
+            # Option 1: Bypass the ODS and sideload into Stadium
+            if s3_conn_id and snowflake_conn_id and not edfi_conn_id:
+                sideload_taskgroup = sideload_to_stadium(em_s3_filepath)
+                all_tasks.append(sideload_taskgroup)
+
+                if lightbeam_validate_results:
+                    lightbeam_validate_results >> sideload_taskgroup
 
             # Option 2: LightbeamOperator
-            if edfi_conn_id:
+            elif edfi_conn_id:
                 lightbeam_results = run_lightbeam(earthmover_results["data_dir"], command="send", lb_edfi_conn_id=edfi_conn_id)
                 all_tasks.append(lightbeam_results)
+
+                if lightbeam_validate_results:
+                    lightbeam_validate_results >> lightbeam_results
 
                 # Lightbeam logs to Snowflake
                 if logging_table:
                     log_lb_to_snowflake = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
                     all_tasks.append(log_lb_to_snowflake)
-
-            if validate_edfi_conn_id:
-                lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
-
-                # Lightbeam Validate logs to Snowflake
-                if logging_table:
-                    log_lb_validate_to_snowflake = log_to_snowflake.override(task_id="log_lb_validate_to_snowflake")(lightbeam_validate_results["results_file"])
-                    all_tasks.append(log_lb_validate_to_snowflake)
 
             # Final cleanup (apply at very end of the taskgroup)
             remove_files_operator = remove_files(paths_to_clean)
