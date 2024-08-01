@@ -52,9 +52,9 @@ class EarthmoverOperator(BashOperator):
             self.arguments['--selector'] = selector
 
         if parameters:  # JSON string or dictionary
-            if not isinstance(parameters, str):
-                parameters = json.dumps(parameters)
-            self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
+            if isinstance(parameters, str):
+                parameters = json.loads(parameters)
+            self.arguments['--params'] = {key: str(val) for key, val in parameters.items()}  # Force all params to strings.
 
         if results_file:
             self.arguments['--results-file'] = results_file
@@ -79,8 +79,7 @@ class EarthmoverOperator(BashOperator):
         bash_command_prefix = f"{self.earthmover_path} run "
         super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
-
-    def execute(self, context) -> str:
+    def execute(self, conf=None, **context) -> str:
         """
 
         :param context:
@@ -94,10 +93,17 @@ class EarthmoverOperator(BashOperator):
             database_conn_string = f"snowflake://{db_conn.login}:{db_conn.password}@{db_conn.extra_dejson['extra__snowflake__account']}"
             self.env['DATABASE_CONNECTION'] = database_conn_string
 
-        # Update final Earthmover command with any passed arguments
-        # This update occurs here instead of init to allow context parameters to be passed.
-        self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
-        self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
+        # Format values before adding to the bash command.
+        cli_arguments = []
+        for key, val in self.arguments.items():
+            if not val:
+                cli_arguments.append(key)
+            elif isinstance(val, dict):
+                cli_arguments.append(f"{key} '{json.dumps(val)}'")
+            else:
+                cli_arguments.append(f"{key} '{val}'")
+        
+        self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
 
         # Create state_dir if not already defined in filespace
@@ -163,9 +169,9 @@ class LightbeamOperator(BashOperator):
             self.arguments['--selector'] = selector
 
         if parameters:  # JSON string or dictionary
-            if not isinstance(parameters, str):
-                parameters = json.dumps(parameters)
-            self.arguments['--params'] = f"'{parameters}'"  # Force double-quotes around JSON keys
+            if isinstance(parameters, str):
+                parameters = json.loads(parameters)
+            self.arguments['--params'] = {key: str(val) for key, val in parameters.items()}  # Force all params to strings.
 
         if results_file:
             self.arguments['--results-file'] = results_file
@@ -197,8 +203,7 @@ class LightbeamOperator(BashOperator):
         bash_command_prefix = f"{self.lightbeam_path} {command} "
         super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
 
-
-    def execute(self, context) -> str:
+    def execute(self, conf=None, **context) -> str:
         """
 
         :param context:
@@ -233,10 +238,17 @@ class LightbeamOperator(BashOperator):
         # Create state_dir if not already defined in filespace
         os.makedirs(self.state_dir, exist_ok=True)
 
-        # Update final Lightbeam command with any passed arguments
-        # This update occurs here instead of init to allow context parameters to be passed.
-        self.bash_command += " ".join(f"{kk} {vv}" for kk, vv in self.arguments.items())
-        self.bash_command = self.bash_command.replace("{", "'{").replace("}", "}'")  # Force single-quotes around params
+        # Format values before adding to the bash command.
+        cli_arguments = []
+        for key, val in self.arguments.items():
+            if not val:
+                cli_arguments.append(key)
+            elif isinstance(val, dict):
+                cli_arguments.append(f"{key} '{json.dumps(val)}'")
+            else:
+                cli_arguments.append(f"{key} '{val}'")
+        
+        self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 
         super().execute(context)
