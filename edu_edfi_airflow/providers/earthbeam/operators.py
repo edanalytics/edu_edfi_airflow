@@ -118,17 +118,17 @@ class LightbeamOperator(BashOperator):
     """
 
     """
-    template_fields = ('data_dir', 'state_dir', 'arguments', 'bash_command', 'env',)
+    template_fields = ('data_dir', 'state_dir', 'methods', 'arguments', 'bash_command', 'env',)
     valid_commands = ('validate', 'send', 'validate+send')
 
     def __init__(self,
         *,
         lightbeam_path: Optional[str] = "lightbeam",
         command: str = 'send',
-        validate_methods: Optional[Union[str, Iterable[str]]] = None,
             
         data_dir: Optional[str] = None,
         state_dir: Optional[str] = None,
+        methods: Optional[Union[str, Iterable[str]]] = None,
 
         edfi_conn_id: Optional[str] = None,
 
@@ -149,6 +149,7 @@ class LightbeamOperator(BashOperator):
         self.lightbeam_path = lightbeam_path
         self.data_dir = data_dir
         self.state_dir = state_dir
+        self.methods = methods
         self.edfi_conn_id = edfi_conn_id
 
         # Verify command argument is valid
@@ -158,9 +159,9 @@ class LightbeamOperator(BashOperator):
             )
 
         # If command = 'send' and validate_methods are passed, raise an error.
-        if command not in ('validate', 'validate+send') and validate_methods:
+        if command not in ('validate', 'validate+send') and methods:
             raise ValueError(
-                f"Validate methods provided `{validate_methods}` on `{command}`, which is not allowed."
+                f"Validate methods provided `{methods}` on `{command}`, which is not allowed."
             )
 
         ### Building the Lightbeam CLI command
@@ -187,11 +188,6 @@ class LightbeamOperator(BashOperator):
             if not isinstance(resend_status_codes, str):
                 resend_status_codes = ",".join(resend_status_codes)
             self.arguments['--resend-status-codes'] = resend_status_codes
-
-        if validate_methods:
-            if not isinstance(validate_methods, str):
-                validate_methods = ",".join(validate_methods)
-            self.arguments['--validate-methods'] = validate_methods
             
         # Boolean arguments
         if wipe:
@@ -210,6 +206,7 @@ class LightbeamOperator(BashOperator):
         env_vars = {
             'DATA_DIR' : self.data_dir,
             'STATE_DIR': self.state_dir,
+            'METHODS': self.methods
         }
 
         bash_command_prefix = f"{self.lightbeam_path} {command} "
