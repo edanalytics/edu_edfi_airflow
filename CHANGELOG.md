@@ -1,3 +1,6 @@
+## Unreleased
+- Add `partition_on_tenant_and_year`, a preprocessing function to shard data to parquet on disk. This is useful when a single input file contains multiple years and/or tenants.
+
 # edu_edfi_airflow v0.3.0
 ## New features
 - Add `/keyChanges` ingestion for resource endpoints

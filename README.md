@@ -619,3 +619,26 @@ This method works on both filepaths and directory paths.
 -----
 
 </details>
+
+## Plug-and-play preprocessing functions
+
+Static methods provided by `EarthbeamDAG` that can be provided as callables Python preprocessing operators
+
+### partition_on_tenant_and_year
+Shards data to parquet on disk. This is useful when a single input file contains multiple years and/or tenants.
+
+<details>
+<summary>Arguments:</summary>
+
+| Argument    | Description                                                                 |
+|:------------|:----------------------------------------------------------------------------|
+| csv_paths   | one or more complete file paths pointing to input data                      |
+| output_dir  | root directory of the parquet                                               |
+| tenant_col  | (optional) name of the column to use as tenant code                         |
+| tenant_map  | (optional) map values from the contents of tenant_col to valid tenant codes |
+| year_col    | (optional) name of the column to use as API year                            |
+| year_map    | (optional) map values from the contents of api_col to valid API years       |
+
+-----
+
+</details>

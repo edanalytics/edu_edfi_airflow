@@ -1,0 +1,15 @@
+pytest 
+pytest-sugar
+pandas
+apache-airflow
+apache-airflow-providers-slack
+boto3
+airflow_dbt
+apache-airflow-providers-amazon
+apache-airflow-providers-snowflake
+apache-airflow-providers-sftp
+pysftp
+dask[dataframe]
+apache-airflow-providers-postgres
+edfi_api_client
+ea_airflow_util

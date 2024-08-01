@@ -1,3 +1,4 @@
+from pathlib import Path, PurePath
 from typing import Callable, List, Optional, Union
 import logging
 import os
@@ -116,7 +117,77 @@ class EarthbeamDAG:
             raise AirflowSkipException(f"No files were found in directory: {raw_dir}")
 
         return return_files
-    
+
+    @staticmethod
+    def partition_on_tenant_and_year(
+        csv_paths: Union[Union[str, Path], List[Union[str, Path]]],
+        output_dir: str,
+        tenant_col: str = "tenant_code",
+        tenant_map: dict = None,
+        year_col: str = "api_year",
+        year_map: dict = None,
+    ):
+        """
+        Preprocessing function to shard data to parquet on disk.
+        This is useful when a single input file contains multiple years and/or tenants.
+
+        :param csv_paths: one or more complete file paths pointing to input data
+        :param output_dir: root directory of the parquet
+        :param tenant_col: (optional) name of the column to use as tenant code
+        :param tenant_map: (optional) map values from the contents of tenant_col to valid tenant codes
+        :param year_col: (optional) name of the column to use as API year
+        :param year_map: (optional) map values from the contents of api_col to valid API years
+
+        :return:
+        """
+        # (expensive) imports here so that the airflow scheduler doesn't have to deal with them
+        import dask
+        import dask.dataframe as dd
+        import pandas as pd
+
+        tenant_code = "tenant_code"
+        api_year = "api_year"
+
+        csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
+
+        for csv_path in csv_paths:
+            if not Path(csv_path).is_file() or not Path(csv_path).suffix == '.csv':
+                raise ValueError(f"Input path '{csv_path}' is not a path to a file whose name ends with '.csv'")
+
+        path_mapping = {
+            # use the input file basenames as the parquet directory names
+            csv_path: PurePath(output_dir, PurePath(csv_path).name).with_suffix('')
+            for csv_path in csv_paths
+        }
+
+        Path(output_dir).mkdir(exist_ok=True)
+
+        with dask.config.set({
+            "temporary_directory": "./dask_temp/",
+            "dataframe.convert-string": True,
+            }), pd.option_context("mode.string_storage", "pyarrow"):
+
+            for csv_path, parquet_path in path_mapping.items():
+                df = dd.read_csv(csv_path, dtype=str, na_filter=False).fillna('')
+
+                if tenant_col not in df:
+                    raise KeyError(f"provided tenant_code column '{tenant_col}' not present in data")
+                if year_col not in df:
+                    raise KeyError(f"provided api_year column '{year_col}' not present in data")    
+            
+                # if needed, add tenant_code and api_year as columns so we can partition on them
+                if tenant_map is not None:
+                    df[tenant_code] = df[tenant_col].map(tenant_map, meta=dd.utils.make_meta(df[tenant_col]))
+                else:
+                    df[tenant_code] = df[tenant_col]
+
+                if year_map is not None:
+                    df[api_year] = df[year_col].map(year_map, meta=dd.utils.make_meta(df[year_col]))
+                else:
+                    df[api_year] = df[year_col]
+
+                df.to_parquet(parquet_path, write_index=False, overwrite=True, partition_on=[tenant_code, api_year])
+
     # One or more endpoints can fail total-get count. Create a second operator to track that failed status.
     # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
     @staticmethod
