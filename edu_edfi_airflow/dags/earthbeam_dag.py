@@ -1,12 +1,8 @@
-<<<<<<< HEAD
 from pathlib import Path, PurePath
-from typing import Callable, List, Optional, Union
-=======
 from typing import Callable, List, Optional, Union
 import logging
 import os
 import re
->>>>>>> 123ecb07ff822c326412f7870a8ac44f436783bf
 
 
 from airflow.decorators import task, task_group
