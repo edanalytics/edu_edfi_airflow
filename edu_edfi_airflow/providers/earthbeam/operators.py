@@ -125,7 +125,8 @@ class LightbeamOperator(BashOperator):
         *,
         lightbeam_path: Optional[str] = "lightbeam",
         command: str = 'send',
-
+        validate_methods: Optional[Union[str, Iterable[str]]] = None,
+            
         data_dir: Optional[str] = None,
         state_dir: Optional[str] = None,
 
@@ -156,6 +157,12 @@ class LightbeamOperator(BashOperator):
                 f"LightbeamOperator command type `{command}` is undefined!"
             )
 
+        # If command = 'send' and validate_methods are passed, raise an error.
+        if command not in ('validate', 'validate+send') and validate_methods:
+            raise ValueError(
+                f"Validate methods provided `{validate_methods}` on `{command}`, which is not allowed."
+            )
+
         ### Building the Lightbeam CLI command
         self.arguments = {}
 
@@ -181,6 +188,11 @@ class LightbeamOperator(BashOperator):
                 resend_status_codes = ",".join(resend_status_codes)
             self.arguments['--resend-status-codes'] = resend_status_codes
 
+        if validate_methods:
+            if not isinstance(validate_methods, str):
+                validate_methods = ",".join(validate_methods)
+            self.arguments['--validate-methods'] = validate_methods
+            
         # Boolean arguments
         if wipe:
             self.arguments['--wipe'] = ""
