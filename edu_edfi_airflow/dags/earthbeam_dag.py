@@ -901,7 +901,7 @@ class EarthbeamDAG:
     @staticmethod
     def format_log_record(record, args, kwargs):
 
-        from datetime import datetime
+        from datetime import datetime, timezone
         import json
 
         def serialize_argument(arg):
@@ -911,7 +911,7 @@ class EarthbeamDAG:
                 return str(arg)
 
         log_record = {
-            'timestamp': datetime.now(datetime.UTC).isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'name': record.name,
             'level': record.levelname,
             'message': record.getMessage(),
