@@ -330,6 +330,7 @@ class EarthbeamDAG:
 
         edfi_conn_id: Optional[str] = None,
         validate_edfi_conn_id: Optional[str] = None,
+        validate_methods: Optional[Union[str, Iterable[str]]] = None,
         lightbeam_kwargs: Optional[dict] = None,
         
         # Unique to dynamic version: fails list task if any files don't match pattern.
@@ -420,6 +421,7 @@ class EarthbeamDAG:
 
                 edfi_conn_id=edfi_conn_id,
                 validate_edfi_conn_id=validate_edfi_conn_id,
+                validate_methods=validate_methods,
                 lightbeam_kwargs=lightbeam_kwargs,
 
                 s3_conn_id=s3_conn_id,
@@ -550,6 +552,7 @@ class EarthbeamDAG:
 
         edfi_conn_id: Optional[str] = None,
         validate_edfi_conn_id: Optional[str] = None,
+        validate_methods: Optional[Union[str, Iterable[str]]] = None,
         lightbeam_kwargs: Optional[dict] = None,
 
         s3_conn_id: Optional[str] = None,
@@ -656,7 +659,7 @@ class EarthbeamDAG:
                 }
             
             @task(multiple_outputs=True, dag=self.dag)
-            def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
+            def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, validate_methods: Union[str, Iterable[str]], **context):
                 dir_basename = self.get_filename(data_dir)
 
                 lb_state_dir = edfi_api_client.url_join(
@@ -683,6 +686,7 @@ class EarthbeamDAG:
                     **(lightbeam_kwargs or {}),
                     pool=self.lightbeam_pool,
                     command=command,
+                    validate_methods=validate_methods,
                     dag=self.dag
                 )
                 
@@ -776,7 +780,7 @@ class EarthbeamDAG:
 
             # Lightbeam Validate
             if validate_edfi_conn_id:
-                lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
+                lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id, validate_methods=validate_methods)
                 all_tasks.append(lightbeam_validate_results)
             else:
                 lightbeam_validate_results = None  # Validation must come before sending or sideloading
