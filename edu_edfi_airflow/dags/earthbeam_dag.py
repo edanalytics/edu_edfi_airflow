@@ -349,9 +349,13 @@ class EarthbeamDAG:
                     )
                 else:
                     wrapped_callable = python_callable
+
+
+                callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
+                task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
                 
                 python_preprocess = PythonOperator(
-                    task_id=f"preprocess_python",
+                    task_id=task_id,
                     python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
