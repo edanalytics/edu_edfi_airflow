@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Union, Iterable
 import logging
 import os
 import re
