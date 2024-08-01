@@ -108,23 +108,16 @@ class EarthbeamDAG:
         tenant_code = "tenant_code"
         api_year = "api_year"
 
-        input_is_list = True if isinstance(csv_paths, list) else False
+        csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
 
-        final_csv_paths = []
-        if input_is_list:
-            final_csv_paths = csv_paths
-        else:
-            # otherwise we have a string, so wrap it in a list
-            final_csv_paths = [csv_paths]
-
-        for csv_path in final_csv_paths:
+        for csv_path in csv_paths:
             if not Path(csv_path).is_file() or not Path(csv_path).suffix == '.csv':
                 raise ValueError(f"Input path '{csv_path}' is not a path to a file whose name ends with '.csv'")
 
         path_mapping = {
             # use the input file basenames as the parquet directory names
             csv_path: PurePath(output_dir, PurePath(csv_path).name).with_suffix('')
-            for csv_path in final_csv_paths
+            for csv_path in csv_paths
         }
 
         Path(output_dir).mkdir(exist_ok=True)
