@@ -128,7 +128,8 @@ class EarthbeamDAG:
         year_map: dict = None,
     ):
         """
-        Preprocessing function to shard data to parquet on disk
+        Preprocessing function to shard data to parquet on disk.
+        This is useful when a single input file contains multiple years and/or tenants.
 
         :param csv_paths: one or more complete file paths pointing to input data
         :param output_dir: root directory of the parquet
