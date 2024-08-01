@@ -102,6 +102,7 @@ class EarthbeamDAG:
                     logging.warning(f"File does not match file_pattern: {file}")
                     unmatched_files.append(os.path.join(root, file))
                     continue
+
                 return_files.append(os.path.join(root, file))
 
         # Push an additional XCom if one or more files failed the file-pattern check.
