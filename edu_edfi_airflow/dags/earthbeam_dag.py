@@ -246,7 +246,7 @@ class EarthbeamDAG:
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
-        raw_dir: str,  # TODO: What role does raw_dir serve? Why was it even here when I first developed this?
+        raw_dir: Optional[str] = None,  # Deprecated in favor of `input_file_mapping`.
 
         *,
         grain_update: Optional[str] = None,
@@ -405,7 +405,7 @@ class EarthbeamDAG:
     def build_dynamic_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
-        raw_dir: str,
+        raw_dir: Optional[str] = None,
 
         *,
         grain_update: Optional[str] = None,
@@ -459,6 +459,9 @@ class EarthbeamDAG:
             task_order = []
 
             ### PythonOperator Preprocess
+            if bool(python_callable) == bool(raw_dir):
+                raise ValueError("Taskgroup arguments `python_callable` and `raw_dir` are mutually exclusive.")
+
             if python_callable:
 
                 if logging_table:
