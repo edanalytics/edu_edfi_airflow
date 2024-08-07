@@ -1,3 +1,8 @@
+# edu_edfi_airflow v0.3.1
+## Fixes
+- Fix bug where updates to query-parameters persisted across every `EdFiResourceDAG`
+- Add logging of failed endpoints on `EdFiResourceDAG` task `failed_total_counts`
+
 # edu_edfi_airflow v0.3.0
 ## New features
 - Add `/keyChanges` ingestion for resource endpoints
