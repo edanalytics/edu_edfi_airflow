@@ -350,12 +350,9 @@ class EarthbeamDAG:
                 else:
                     wrapped_callable = python_callable
 
-
                 callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
-                task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
-                
                 python_preprocess = PythonOperator(
-                    task_id=task_id,
+                    task_id=f"preprocess_python_callable__{callable_name}",
                     python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
@@ -463,15 +460,29 @@ class EarthbeamDAG:
 
             ### PythonOperator Preprocess
             if python_callable:
+
+                if logging_table:
+                    # Wrap the callable with log capturing
+                    wrapped_callable = self.capture_logs(
+                        python_callable,
+                        snowflake_conn_id=snowflake_conn_id,
+                        logging_table=logging_table,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update
+                    )
+                else:
+                    wrapped_callable = python_callable
+
+                callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
                 python_preprocess = PythonOperator(
-                    task_id=f"preprocess_python",
-                    python_callable=python_callable,
+                    task_id=f"preprocess_python_callable__{callable_name}",
+                    python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
                     pool=self.pool,
                     dag=self.dag
                 )
-
                 task_order.append(python_preprocess)
                 # paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
 
