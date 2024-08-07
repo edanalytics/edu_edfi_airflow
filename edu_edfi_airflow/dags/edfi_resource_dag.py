@@ -1,3 +1,4 @@
+import copy
 import os
 from functools import partial
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -144,6 +145,7 @@ class EdFiResourceDAG:
         `enabled` and `fetch_deletes` are not passed into configs.
         """
         configs = {**self.DEFAULT_CONFIGS, **kwargs}
+        configs["query_parameters"] = copy.deepcopy(configs["query_parameters"])  # Prevent query_parameters from being shared across DAGs.
 
         ### For a multiyear ODS, we need to specify school year as an additional query parameter.
         # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
