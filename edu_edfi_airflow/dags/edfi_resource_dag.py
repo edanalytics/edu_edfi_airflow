@@ -392,7 +392,7 @@ class EdFiResourceDAG:
         # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
         def fail_if_xcom(xcom_value, **context):
             if xcom_value:
-                raise AirflowFailException
+                raise AirflowFailException(f"The following endpoints failed when pulling total counts: {xcom_value}")
             else:
                 raise AirflowSkipException  # Force a skip to not mark the taskgroup as a success when all tasks skip.
 
