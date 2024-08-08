@@ -1,3 +1,4 @@
+from pathlib import Path, PurePath
 from typing import Callable, List, Optional, Union
 import logging
 import os
@@ -139,7 +140,77 @@ class EarthbeamDAG:
             where aggd_ids.tenant_code=$${tenant_code}$$ and aggd_ids.api_year={api_year}
             """
         return edfi_roster_query
-    
+
+    @staticmethod
+    def partition_on_tenant_and_year(
+        csv_paths: Union[Union[str, Path], List[Union[str, Path]]],
+        output_dir: str,
+        tenant_col: str = "tenant_code",
+        tenant_map: dict = None,
+        year_col: str = "api_year",
+        year_map: dict = None,
+    ):
+        """
+        Preprocessing function to shard data to parquet on disk.
+        This is useful when a single input file contains multiple years and/or tenants.
+
+        :param csv_paths: one or more complete file paths pointing to input data
+        :param output_dir: root directory of the parquet
+        :param tenant_col: (optional) name of the column to use as tenant code
+        :param tenant_map: (optional) map values from the contents of tenant_col to valid tenant codes
+        :param year_col: (optional) name of the column to use as API year
+        :param year_map: (optional) map values from the contents of api_col to valid API years
+
+        :return:
+        """
+        # (expensive) imports here so that the airflow scheduler doesn't have to deal with them
+        import dask
+        import dask.dataframe as dd
+        import pandas as pd
+
+        tenant_code = "tenant_code"
+        api_year = "api_year"
+
+        csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
+
+        for csv_path in csv_paths:
+            if not Path(csv_path).is_file() or not Path(csv_path).suffix == '.csv':
+                raise ValueError(f"Input path '{csv_path}' is not a path to a file whose name ends with '.csv'")
+
+        path_mapping = {
+            # use the input file basenames as the parquet directory names
+            csv_path: PurePath(output_dir, PurePath(csv_path).name).with_suffix('')
+            for csv_path in csv_paths
+        }
+
+        Path(output_dir).mkdir(exist_ok=True)
+
+        with dask.config.set({
+            "temporary_directory": "./dask_temp/",
+            "dataframe.convert-string": True,
+            }), pd.option_context("mode.string_storage", "pyarrow"):
+
+            for csv_path, parquet_path in path_mapping.items():
+                df = dd.read_csv(csv_path, dtype=str, na_filter=False).fillna('')
+
+                if tenant_col not in df:
+                    raise KeyError(f"provided tenant_code column '{tenant_col}' not present in data")
+                if year_col not in df:
+                    raise KeyError(f"provided api_year column '{year_col}' not present in data")    
+            
+                # if needed, add tenant_code and api_year as columns so we can partition on them
+                if tenant_map is not None:
+                    df[tenant_code] = df[tenant_col].map(tenant_map, meta=dd.utils.make_meta(df[tenant_col]))
+                else:
+                    df[tenant_code] = df[tenant_col]
+
+                if year_map is not None:
+                    df[api_year] = df[year_col].map(year_map, meta=dd.utils.make_meta(df[year_col]))
+                else:
+                    df[api_year] = df[year_col]
+
+                df.to_parquet(parquet_path, write_index=False, overwrite=True, partition_on=[tenant_code, api_year])
+
     # One or more endpoints can fail total-get count. Create a second operator to track that failed status.
     # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
     @staticmethod
@@ -304,9 +375,27 @@ class EarthbeamDAG:
 
             ### PythonOperator Preprocess
             if python_callable:
+
+                if logging_table:
+                    # Wrap the callable with log capturing
+                    wrapped_callable = self.capture_logs(
+                        python_callable,
+                        snowflake_conn_id=snowflake_conn_id,
+                        logging_table=logging_table,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update
+                    )
+                else:
+                    wrapped_callable = python_callable
+
+
+                callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
+                task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
+                
                 python_preprocess = PythonOperator(
-                    task_id=f"preprocess_python",
-                    python_callable=python_callable,
+                    task_id=task_id,
+                    python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
                     pool=self.pool,
@@ -321,7 +410,7 @@ class EarthbeamDAG:
                     if key.lower().startswith("input_file")
                     and key.lower() != "input_filetype"
                 }
-
+              
             if student_id_match_rates_table:
                 student_id_task_group = self.build_student_id_xwalking_taskgroup(
                     tenant_code=tenant_code,
@@ -369,8 +458,8 @@ class EarthbeamDAG:
                 endpoints=endpoints,
                 full_refresh=full_refresh,
             )(
-                input_file_envs=list(input_file_mapping.keys()),
-                input_filepaths=list(input_file_mapping.values())
+                input_file_envs=input_file_mapping.keys(),
+                input_filepaths=input_file_mapping.values()
             )
             task_order.append(em_task_group)
 
@@ -559,14 +648,17 @@ class EarthbeamDAG:
         return group_id
 
 
-    def insert_earthbeam_result_to_logging_table(self,
+    def log_to_snowflake(self,
         snowflake_conn_id: str,
         logging_table: str,
-        results_filepath: str,
 
         tenant_code: str,
         api_year: int,
         grain_update: Optional[str] = None,
+
+        # Mutually-exclusive arguments
+        log_filepath: Optional[str] = None,
+        log_data: Optional[dict] = None,
         **kwargs
     ):
         """
@@ -582,16 +674,17 @@ class EarthbeamDAG:
         from airflow.exceptions import AirflowSkipException
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
-        # Assume the results file is overwritten at every run.
-        # If not found, raise a skip-exception instead of failing.
-        try:
-            with open(results_filepath, 'r') as fp:
-                results = fp.read()
-        except FileNotFoundError:
-            raise AirflowSkipException(
-                f"Results file not found: {results_filepath}\n"
-                "Did Earthmover/Lightbeam run without error?"
-            )
+        if log_filepath:
+            # Assume the results file is overwritten at every run.
+            # If not found, raise a skip-exception instead of failing.
+            try:
+                with open(log_filepath, 'r') as fp:
+                    log_data = fp.read()
+            except FileNotFoundError:
+                raise AirflowSkipException(
+                    f"Results file not found: {log_filepath}\n"
+                    "Did Earthmover/Lightbeam run without error?"
+                )
 
         # Retrieve the database and schema from the Snowflake hook and build the insert-query.
         database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
@@ -608,7 +701,7 @@ class EarthbeamDAG:
                 '{self.run_type}' AS run_type,
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
-                PARSE_JSON($${results}$$) AS result
+                PARSE_JSON($${log_data}$$) AS result
         """
 
         # Insert each row into the table, passing the values as parameters.
@@ -1100,3 +1193,96 @@ class EarthbeamDAG:
             match_rates_to_snowflake(computed_match_rates)
 
         return student_id_xwalking_taskgroup
+
+
+    @staticmethod
+    def format_log_record(record, args, kwargs):
+
+        from datetime import datetime, timezone
+        import json
+
+        def serialize_argument(arg):
+            try:
+                return json.dumps(arg)
+            except TypeError:
+                return str(arg)
+
+        log_record = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'name': record.name,
+            'level': record.levelname,
+            'message': record.getMessage(),
+            'pathname': record.pathname,
+            'lineno': record.lineno,
+            'args': {k: serialize_argument(v) for k, v in enumerate(args)},
+            'kwargs': {k: serialize_argument(v) for k, v in kwargs.items()},
+        }
+        return json.dumps(log_record)
+
+
+    def capture_logs(self,
+        python_callable: Callable,
+        snowflake_conn_id: str,
+        logging_table: Optional[str],
+
+        tenant_code: str,
+        api_year: int,
+        grain_update: Optional[str] = None,
+    ):
+        def wrapper(*args, **kwargs):
+
+            import logging
+            import json
+            import io
+
+            # Create a logger
+            logger = logging.getLogger(python_callable.__name__)
+            logger.setLevel(logging.DEBUG)
+
+            # Create StringIO stream to capture logs
+            log_capture_string = io.StringIO()
+            ch = logging.StreamHandler(log_capture_string)
+            ch.setLevel(logging.DEBUG)
+            logger.addHandler(ch)
+
+            try:
+                result = python_callable(*args, **kwargs)
+
+            except Exception as err:
+                logger.error(f"Error in {python_callable.__name__}: {err}")
+                raise
+
+            finally:
+                # Ensure all log entries are flushed before closing the stream
+                ch.flush()
+                log_contents = log_capture_string.getvalue()
+
+                # Remove the handler and close the StringIO stream
+                logger.removeHandler(ch)
+                log_capture_string.close()
+
+                # Send logs to Snowflake
+                log_entries = log_contents.splitlines()
+                for entry in log_entries:
+                    record = logging.LogRecord(
+                        name=python_callable.__name__,
+                        level=logging.DEBUG,
+                        pathname='',
+                        lineno=0,
+                        msg=entry,
+                        args=None,
+                        exc_info=None
+                    )
+                    log_data = json.loads(self.format_log_record(record, args, kwargs))
+                    self.log_to_snowflake(
+                        snowflake_conn_id=snowflake_conn_id,
+                        logging_table=logging_table,
+                        log_data=log_data,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update,
+                        **kwargs
+                    )
+
+            return result
+        return wrapper
