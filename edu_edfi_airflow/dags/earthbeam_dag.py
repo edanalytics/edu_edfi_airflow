@@ -704,10 +704,10 @@ class EarthbeamDAG:
             
             @task(dag=self.dag)
             def log_to_snowflake(results_filepath: str, **context):
-                return self.insert_earthbeam_result_to_logging_table(
+                return self.log_to_snowflake(
                     snowflake_conn_id=snowflake_conn_id,
                     logging_table=logging_table,
-                    results_filepath=results_filepath,
+                    log_filepath=results_filepath,
                     tenant_code=tenant_code,
                     api_year=api_year,
                     grain_update=grain_update,
