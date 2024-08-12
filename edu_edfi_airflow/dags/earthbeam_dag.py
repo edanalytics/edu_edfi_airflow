@@ -1108,6 +1108,7 @@ class EarthbeamDAG:
                     file_basename
                 )
                 em_output_dir = context['task'].render_template(em_output_dir, context)
+                context['ti'].xcom_push(key='match_rates_file', value=existing_file)
 
                 em_state_file = edfi_api_client.url_join(
                     self.emlb_state_directory,
@@ -1126,10 +1127,12 @@ class EarthbeamDAG:
                     pool=self.earthmover_pool,
                     dag=self.dag
                 )
-
                 earthmover_operator.execute(**context)
+
+                match_rates_file = os.path.join(em_output_dir, 'student_id_match_rates.csv')
+                context['ti'].xcom_push(key='match_rates_file', value=match_rates_file) # Push extra xcom for consistent access downsteam whether this task runs or skips
                 
-                return os.path.join(em_output_dir, 'student_id_match_rates.csv')
+                return match_rates_file 
             
             @task (dag=self.dag)
             def match_rates_to_snowflake(match_rates_file, **context):
