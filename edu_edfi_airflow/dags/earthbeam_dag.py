@@ -807,7 +807,7 @@ class EarthbeamDAG:
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
 
                 match_rates_task_id = f"{context['task'].task_id.partition('.')[0]}.student_id_xwalking.run_em_compute_match_rates"
-                match_rates_file = context['ti'].xcom_pull(match_rates_task_id)
+                match_rates_file = context['ti'].xcom_pull(match_rates_task_id, key='match_rates_file')
 
                 if match_rates_file is not None:
                     env_mapping['STUDENT_ID_MATCH_RATES'] = match_rates_file
@@ -1143,7 +1143,7 @@ class EarthbeamDAG:
                 s3_full_filepath = edfi_api_client.url_join(
                     s3_filepath, "earthmover_config",
                     tenant_code, self.run_type, api_year, grain_update,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}'
+                    '{{ ds_nodash }}', '{{ ts_nodash }}', 'student_id_match_rates.csv'
                 )
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
@@ -1172,7 +1172,7 @@ class EarthbeamDAG:
                             {api_year} as api_year,
                             '{assessment_name}' as assessment_name,
                             $1, $2, $3, $4, $5
-                        FROM @{database}.util.airflow_stage/{s3_full_filepath}/student_id_match_rates.csv)
+                        FROM @{database}.util.airflow_stage/{s3_full_filepath})
                         FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1)
                 '''
 
