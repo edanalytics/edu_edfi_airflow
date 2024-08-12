@@ -863,8 +863,10 @@ class EarthbeamDAG:
 
             # Raw to S3
             if s3_conn_id:
-                upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
-                all_tasks.append(upload_to_s3)
+                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
+                all_tasks.append(raw_to_s3)
+            else:
+                raw_to_s3 = None
                 
             # EarthmoverOperator: Required
             earthmover_results = run_earthmover(input_file_envs, input_filepaths)
@@ -911,6 +913,8 @@ class EarthbeamDAG:
 
             # Final cleanup (apply at very end of the taskgroup)
             remove_files_operator = remove_files(paths_to_clean)
+            if raw_to_s3:
+                raw_to_s3 >> remove_files_operator
             all_tasks[-1] >> remove_files_operator
 
         return file_to_edfi_taskgroup
