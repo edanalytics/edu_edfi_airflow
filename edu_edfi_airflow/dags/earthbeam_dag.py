@@ -277,7 +277,6 @@ class EarthbeamDAG:
 
         assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
-        required_match_rate: Optional[int] = 0.5,
 
         # Mapping of input environment variables to be injected into the taskgroup.
         input_file_mapping: Optional[dict] = None,
@@ -285,8 +284,8 @@ class EarthbeamDAG:
         **kwargs
     ):
         """
-        (Python) -> (S3: Raw) -> (Student ID) -> Earthmover -> (S3: EM Output) -> (Snowflake: EM Logs) +-> (Lightbeam) -> (Snowflake: LB Logs) +-> (Python) +-> Clean-up
-                                                                                                       +-> (Snowflake: EM Output)
+        (Python) -> (S3: Raw) -> (Student IDs) -> Earthmover -> (S3: EM Output) -> (Snowflake: EM Logs)  -> (Snowflake: Student IDs) +-> (Lightbeam) -> (Snowflake: LB Logs) +-> (Python) +-> Clean-up
+                                                                                                                                     +-> (Snowflake: EM Output)
 
         Many steps are automatic based on arguments defined:
         * If `edfi_conn_id` is defined, use Lightbeam to post to ODS.
@@ -329,7 +328,6 @@ class EarthbeamDAG:
 
         :param assessment_bundle:
         :param student_id_match_rates_table: 
-        :param required_match_rate:
 
         :param input_file_mapping:
 
@@ -526,7 +524,7 @@ class EarthbeamDAG:
                     dag=self.dag
                 )
                 list_files_task >> failed_sentinel
-            
+
             em_task_group = self.build_file_to_edfi_taskgroup(
                 tenant_code=tenant_code,
                 api_year=api_year,
