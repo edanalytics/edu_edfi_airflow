@@ -119,27 +119,6 @@ class EarthbeamDAG:
 
         return return_files
     
-    def get_edfi_roster_query(self, tenant_code, api_year):
-        """
-        Helper function returns an edfi roster query with tenant and year filters
-        """
-        edfi_roster_query = f"""with ids as (
-                select tenant_code, api_year, k_student, ed_org_id, object_construct_keep_null($$assigningOrganizationIdentificationCode$$, id_system, $$identificationCode$$, id_code) as stu_id_code,
-                from analytics.prod_stage.stg_ef3__stu_ed_org__identification_codes
-            ),
-            aggd_ids as (
-                select tenant_code, api_year, k_student, ed_org_id, array_agg(stu_id_code) as stu_id_codes
-                from ids group by 1,2,3,4
-            )
-            select
-                object_construct($$educationOrganizationId$$, ed_org_id, $$link$$, object_construct($$rel$$, $$LocalEducationAgency$$)) as educationOrganizationReference,
-                object_construct($$studentUniqueId$$, stu.student_unique_id) as studentReference,
-                stu_id_codes as studentIdentificationCodes
-            from aggd_ids
-                join analytics.prod_stage.stg_ef3__students stu on aggd_ids.k_student=stu.k_student
-            where aggd_ids.tenant_code=$${tenant_code}$$ and aggd_ids.api_year={api_year}
-            """
-        return edfi_roster_query
 
     @staticmethod
     def partition_on_tenant_and_year(
@@ -298,7 +277,7 @@ class EarthbeamDAG:
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
 
-        assessment_name: Optional[str] = None,
+        assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
         required_match_rate: Optional[int] = 0.5,
 
@@ -350,7 +329,7 @@ class EarthbeamDAG:
         :param endpoints:
         :param full_refresh:
 
-        :param assessment_name:
+        :param assessment_bundle:
         :param student_id_match_rates_table: 
         :param required_match_rate:
 
@@ -415,7 +394,7 @@ class EarthbeamDAG:
                 student_id_task_group = self.build_student_id_xwalking_taskgroup(
                     tenant_code=tenant_code,
                     api_year=api_year,
-                    assessment_name=assessment_name,
+                    assessment_bundle=assessment_bundle,
                     grain_update=grain_update,
 
                     database_conn_id=database_conn_id,
@@ -436,6 +415,7 @@ class EarthbeamDAG:
             em_task_group = self.build_file_to_edfi_taskgroup(
                 tenant_code=tenant_code,
                 api_year=api_year,
+                assessment_bundle=assessment_bundle,
                 grain_update=grain_update,
 
                 database_conn_id=database_conn_id,
@@ -505,7 +485,7 @@ class EarthbeamDAG:
         endpoints: Optional[List[str]] = None,
         full_refresh: bool = False,
 
-        assessment_name: Optional[str] = None,
+        assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
         required_match_rate: Optional[int] = 0.5,        
 
@@ -574,7 +554,7 @@ class EarthbeamDAG:
                 student_id_task_group = self.build_student_id_xwalking_taskgroup(
                     tenant_code=tenant_code,
                     api_year=api_year,
-                    assessment_name=assessment_name,
+                    assessment_bundle=assessment_bundle,
                     grain_update=grain_update,
 
                     database_conn_id=database_conn_id,
@@ -594,6 +574,7 @@ class EarthbeamDAG:
             em_task_group = self.build_file_to_edfi_taskgroup(
                 tenant_code=tenant_code,
                 api_year=api_year,
+                assessment_bundle=assessment_bundle,
                 grain_update=grain_update,
 
                 database_conn_id=database_conn_id,
@@ -731,6 +712,7 @@ class EarthbeamDAG:
         *,
         tenant_code: str,
         api_year: int,
+        assessment_bundle: Optional[str] = None,
         grain_update: Optional[str] = None,
 
         database_conn_id: Optional[str] = None,
@@ -810,8 +792,10 @@ class EarthbeamDAG:
                 match_rates_file = context['ti'].xcom_pull(match_rates_task_id, key='match_rates_file')
 
                 if match_rates_file is not None:
-                    env_mapping['STUDENT_ID_MATCH_RATES'] = match_rates_file
-                    env_mapping['EDFI_ROSTER_QUERY'] = self.get_edfi_roster_query(tenant_code, api_year)
+                    env_mapping['MATCH_RATES_SOURCE'] = match_rates_file
+                    env_mapping['ASSESSMENT_BUNDLE'] = assessment_bundle
+                    env_mapping['SNOWFLAKE_TENANT_CODE'] = tenant_code
+                    env_mapping['SNOWFLAKE_SCHOOL_YEAR'] = api_year
                 
                 em_output_dir = edfi_api_client.url_join(
                     self.em_output_directory,
@@ -1020,7 +1004,7 @@ class EarthbeamDAG:
         *,
         tenant_code: str,
         api_year: int,
-        assessment_name: str,
+        assessment_bundle: str,
         grain_update: Optional[str] = None,
 
         database_conn_id: Optional[str] = None,
@@ -1049,7 +1033,7 @@ class EarthbeamDAG:
                     FROM {student_id_match_rates_table}
                     WHERE tenant_code = '{tenant_code}'
                         AND api_year = '{api_year}'
-                        AND assessment_name = '{assessment_name}'
+                        AND assessment_name = '{assessment_bundle}'
                     ORDER BY match_rate desc
                 """
 
@@ -1098,8 +1082,10 @@ class EarthbeamDAG:
 
                 file_basename = self.get_filename(input_filepaths[0])
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
-                env_mapping['COMPUTE_MATCH_RATES'] = 'True'
-                env_mapping['EDFI_ROSTER_QUERY'] = self.get_edfi_roster_query(tenant_code, api_year)
+
+                env_mapping['ASSESSMENT_BUNDLE'] = assessment_bundle
+                env_mapping['SNOWFLAKE_TENANT_CODE'] = tenant_code
+                env_mapping['SNOWFLAKE_SCHOOL_YEAR'] = api_year
                 
                 em_output_dir = edfi_api_client.url_join(
                     self.em_output_directory,
@@ -1162,7 +1148,7 @@ class EarthbeamDAG:
                     DELETE FROM {student_id_match_rates_table}
                     WHERE tenant_code = '{tenant_code}'
                         AND api_year = '{api_year}'
-                        AND assessment_name = '{assessment_name}'
+                        AND assessment_name = '{assessment_bundle}'
                 '''
 
                 database = student_id_match_rates_table.partition('.')[0]
@@ -1173,7 +1159,7 @@ class EarthbeamDAG:
                         SELECT
                             '{tenant_code}' as tenant_code,
                             {api_year} as api_year,
-                            '{assessment_name}' as assessment_name,
+                            '{assessment_bundle}' as assessment_name,
                             $1, $2, $3, $4, $5
                         FROM @{database}.util.airflow_stage/{s3_full_filepath})
                         FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1)
