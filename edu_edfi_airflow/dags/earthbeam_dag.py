@@ -1030,8 +1030,8 @@ class EarthbeamDAG:
 
             # Raw to S3
             if s3_conn_id:
-                upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
-                all_tasks.append(upload_to_s3)
+                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
+                all_tasks.append(raw_to_s3)
             else:
                 raw_to_s3 = None
 
