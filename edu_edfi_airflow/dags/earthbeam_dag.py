@@ -246,7 +246,7 @@ class EarthbeamDAG:
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
-        raw_dir: str,  # TODO: What role does raw_dir serve? Why was it even here when I first developed this?
+        raw_dir: Optional[str] = None,  # Deprecated in favor of `input_file_mapping`.
 
         *,
         grain_update: Optional[str] = None,
@@ -366,12 +366,9 @@ class EarthbeamDAG:
                 else:
                     wrapped_callable = python_callable
 
-
                 callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
-                task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
-                
                 python_preprocess = PythonOperator(
-                    task_id=task_id,
+                    task_id=f"preprocess_python_callable__{callable_name}",
                     python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
@@ -431,7 +428,7 @@ class EarthbeamDAG:
     def build_dynamic_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
-        raw_dir: str,
+        raw_dir: Optional[str] = None,
 
         *,
         grain_update: Optional[str] = None,
@@ -492,16 +489,33 @@ class EarthbeamDAG:
             task_order = []
 
             ### PythonOperator Preprocess
+            if bool(python_callable) == bool(raw_dir):
+                raise ValueError("Taskgroup arguments `python_callable` and `raw_dir` are mutually exclusive.")
+
             if python_callable:
+
+                if logging_table:
+                    # Wrap the callable with log capturing
+                    wrapped_callable = self.capture_logs(
+                        python_callable,
+                        snowflake_conn_id=snowflake_conn_id,
+                        logging_table=logging_table,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update
+                    )
+                else:
+                    wrapped_callable = python_callable
+
+                callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
                 python_preprocess = PythonOperator(
-                    task_id=f"preprocess_python",
-                    python_callable=python_callable,
+                    task_id=f"preprocess_python_callable__{callable_name}",
+                    python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
                     provide_context=True,
                     pool=self.pool,
                     dag=self.dag
                 )
-
                 task_order.append(python_preprocess)
                 # paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
 
@@ -1016,6 +1030,7 @@ class EarthbeamDAG:
 
             # Raw to S3
             if s3_conn_id:
+<<<<<<< HEAD
                 upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
                 all_tasks.append(upload_to_s3)
 
@@ -1027,6 +1042,13 @@ class EarthbeamDAG:
             else:
                 earthmover_results = run_earthmover(input_file_envs, input_filepaths)
             
+=======
+                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
+                all_tasks.append(raw_to_s3)
+            else:
+                raw_to_s3 = None
+                
+>>>>>>> rc/0.4.0
             # EarthmoverOperator: Required
             all_tasks.append(earthmover_results)
             paths_to_clean.append(earthmover_results["data_dir"])
@@ -1079,6 +1101,8 @@ class EarthbeamDAG:
 
             # Final cleanup (apply at very end of the taskgroup)
             remove_files_operator = remove_files(paths_to_clean)
+            if raw_to_s3:
+                raw_to_s3 >> remove_files_operator
             all_tasks[-1] >> remove_files_operator
 
         return file_to_edfi_taskgroup
