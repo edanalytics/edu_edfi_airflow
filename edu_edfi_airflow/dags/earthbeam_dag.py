@@ -1030,9 +1030,10 @@ class EarthbeamDAG:
 
             # Raw to S3
             if s3_conn_id:
-<<<<<<< HEAD
                 upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
                 all_tasks.append(upload_to_s3)
+            else:
+                raw_to_s3 = None
 
             # Pull stored student ID match rates and run earthmover
             if student_id_match_rates_table:
@@ -1042,13 +1043,9 @@ class EarthbeamDAG:
             else:
                 earthmover_results = run_earthmover(input_file_envs, input_filepaths)
             
-=======
                 raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
                 all_tasks.append(raw_to_s3)
-            else:
-                raw_to_s3 = None
                 
->>>>>>> rc/0.4.0
             # EarthmoverOperator: Required
             all_tasks.append(earthmover_results)
             paths_to_clean.append(earthmover_results["data_dir"])
