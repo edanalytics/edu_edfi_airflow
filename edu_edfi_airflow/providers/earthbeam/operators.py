@@ -91,7 +91,7 @@ class EarthmoverOperator(BashOperator):
         if self.database_conn_id:
             db_conn = Connection.get_connection_from_secrets(self.database_conn_id)
             database_conn_string = f"snowflake://{db_conn.login}:{db_conn.password}@{db_conn.extra_dejson['extra__snowflake__account']}"
-            self.env['DATABASE_CONNECTION'] = database_conn_string
+            self.env['SNOWFLAKE_CONNECTION'] = database_conn_string
 
         # Format values before adding to the bash command.
         cli_arguments = []

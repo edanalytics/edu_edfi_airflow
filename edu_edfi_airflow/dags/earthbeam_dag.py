@@ -277,6 +277,7 @@ class EarthbeamDAG:
 
         assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
+        required_id_match_rate: Optional[float] = 0.5,
 
         # Mapping of input environment variables to be injected into the taskgroup.
         input_file_mapping: Optional[dict] = None,
@@ -327,7 +328,8 @@ class EarthbeamDAG:
         :param full_refresh:
 
         :param assessment_bundle:
-        :param student_id_match_rates_table: 
+        :param student_id_match_rates_table:
+        :param required_id_match_rate:
 
         :param input_file_mapping:
 
@@ -407,7 +409,8 @@ class EarthbeamDAG:
                 logging_table=logging_table,
 
                 assessment_bundle=assessment_bundle,
-                student_id_match_rates_table=student_id_match_rates_table,                
+                student_id_match_rates_table=student_id_match_rates_table,
+                required_id_match_rate=required_id_match_rate,          
 
                 ods_version=ods_version,
                 data_model_version=data_model_version,
@@ -462,7 +465,8 @@ class EarthbeamDAG:
         full_refresh: bool = False,
 
         assessment_bundle: Optional[str] = None,
-        student_id_match_rates_table: Optional[str] = None,      
+        student_id_match_rates_table: Optional[str] = None,
+        required_id_match_rate: Optional[float] = 0.5,
 
         # Allows overwrite of expected environment variable.
         input_file_var: str = "INPUT_FILE",
@@ -548,6 +552,7 @@ class EarthbeamDAG:
 
                 assessment_bundle=assessment_bundle,
                 student_id_match_rates_table=student_id_match_rates_table,
+                required_id_match_rate=required_id_match_rate,
 
                 ods_version=ods_version,
                 data_model_version=data_model_version,
@@ -663,6 +668,18 @@ class EarthbeamDAG:
     @staticmethod
     def get_filename(filepath: str) -> str:
         return os.path.splitext(os.path.basename(filepath))[0]
+    
+    @staticmethod
+    def get_match_rates_query(student_id_match_rates_table: str, tenant_code: str, api_year: str, assessment_bundle: str) -> str:
+        qry_match_rates = f"""
+                    SELECT *
+                    FROM {student_id_match_rates_table}
+                    WHERE tenant_code = $${tenant_code}$$
+                        AND api_year = {api_year}
+                        AND assessment_name = $${assessment_bundle}$$
+                    ORDER BY match_rate desc
+                """
+        return qry_match_rates
 
     def build_file_to_edfi_taskgroup(self,
         *,
@@ -688,6 +705,7 @@ class EarthbeamDAG:
 
         assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
+        required_id_match_rate: Optional[float] = 0.5,
 
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
@@ -743,44 +761,52 @@ class EarthbeamDAG:
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
                 from snowflake.connector import DictCursor
                 
-                qry_match_rates = f"""
-                    SELECT *
-                    FROM {student_id_match_rates_table}
-                    WHERE tenant_code = '{tenant_code}'
-                        AND api_year = '{api_year}'
-                        AND assessment_name = '{assessment_bundle}'
-                    ORDER BY match_rate desc
-                """
-                logging.info(f'Pulling previous match rates: {qry_match_rates}')
-
                 snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
                 conn = snowflake_hook.get_conn()
                 cursor = conn.cursor(DictCursor)
+
+                qry_match_rates = self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle)
+                logging.info(f'Pulling previous match rates: {qry_match_rates}')
+
                 cursor.execute(qry_match_rates)
                 match_rates = cursor.fetchall()
 
-                # Pending how bundle work - include if helpful to know for EM run params
-                # if len(match_rates) > 0:
-                #     max_match_rate = max(record['MATCH_RATE'] for record in match_rates)
-
-                return len(match_rates) > 0
+                if len(match_rates) > 0:
+                    max_match_rate = max(record['MATCH_RATE'] for record in match_rates)
+                    return max_match_rate
+                else:
+                    return None
             
             @task(multiple_outputs=True, dag=self.dag)
-            def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], has_existing_match_rate: Optional[bool] = None, **context):
+            def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], max_match_rate: Optional[bool] = None, **context):
                 input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
                 input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
 
                 file_basename = self.get_filename(input_filepaths[0])
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
 
+                # Add params needed for the student ID bundle
                 if student_id_match_rates_table is not None:
-                    env_mapping['ASSESSMENT_BUNDLE'] = assessment_bundle
-                    env_mapping['SNOWFLAKE_TENANT_CODE'] = tenant_code
-                    env_mapping['SNOWFLAKE_SCHOOL_YEAR'] = api_year
+                    env_mapping.update({
+                        'ASSESSMENT_BUNDLE': assessment_bundle,
+                        'REQUIRED_ID_MATCH_RATE': required_id_match_rate
+                    })
 
-                    if has_existing_match_rate:
-                        env_mapping['MATCH_RATES_SOURCE'] = f"SNOWFLAKE: {student_id_match_rates_table}"
-                    # Add if additional param is needed to indicate re-compute?
+                    # Add params for Snowflake Ed-Fi roster source if a file source was not provided
+                    if 'EDFI_ROSTER_SOURCE_TYPE' not in env_mapping or env_mapping['EDFI_ROSTER_SOURCE_TYPE'] != "file":
+                        env_mapping.update({
+                            'EDFI_ROSTER_SOURCE_TYPE': 'snowflake',
+                            'SNOWFLAKE_EDU_STG_SCHEMA': 'analytics.prod_stage',
+                            'SNOWFLAKE_TENANT_CODE': tenant_code,
+                            'SNOWFLAKE_API_YEAR': api_year
+                        })
+
+                    # Add params for querying existing match rates if a high enough match has previously been found
+                    if max_match_rate is not None and max_match_rate >= required_id_match_rate:
+                        env_mapping.update({
+                            'MATCH_RATES_SOURCE_TYPE': 'snowflake',
+                            'MATCH_RATES_SNOWFLAKE_QUERY': self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle)
+                        })
                 
                 em_output_dir = edfi_api_client.url_join(
                     self.em_output_directory,
@@ -923,6 +949,9 @@ class EarthbeamDAG:
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
                 match_rates_file = os.path.join(data_dir, 'student_id_match_rates.csv')
+                if not os.path.exists(match_rates_file):
+                    logging.info("Nothing to load: match rates file not produced by this earthmover run.")
+                    return
 
                 logging.info(f"Copying match rates data to S3: {s3_full_filepath}")
                 local_filepath_to_s3(
@@ -992,9 +1021,9 @@ class EarthbeamDAG:
 
             # Pull stored student ID match rates and run earthmover
             if student_id_match_rates_table:
-                has_existing_match_rate = check_existing_match_rates()
-                all_tasks.append(has_existing_match_rate)
-                earthmover_results = run_earthmover(input_file_envs, input_filepaths, has_existing_match_rate)
+                max_match_rate = check_existing_match_rates()
+                all_tasks.append(max_match_rate)
+                earthmover_results = run_earthmover(input_file_envs, input_filepaths, max_match_rate)
             else:
                 earthmover_results = run_earthmover(input_file_envs, input_filepaths)
             
