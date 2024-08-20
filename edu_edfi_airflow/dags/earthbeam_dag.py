@@ -947,33 +947,8 @@ class EarthbeamDAG:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
             @task (dag=self.dag)
-            def match_rates_to_snowflake(data_dir: str, **context):
+            def match_rates_to_snowflake(s3_full_filepath:str):
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-
-                if not s3_filepath:
-                    raise ValueError(
-                        "Argument `s3_filepath` must be defined to upload student ID match rates to S3."
-                    )
-
-                s3_full_filepath = edfi_api_client.url_join(
-                    s3_filepath, 'earthmover_config',
-                    tenant_code, self.run_type, api_year, grain_update,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}', 'student_id_match_rates.csv'
-                )
-                s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
-
-                match_rates_file = os.path.join(data_dir, 'student_id_match_rates.csv')
-                if not os.path.exists(match_rates_file):
-                    logging.info("Nothing to load: match rates file not produced by this earthmover run.")
-                    return
-
-                logging.info(f"Copying match rates data to S3: {s3_full_filepath}")
-                local_filepath_to_s3(
-                    s3_conn_id=s3_conn_id,
-                    s3_destination_key=s3_full_filepath,
-                    local_filepath=match_rates_file,
-                    remove_local_filepath=False
-                )
 
                 delete_sql = f'''
                     DELETE FROM {student_id_match_rates_table}
@@ -983,6 +958,8 @@ class EarthbeamDAG:
                 '''
 
                 database = student_id_match_rates_table.partition('.')[0]
+                match_rates_s3_filepath = os.path.join(s3_full_filepath, 'student_id_match_rates.csv')
+
                 copy_sql = f'''
                     COPY INTO {student_id_match_rates_table}
                     (tenant_code, api_year, assessment_name, source_column_name, edfi_column_name, num_matches, num_rows, match_rate)
@@ -992,7 +969,7 @@ class EarthbeamDAG:
                             {api_year} as api_year,
                             '{assessment_bundle}' as assessment_name,
                             $1, $2, $3, $4, $5
-                        FROM @{database}.util.airflow_stage/{s3_full_filepath})
+                        FROM @{database}.util.airflow_stage/{match_rates_s3_filepath})
                         FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1)
                 '''
 
@@ -1002,7 +979,7 @@ class EarthbeamDAG:
                 cursor_log_delete = snowflake_hook.run(sql=delete_sql)
                 logging.info(cursor_log_delete)
 
-                logging.info(f"Copying from data lake to raw: {s3_filepath}")
+                logging.info(f"Copying from data lake to raw: {match_rates_s3_filepath}")
                 cursor_log_copy = snowflake_hook.run(sql=copy_sql)
                 logging.info(cursor_log_copy)
 
@@ -1060,9 +1037,9 @@ class EarthbeamDAG:
                 em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
                 all_tasks.append(em_s3_filepath)
 
-            if student_id_match_rates_table:
-                load_match_rates_to_snowflake = match_rates_to_snowflake(earthmover_results["data_dir"])
-                all_tasks.append(load_match_rates_to_snowflake)
+                if student_id_match_rates_table:
+                    load_match_rates_to_snowflake = match_rates_to_snowflake(em_s3_filepath)
+                    all_tasks.append(load_match_rates_to_snowflake)
 
             # Lightbeam Validate
             if validate_edfi_conn_id:
