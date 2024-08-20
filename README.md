@@ -484,7 +484,7 @@ Task-groups can also apply an optional Python preprocessing callable to the raw 
 | full_refresh                 | Boolean flag to run a full truncate-replace of the warehouse data for the given grain if copying data directly into the ODS    |
 | assessment_bundle            | Optional (required for student ID xwalking) name of the assessment bundle being run                                            |
 | student_id_match_rates_table | Optional (required for student ID xwalking) Snowflake table set up for storing student ID match rates (db.schema.table)        |
-| snowflake_read_conn_id       | Optional (required for student ID xwalking) Airflow with Snowflake credentials for reading from the `analytics` database       |
+| snowflake_read_conn_id       | Optional (required for student ID xwalking) Airflow connectionwith Snowflake credentials for reading from the `analytics` db   |
 | required_id_match_rate       | Optional float value for minimum student ID match rate, otherwise EM will fail                                                 |
 
 -----
