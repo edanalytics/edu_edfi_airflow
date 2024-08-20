@@ -252,9 +252,7 @@ class EarthbeamDAG:
         grain_update: Optional[str] = None,
         group_id: Optional[str] = None,
 
-        database_conn_id: Optional[str] = None,
         earthmover_kwargs: Optional[dict] = None,
-
         edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
 
@@ -277,6 +275,7 @@ class EarthbeamDAG:
 
         assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
+        snowflake_read_conn_id: Optional[str] = None,
         required_id_match_rate: Optional[float] = 0.5,
 
         # Mapping of input environment variables to be injected into the taskgroup.
@@ -304,9 +303,7 @@ class EarthbeamDAG:
         :param grain_update:
         :param group_id:
 
-        :param database_conn_id:
         :param earthmover_kwargs:
-
         :param edfi_conn_id:
         :param lightbeam_kwargs:
 
@@ -329,6 +326,7 @@ class EarthbeamDAG:
 
         :param assessment_bundle:
         :param student_id_match_rates_table:
+        :param snowflake_read_conn_id:
         :param required_id_match_rate:
 
         :param input_file_mapping:
@@ -390,9 +388,7 @@ class EarthbeamDAG:
                 api_year=api_year,
                 grain_update=grain_update,
 
-                database_conn_id=database_conn_id,
                 earthmover_kwargs=earthmover_kwargs,
-
                 edfi_conn_id=edfi_conn_id,
                 lightbeam_kwargs=lightbeam_kwargs,
 
@@ -405,14 +401,16 @@ class EarthbeamDAG:
                 snowflake_conn_id=snowflake_conn_id,
                 logging_table=logging_table,
 
-                assessment_bundle=assessment_bundle,
-                student_id_match_rates_table=student_id_match_rates_table,
-                required_id_match_rate=required_id_match_rate,          
-
                 ods_version=ods_version,
                 data_model_version=data_model_version,
                 endpoints=endpoints,
                 full_refresh=full_refresh,
+
+                assessment_bundle=assessment_bundle,
+                student_id_match_rates_table=student_id_match_rates_table,
+                snowflake_read_conn_id=snowflake_read_conn_id,
+                required_id_match_rate=required_id_match_rate, 
+
             )(
                 input_file_envs=list(input_file_mapping.keys()),
                 input_filepaths=list(input_file_mapping.values())
@@ -434,9 +432,7 @@ class EarthbeamDAG:
         grain_update: Optional[str] = None,
         group_id: Optional[str] = None,
 
-        database_conn_id: Optional[str] = None,
         earthmover_kwargs: Optional[dict] = None,
-
         edfi_conn_id: Optional[str] = None,
         validate_edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
@@ -463,6 +459,7 @@ class EarthbeamDAG:
 
         assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
+        snowflake_read_conn_id: Optional[str] = None,
         required_id_match_rate: Optional[float] = 0.5,
 
         # Allows overwrite of expected environment variable.
@@ -548,9 +545,7 @@ class EarthbeamDAG:
                 api_year=api_year,
                 grain_update=grain_update,
 
-                database_conn_id=database_conn_id,
                 earthmover_kwargs=earthmover_kwargs,
-
                 edfi_conn_id=edfi_conn_id,
                 validate_edfi_conn_id=validate_edfi_conn_id,
                 lightbeam_kwargs=lightbeam_kwargs,
@@ -566,6 +561,7 @@ class EarthbeamDAG:
 
                 assessment_bundle=assessment_bundle,
                 student_id_match_rates_table=student_id_match_rates_table,
+                snowflake_read_conn_id=snowflake_read_conn_id,
                 required_id_match_rate=required_id_match_rate,
 
                 ods_version=ods_version,
@@ -692,6 +688,7 @@ class EarthbeamDAG:
                         AND api_year = {api_year}
                         AND assessment_name = $${assessment_bundle}$$
                     ORDER BY match_rate desc
+                    LIMIT 1
                 """
         return qry_match_rates
 
@@ -701,9 +698,7 @@ class EarthbeamDAG:
         api_year: int,
         grain_update: Optional[str] = None,
 
-        database_conn_id: Optional[str] = None,
         earthmover_kwargs: Optional[dict] = None,
-
         edfi_conn_id: Optional[str] = None,
         validate_edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
@@ -719,6 +714,7 @@ class EarthbeamDAG:
 
         assessment_bundle: Optional[str] = None,
         student_id_match_rates_table: Optional[str] = None,
+        snowflake_read_conn_id: Optional[str] = None,
         required_id_match_rate: Optional[float] = 0.5,
 
         ods_version: Optional[str] = None,
@@ -849,7 +845,7 @@ class EarthbeamDAG:
                     earthmover_path=self.earthmover_path,
                     output_dir=em_output_dir,
                     state_file=em_state_file,
-                    database_conn_id=database_conn_id,
+                    snowflake_read_conn_id=snowflake_read_conn_id,
                     results_file=em_results_file,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     pool=self.earthmover_pool,

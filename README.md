@@ -476,7 +476,7 @@ Task-groups can also apply an optional Python preprocessing callable to the raw 
 | python_kwargs                | Optional kwargs to pass into `python_callable`                                                                                 |
 | python_postprocess_callable  | Optional Python callable to run at the end of the task-group                                                                   |
 | python_postprocess_kwargs    | Optional kwargs to pass into `python_postprocess_callable`                                                                     |
-| snowflake_conn_id            | Optional Airflow connection with Snowflake credentials, database, and schema defined                                           |
+| snowflake_conn_id            | Optional Airflow connection with Snowflake credentials, database, and schema defined, used for loading to raw                  |
 | logging_table                | Optional name of a table to record Earthmover and Lightbeam results to in Snowflake                                            |
 | ods_version                  | Optional Ed-Fi ODS version to save as metadata if copying data directly into the ODS                                           |
 | data_model_version           | Optional Ed-Fi data model version to save as metadata if copying data directly into the ODS                                    |
@@ -484,6 +484,7 @@ Task-groups can also apply an optional Python preprocessing callable to the raw 
 | full_refresh                 | Boolean flag to run a full truncate-replace of the warehouse data for the given grain if copying data directly into the ODS    |
 | assessment_bundle            | Optional (required for student ID xwalking) name of the assessment bundle being run                                            |
 | student_id_match_rates_table | Optional (required for student ID xwalking) Snowflake table set up for storing student ID match rates (db.schema.table)        |
+| snowflake_read_conn_id       | Optional (required for student ID xwalking) Airflow with Snowflake credentials for reading from the `analytics` database       |
 | required_id_match_rate       | Optional float value for minimum student ID match rate, otherwise EM will fail                                                 |
 
 -----
