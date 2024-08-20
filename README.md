@@ -459,27 +459,32 @@ Task-groups can also apply an optional Python preprocessing callable to the raw 
 <details>
 <summary>Taskgroup-level Arguments:</summary>
 
-| Argument           | Description                                                                                                                    |
-|:-------------------|:-------------------------------------------------------------------------------------------------------------------------------|
-| tenant_code        | ODS-tenant representation to be saved in Snowflake tables                                                                      |
-| api_year           | ODS API-year to be saved in Snowflake tables                                                                                   |
-| raw_dir            | Path to the directory on the EC2 server where pre-Earthmover data is found                                                     |
-| grain_update       | Optional string to extend the grain of the task-group beyond (tenant, year)                                                    |
-| group_id           | Optional static string-representation of the task-group (a generated name is used if undefined)                                |
-| prefix_group_id    | Optional boolean flag for whether to prefix the name of task-group operators with the `group_id` (default False)               |
-| earthmover_kwargs  | Kwarg command-line arguments to be passed into `EarthmoverOperator`                                                            |
-| edfi_conn_id       | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                       |
-| lightbeam_kwargs   | Kwarg command-line arguments to be passed into `LightbeamOperator`                                                             |
-| s3_conn_id         | Airflow connection with S3 bucket defined under `schema`                                                                       |
-| s3_filepath        | S3 root key to copy staging data to before and after running Earthmover                                                        |
-| python_callable    | Optional Python callable to run at the start of the task-group prior to Earthmover                                             |
-| python_kwargs      | Optional kwargs to pass into `python_callable`                                                                                 |
-| snowflake_conn_id  | Optional Airflow connection with Snowflake credentials, database, and schema defined                                           |
-| logging_table      | Optional name of a table to record Earthmover and Lightbeam results to in Snowflake                                            |
-| ods_version        | Optional Ed-Fi ODS version to save as metadata if copying data directly into the ODS                                           |
-| data_model_version | Optional Ed-Fi data model version to save as metadata if copying data directly into the ODS                                    |
-| endpoints          | Optional list of resource/descriptor endpoints to copy data directly into the ODS (these should align with Earthmover outputs) |
-| full_refresh       | Boolean flag to run a full truncate-replace of the warehouse data for the given grain if copying data directly into the ODS    |
+| Argument                     | Description                                                                                                                    |
+|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------------------|
+| tenant_code                  | ODS-tenant representation to be saved in Snowflake tables                                                                      |
+| api_year                     | ODS API-year to be saved in Snowflake tables                                                                                   |
+| raw_dir                      | Path to the directory on the EC2 server where pre-Earthmover data is found                                                     |
+| grain_update                 | Optional string to extend the grain of the task-group beyond (tenant, year)                                                    |
+| group_id                     | Optional static string-representation of the task-group (a generated name is used if undefined)                                |
+| prefix_group_id              | Optional boolean flag for whether to prefix the name of task-group operators with the `group_id` (default False)               |
+| earthmover_kwargs            | Kwarg command-line arguments to be passed into `EarthmoverOperator`                                                            |
+| edfi_conn_id                 | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                       |
+| lightbeam_kwargs             | Kwarg command-line arguments to be passed into `LightbeamOperator`                                                             |
+| s3_conn_id                   | Airflow connection with S3 bucket defined under `schema`                                                                       |
+| s3_filepath                  | S3 root key to copy staging data to before and after running Earthmover                                                        |
+| python_callable              | Optional Python callable to run at the start of the task-group prior to Earthmover                                             |
+| python_kwargs                | Optional kwargs to pass into `python_callable`                                                                                 |
+| python_postprocess_callable  | Optional Python callable to run at the end of the task-group                                                                   |
+| python_postprocess_kwargs    | Optional kwargs to pass into `python_postprocess_callable`                                                                     |
+| snowflake_conn_id            | Optional Airflow connection with Snowflake credentials, database, and schema defined                                           |
+| logging_table                | Optional name of a table to record Earthmover and Lightbeam results to in Snowflake                                            |
+| ods_version                  | Optional Ed-Fi ODS version to save as metadata if copying data directly into the ODS                                           |
+| data_model_version           | Optional Ed-Fi data model version to save as metadata if copying data directly into the ODS                                    |
+| endpoints                    | Optional list of resource/descriptor endpoints to copy data directly into the ODS (these should align with Earthmover outputs) |
+| full_refresh                 | Boolean flag to run a full truncate-replace of the warehouse data for the given grain if copying data directly into the ODS    |
+| assessment_bundle            | Optional (required for student ID xwalking) name of the assessment bundle being run                                            |
+| student_id_match_rates_table | Optional (required for student ID xwalking) Snowflake table set up for storing student ID match rates (db.schema.table)        |
+| required_id_match_rate       | Optional float value for minimum student ID match rate, otherwise EM will fail                                                 |
 
 -----
 
