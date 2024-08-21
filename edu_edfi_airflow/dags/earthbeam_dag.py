@@ -807,9 +807,11 @@ class EarthbeamDAG:
                         env_mapping.update({
                             'EDFI_ROSTER_SOURCE_TYPE': 'snowflake',
                             'SNOWFLAKE_EDU_STG_SCHEMA': 'analytics.prod_stage',
-                            'SNOWFLAKE_TENANT_CODE': tenant_code,
-                            'SNOWFLAKE_API_YEAR': api_year
+                            'SNOWFLAKE_TENANT_CODE': tenant_code
                         })
+                        # Don't overwrite if this was provided as an earthmover param (used for loading historical files using a current year of roster data)
+                        if 'SNOWFLAKE_API_YEAR' not in env_mapping:
+                            env_mapping['SNOWFLAKE_API_YEAR'] = api_year
 
                     # Add params for querying existing match rates if a high enough match has previously been found
                     if max_match_rate is not None and max_match_rate >= required_id_match_rate:
