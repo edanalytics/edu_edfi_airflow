@@ -810,7 +810,7 @@ class EarthbeamDAG:
                             'SNOWFLAKE_TENANT_CODE': tenant_code
                         })
                         # Don't overwrite if this was provided as an earthmover param (used for loading historical files using a current year of roster data)
-                        if 'SNOWFLAKE_API_YEAR' not in env_mapping:
+                        if 'SNOWFLAKE_API_YEAR' not in earthmover_kwargs['parameters']:
                             env_mapping['SNOWFLAKE_API_YEAR'] = api_year
 
                     # Add params for querying existing match rates if a high enough match has previously been found
