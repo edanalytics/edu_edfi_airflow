@@ -364,7 +364,8 @@ class EdFiResourceDAG:
         task_id: str,
         endpoints: List[Tuple[str, str]],
         get_deletes: bool = False,
-        get_key_changes: bool = False
+        get_key_changes: bool = False,
+        get_with_deltas: bool = True
     ) -> PythonOperator:
         """
 
@@ -372,7 +373,7 @@ class EdFiResourceDAG:
         """
         get_cv_operator = PythonOperator(
             task_id=task_id,
-            python_callable=change_version.get_previous_change_versions_with_deltas,
+            python_callable=change_version.get_previous_change_versions_with_deltas if get_with_deltas else change_version.get_previous_change_versions,
             op_kwargs={
                 'tenant_code': self.tenant_code,
                 'api_year': self.api_year,
