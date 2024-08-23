@@ -68,6 +68,7 @@ class EdFiResourceDAG:
 
         use_change_version: bool = True,
         get_key_changes: bool = False,
+        get_deletes_cv_with_deltas: bool = True,
         run_type: str = "default",
         resource_configs: Optional[List[dict]] = None,
         descriptor_configs: Optional[List[dict]] = None,
@@ -101,6 +102,7 @@ class EdFiResourceDAG:
         self.deletes_table = deletes_table
         self.key_changes_table = key_changes_table
         self.descriptors_table = descriptors_table
+        self.get_deletes_cv_with_deltas = get_deletes_cv_with_deltas
 
         self.dbt_incrementer_var = dbt_incrementer_var
         
@@ -262,7 +264,8 @@ class EdFiResourceDAG:
             endpoints=sorted(list(self.deletes_to_ingest)),
             table=self.deletes_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'resource_deletes'),
-            get_deletes=True
+            get_deletes=True,
+            get_with_deltas=self.get_deletes_cv_with_deltas
         )
 
         # Resource Key-Changes (only applicable in Ed-Fi v6.x and up)
@@ -467,6 +470,7 @@ class EdFiResourceDAG:
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
+        get_with_deltas: bool = True,                                           
         **kwargs
     ) -> TaskGroup:
         """
@@ -479,6 +483,7 @@ class EdFiResourceDAG:
         :param table:
         :param get_deletes:
         :param get_key_changes:
+        :param get_with_deltas:
         :return:
         """
         if not endpoints:
@@ -498,6 +503,7 @@ class EdFiResourceDAG:
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
+                    get_with_deltas=get_with_deltas
                 )
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
             else:
@@ -579,6 +585,8 @@ class EdFiResourceDAG:
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
+        get_with_deltas: bool = True,
+                               
         **kwargs
     ):
         """
@@ -590,7 +598,8 @@ class EdFiResourceDAG:
         :param s3_destination_dir:
         :param table:
         :param get_deletes:
-        :param get_key_changes:
+        :param get_key_changes:                    
+        :param get_with_deltas:
         :return:
         """
         if not endpoints:
@@ -610,7 +619,8 @@ class EdFiResourceDAG:
                     task_id=f"get_last_change_versions_from_snowflake",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    get_with_deltas=get_with_deltas
                 )
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
@@ -700,6 +710,7 @@ class EdFiResourceDAG:
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
+        get_with_deltas: bool = True,
         **kwargs
     ):
         """
@@ -712,6 +723,7 @@ class EdFiResourceDAG:
         :param table:
         :param get_deletes:
         :param get_key_changes:
+        :param get_with_deltas:
         :return:
         """
         if not endpoints:
@@ -731,7 +743,8 @@ class EdFiResourceDAG:
                     task_id=f"get_last_change_versions",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    get_with_deltas=get_with_deltas
                 )
                 min_change_versions = [
                     self.xcom_pull_template_get_key(get_cv_operator, endpoint)
