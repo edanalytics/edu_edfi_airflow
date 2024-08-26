@@ -391,8 +391,8 @@ class EarthbeamDAG:
                 endpoints=endpoints,
                 full_refresh=full_refresh,
             )(
-                input_file_envs=input_file_mapping.keys(),
-                input_filepaths=input_file_mapping.values()
+                input_file_envs=list(input_file_mapping.keys()),
+                input_filepaths=list(input_file_mapping.values())
             )
             task_order.append(em_task_group)
 
