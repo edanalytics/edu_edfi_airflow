@@ -256,6 +256,7 @@ class EarthbeamDAG:
         earthmover_kwargs: Optional[dict] = None,
 
         edfi_conn_id: Optional[str] = None,
+        validate_edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
 
         s3_conn_id: Optional[str] = None,
@@ -378,6 +379,7 @@ class EarthbeamDAG:
                 earthmover_kwargs=earthmover_kwargs,
 
                 edfi_conn_id=edfi_conn_id,
+                validate_edfi_conn_id=validate_edfi_conn_id,
                 lightbeam_kwargs=lightbeam_kwargs,
 
                 s3_conn_id=s3_conn_id,
