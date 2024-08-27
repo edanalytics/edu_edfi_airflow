@@ -1019,9 +1019,6 @@ class EarthbeamDAG:
                 earthmover_results = run_earthmover(input_file_envs, input_filepaths, max_match_rate)
             else:
                 earthmover_results = run_earthmover(input_file_envs, input_filepaths)
-            
-                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
-                all_tasks.append(raw_to_s3)
                 
             # EarthmoverOperator: Required
             all_tasks.append(earthmover_results)
