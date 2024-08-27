@@ -946,7 +946,7 @@ class EarthbeamDAG:
                 for endpoint in endpoints:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
-            @task (dag=self.dag)
+            @task(dag=self.dag)
             def match_rates_to_snowflake(s3_full_filepath:str):
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
@@ -985,9 +985,9 @@ class EarthbeamDAG:
 
                 return
 
-            @task_group(prefix_group_id=True, dag=self.dag)
-            def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, **context):
-                python_postprocess = python_postprocess_callable(python_postprocess_kwargs, **context)
+            @task(dag=self.dag)
+            def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, em_data_dir: str, em_s3_filepath: Optional[str], **context):
+                python_postprocess = python_postprocess_callable(**python_postprocess_kwargs, em_data_dir=em_data_dir, em_s3_filepath=em_s3_filepath, **context)
                 return python_postprocess
 
             @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", dag=self.dag)
@@ -1067,7 +1067,10 @@ class EarthbeamDAG:
                     all_tasks.append(log_lb_to_snowflake)
 
             if python_postprocess_callable:
-                python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs)
+                if em_s3_filepath:
+                    python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"], em_s3_filepath=em_s3_filepath)
+                else: 
+                    python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"])
                 all_tasks.append(python_postprocess)
 
             # Final cleanup (apply at very end of the taskgroup)
