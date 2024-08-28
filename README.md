@@ -475,7 +475,7 @@ Task-groups can also apply an optional Python preprocessing callable to the raw 
 | python_callable              | Optional Python callable to run at the start of the task-group prior to Earthmover                                             |
 | python_kwargs                | Optional kwargs to pass into `python_callable`                                                                                 |
 | python_postprocess_callable  | Optional Python callable to run at the end of the task-group                                                                   |
-| python_postprocess_kwargs    | Optional kwargs to pass into `python_postprocess_callable`                                                                     |
+| python_postprocess_kwargs    | Optional kwargs to pass into `python_postprocess_callable`. Kwargs `em_data_dir` and `em_s3_filepath` will also be passed      |
 | snowflake_conn_id            | Optional Airflow connection with Snowflake credentials, database, and schema defined, used for loading to raw                  |
 | logging_table                | Optional name of a table to record Earthmover and Lightbeam results to in Snowflake                                            |
 | ods_version                  | Optional Ed-Fi ODS version to save as metadata if copying data directly into the ODS                                           |
