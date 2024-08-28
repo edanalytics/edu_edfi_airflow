@@ -983,7 +983,7 @@ class EarthbeamDAG:
 
                 return
 
-            @task(dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, em_data_dir: str, em_s3_filepath: Optional[str], **context):
                 python_postprocess = python_postprocess_callable(**python_postprocess_kwargs, em_data_dir=em_data_dir, em_s3_filepath=em_s3_filepath, **context)
                 return python_postprocess
