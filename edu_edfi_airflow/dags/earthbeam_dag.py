@@ -930,7 +930,7 @@ class EarthbeamDAG:
 
                 return sideload_op.execute(context)
         
-            @task_group(prefix_group_id=True, pool=self.pool, dag=self.dag)
+            @task_group(prefix_group_id=True, dag=self.dag)
             def sideload_to_stadium(s3_destination_dir: str):
                 if not s3_conn_id:
                     raise Exception("S3 connection required to copy into Snowflake.")
@@ -983,7 +983,7 @@ class EarthbeamDAG:
 
                 return
 
-            @task_group(prefix_group_id=True, pool=self.pool, dag=self.dag)
+            @task_group(prefix_group_id=True, dag=self.dag)
             def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, **context):
                 python_postprocess = python_postprocess_callable(python_postprocess_kwargs, **context)
                 return python_postprocess
