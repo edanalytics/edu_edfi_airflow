@@ -729,7 +729,7 @@ class EarthbeamDAG:
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
         def file_to_edfi_taskgroup(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]]):
 
-            @task(dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, **context):
                 if not s3_filepath:
                     raise ValueError(
@@ -756,7 +756,7 @@ class EarthbeamDAG:
 
                 return s3_full_filepath
             
-            @task(dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def log_to_snowflake(results_filepath: str, **context):
                 return self.log_to_snowflake(
                     snowflake_conn_id=snowflake_conn_id,
@@ -768,7 +768,7 @@ class EarthbeamDAG:
                     **context
                 )
             
-            @task(dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def check_existing_match_rates():
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
                 from snowflake.connector import DictCursor
@@ -789,7 +789,7 @@ class EarthbeamDAG:
                 else:
                     return None
             
-            @task(multiple_outputs=True, dag=self.dag)
+            @task(multiple_outputs=True, pool=self.earthmover_pool, dag=self.dag)
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], max_match_rate: Optional[bool] = None, **context):
                 input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
                 input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
@@ -852,7 +852,6 @@ class EarthbeamDAG:
                     snowflake_read_conn_id=snowflake_read_conn_id,
                     results_file=em_results_file,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
-                    pool=self.earthmover_pool,
                     dag=self.dag
                 )
                 
@@ -862,7 +861,7 @@ class EarthbeamDAG:
                     "results_file": em_results_file,
                 }
             
-            @task(multiple_outputs=True, dag=self.dag)
+            @task(multiple_outputs=True, pool=self.lightbeam_pool, dag=self.dag)
             def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
                 dir_basename = self.get_filename(data_dir)
 
@@ -888,7 +887,6 @@ class EarthbeamDAG:
                     results_file=lb_results_file ,
                     edfi_conn_id=lb_edfi_conn_id,
                     **(lightbeam_kwargs or {}),
-                    pool=self.lightbeam_pool,
                     command=command,
                     dag=self.dag
                 )
@@ -899,7 +897,7 @@ class EarthbeamDAG:
                     "results_file": lb_results_file,
                 }
             
-            @task(dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
                 # Snowflake tables are snake_cased; Earthmover outputs are camelCased
                 snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
@@ -932,7 +930,7 @@ class EarthbeamDAG:
 
                 return sideload_op.execute(context)
         
-            @task_group(prefix_group_id=True, dag=self.dag)
+            @task_group(prefix_group_id=True, pool=self.pool, dag=self.dag)
             def sideload_to_stadium(s3_destination_dir: str):
                 if not s3_conn_id:
                     raise Exception("S3 connection required to copy into Snowflake.")
@@ -946,7 +944,7 @@ class EarthbeamDAG:
                 for endpoint in endpoints:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
-            @task (dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_full_filepath:str):
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
@@ -985,12 +983,12 @@ class EarthbeamDAG:
 
                 return
 
-            @task_group(prefix_group_id=True, dag=self.dag)
+            @task_group(prefix_group_id=True, pool=self.pool, dag=self.dag)
             def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, **context):
                 python_postprocess = python_postprocess_callable(python_postprocess_kwargs, **context)
                 return python_postprocess
 
-            @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", dag=self.dag)
+            @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
             def remove_files(filepaths):
                 unnested_filepaths = []
                 for filepath in filepaths:
