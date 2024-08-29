@@ -528,7 +528,7 @@ class EdFiResourceDAG:
                     get_key_changes=get_key_changes,
                     min_change_version=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else None,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
-                    reverse_paging=self.get_deletes_cv_with_deltas,
+                    reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                     # Optional config-specified run-attributes (overridden by those in configs)
                     **self.endpoint_configs[endpoint],
@@ -656,7 +656,7 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
-                    reverse_paging=self.get_deletes_cv_with_deltas,
+                    reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
@@ -778,7 +778,7 @@ class EdFiResourceDAG:
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
-                reverse_paging=self.get_deletes_cv_with_deltas,
+                reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                 # Arguments that are required to be lists in Ed-Fi bulk-operator.
                 resource=endpoints,
