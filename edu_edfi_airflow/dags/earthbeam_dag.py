@@ -984,7 +984,7 @@ class EarthbeamDAG:
                 return
 
             @task(pool=self.pool, dag=self.dag)
-            def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, em_data_dir: str, em_s3_filepath: Optional[str], **context):
+            def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, em_data_dir: str, em_s3_filepath: Optional[str] = None, **context):
                 python_postprocess = python_postprocess_callable(**python_postprocess_kwargs, em_data_dir=em_data_dir, em_s3_filepath=em_s3_filepath, **context)
                 return python_postprocess
 
@@ -1035,6 +1035,8 @@ class EarthbeamDAG:
                 if student_id_match_rates_table:
                     load_match_rates_to_snowflake = match_rates_to_snowflake(em_s3_filepath)
                     all_tasks.append(load_match_rates_to_snowflake)
+            else:
+                em_s3_filepath = None
 
             # Lightbeam Validate
             if validate_edfi_conn_id:
