@@ -16,7 +16,7 @@ from airflow.utils.task_group import TaskGroup
 import edfi_api_client
 from ea_airflow_util import EACustomDAG
 
-from edu_edfi_airflow.callables.s3 import local_filepath_to_s3, remove_filepaths
+from edu_edfi_airflow.callables.s3 import local_filepath_to_s3, remove_filepaths, check_for_key
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
@@ -945,7 +945,13 @@ class EarthbeamDAG:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
             @task(pool=self.pool, dag=self.dag)
-            def match_rates_to_snowflake(s3_full_filepath:str):
+            def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
+                match_rates_s3_filepath = os.path.join(s3_full_filepath, 'student_id_match_rates.csv')
+                match_rates_exist = check_for_key(match_rates_s3_filepath, s3_conn_id)
+
+                if match_rates_exist == False:
+                    raise AirflowSkipException(f"Nothing to load! Match rates were not calculated.")
+
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
                 delete_sql = f'''
@@ -956,8 +962,6 @@ class EarthbeamDAG:
                 '''
 
                 database = student_id_match_rates_table.partition('.')[0]
-                match_rates_s3_filepath = os.path.join(s3_full_filepath, 'student_id_match_rates.csv')
-
                 copy_sql = f'''
                     COPY INTO {student_id_match_rates_table}
                     (tenant_code, api_year, assessment_name, source_column_name, edfi_column_name, num_matches, num_rows, match_rate)
@@ -1032,8 +1036,9 @@ class EarthbeamDAG:
                 em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
                 all_tasks.append(em_s3_filepath)
 
+                # Load match rates to Snowflake 
                 if student_id_match_rates_table:
-                    load_match_rates_to_snowflake = match_rates_to_snowflake(em_s3_filepath)
+                    load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath)
                     all_tasks.append(load_match_rates_to_snowflake)
             else:
                 em_s3_filepath = None
