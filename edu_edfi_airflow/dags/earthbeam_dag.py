@@ -805,7 +805,7 @@ class EarthbeamDAG:
                     })
 
                     # Add params for Snowflake Ed-Fi roster source if a file source was not provided
-                    if 'EDFI_ROSTER_SOURCE_TYPE' not in env_mapping or env_mapping['EDFI_ROSTER_SOURCE_TYPE'] != "file":
+                    if 'EDFI_ROSTER_SOURCE_TYPE' not in earthmover_kwargs['parameters'] or earthmover_kwargs['parameters']['EDFI_ROSTER_SOURCE_TYPE'] != "file":
                         env_mapping.update({
                             'EDFI_ROSTER_SOURCE_TYPE': 'snowflake',
                             'SNOWFLAKE_EDU_STG_SCHEMA': 'analytics.prod_stage',
