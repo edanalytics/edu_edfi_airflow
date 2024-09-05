@@ -95,3 +95,25 @@ def local_filepath_to_s3(
             remove_filepaths(local_filepath)
 
     return s3_destination_key
+
+
+def check_for_key(
+    s3_key: str,
+    s3_conn_id: str,     
+):
+    """
+    Check if a key exists in a bucket.
+
+    :param s3_key:
+    :param s3_conn_id:
+    :return:
+    """
+    s3_hook = S3Hook(aws_conn_id=s3_conn_id)
+    s3_bucket = s3_hook.get_connection(s3_conn_id).schema
+
+    key_found = s3_hook.check_for_key(
+        key=s3_key,
+        bucket_name=s3_bucket
+    )
+
+    return key_found

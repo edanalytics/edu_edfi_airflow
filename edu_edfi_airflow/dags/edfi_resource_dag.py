@@ -69,6 +69,7 @@ class EdFiResourceDAG:
 
         use_change_version: bool = True,
         get_key_changes: bool = False,
+        get_deletes_cv_with_deltas: bool = True,
         run_type: str = "default",
         resource_configs: Optional[List[dict]] = None,
         descriptor_configs: Optional[List[dict]] = None,
@@ -102,6 +103,7 @@ class EdFiResourceDAG:
         self.deletes_table = deletes_table
         self.key_changes_table = key_changes_table
         self.descriptors_table = descriptors_table
+        self.get_deletes_cv_with_deltas = get_deletes_cv_with_deltas
 
         self.dbt_incrementer_var = dbt_incrementer_var
         
@@ -264,7 +266,8 @@ class EdFiResourceDAG:
             endpoints=sorted(list(self.deletes_to_ingest)),
             table=self.deletes_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'resource_deletes'),
-            get_deletes=True
+            get_deletes=True,
+            get_with_deltas=self.get_deletes_cv_with_deltas
         )
 
         # Resource Key-Changes (only applicable in Ed-Fi v6.x and up)
@@ -366,7 +369,8 @@ class EdFiResourceDAG:
         task_id: str,
         endpoints: List[Tuple[str, str]],
         get_deletes: bool = False,
-        get_key_changes: bool = False
+        get_key_changes: bool = False,
+        get_with_deltas: bool = True
     ) -> PythonOperator:
         """
 
@@ -374,7 +378,7 @@ class EdFiResourceDAG:
         """
         get_cv_operator = PythonOperator(
             task_id=task_id,
-            python_callable=change_version.get_previous_change_versions_with_deltas,
+            python_callable=change_version.get_previous_change_versions_with_deltas if get_with_deltas else change_version.get_previous_change_versions,
             op_kwargs={
                 'tenant_code': self.tenant_code,
                 'api_year': self.api_year,
@@ -468,6 +472,7 @@ class EdFiResourceDAG:
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
+        get_with_deltas: bool = True,                                           
         **kwargs
     ) -> TaskGroup:
         """
@@ -480,6 +485,7 @@ class EdFiResourceDAG:
         :param table:
         :param get_deletes:
         :param get_key_changes:
+        :param get_with_deltas:
         :return:
         """
         if not endpoints:
@@ -499,6 +505,7 @@ class EdFiResourceDAG:
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
+                    get_with_deltas=get_with_deltas
                 )
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
             else:
@@ -523,6 +530,7 @@ class EdFiResourceDAG:
                     get_key_changes=get_key_changes,
                     min_change_version=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else None,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                    reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                     # Optional config-specified run-attributes (overridden by those in configs)
                     **self.endpoint_configs[endpoint],
@@ -580,6 +588,8 @@ class EdFiResourceDAG:
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
+        get_with_deltas: bool = True,
+                               
         **kwargs
     ):
         """
@@ -591,7 +601,8 @@ class EdFiResourceDAG:
         :param s3_destination_dir:
         :param table:
         :param get_deletes:
-        :param get_key_changes:
+        :param get_key_changes:                    
+        :param get_with_deltas:
         :return:
         """
         if not endpoints:
@@ -611,7 +622,8 @@ class EdFiResourceDAG:
                     task_id=f"get_last_change_versions_from_snowflake",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    get_with_deltas=get_with_deltas
                 )
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
@@ -646,6 +658,7 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                    reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
@@ -701,6 +714,7 @@ class EdFiResourceDAG:
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
+        get_with_deltas: bool = True,
         **kwargs
     ):
         """
@@ -713,6 +727,7 @@ class EdFiResourceDAG:
         :param table:
         :param get_deletes:
         :param get_key_changes:
+        :param get_with_deltas:
         :return:
         """
         if not endpoints:
@@ -732,7 +747,8 @@ class EdFiResourceDAG:
                     task_id=f"get_last_change_versions",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
-                    get_key_changes=get_key_changes
+                    get_key_changes=get_key_changes,
+                    get_with_deltas=get_with_deltas
                 )
                 min_change_versions = [
                     self.xcom_pull_template_get_key(get_cv_operator, endpoint)
@@ -764,6 +780,7 @@ class EdFiResourceDAG:
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
                 max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                 # Arguments that are required to be lists in Ed-Fi bulk-operator.
                 resource=endpoints,

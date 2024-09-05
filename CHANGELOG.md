@@ -1,7 +1,22 @@
+## edu_edfi_airflow v0.4.0
+## New features
+- Add `EarthbeamDAG.partition_on_tenant_and_year()`, a preprocessing function to shard data to parquet on disk. This is useful when a single input file contains multiple years and/or tenants.
+- Add `EarthbeamDAG.build_dynamic_tenant_year_task_group()` to build dynamic Earthbeam task groups for each file to process in a source folder
+- Add ID matching sub-taskgroup and arguments to `EarthbeamDAG` taskgroups, in order to retrieve an assessment's identity columns from Snowflake
+- Add optional postprocess Python callable to `EarthbeamDAG` taskgroups
+- Add optional Lightbeam validation to `EarthbeamDAG` taskgroups
+- Add option to log Python preprocess and postprocess outputs to Snowflake
+
+## Under the hood
+- Make accessing the `Total-Count` of the Ed-Fi `/deletes` endpoints optional using argument `get_deletes_cv_with_deltas` (necessary for generic Ed-Fi 5.3 ODSes)
+- Refactor `EarthbeamDAG` to use Airflow TaskFlow syntax and simplify Earthbeam task groups
+- Deprecate `EarthbeamDAG.build_tenant_year_task_group()` argument `raw_dir`
+
 # edu_edfi_airflow v0.3.1
 ## Fixes
 - Fix bug where updates to query-parameters persisted across every `EdFiResourceDAG`
 - Add logging of failed endpoints on `EdFiResourceDAG` task `failed_total_counts`
+
 
 # edu_edfi_airflow v0.3.0
 ## New features

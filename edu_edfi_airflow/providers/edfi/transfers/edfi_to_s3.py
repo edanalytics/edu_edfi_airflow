@@ -50,6 +50,7 @@ class EdFiToS3Operator(BaseOperator):
         page_size: int = 500,
         num_retries: int = 5,
         change_version_step_size: int = 50000,
+        reverse_paging: bool = True,
         query_parameters  : Optional[dict] = None,
 
         enabled_endpoints: Optional[List[str]] = None,
@@ -79,6 +80,7 @@ class EdFiToS3Operator(BaseOperator):
         self.page_size = page_size
         self.num_retries = num_retries
         self.change_version_step_size = change_version_step_size
+        self.reverse_paging = reverse_paging
         self.query_parameters = query_parameters
 
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
@@ -183,6 +185,7 @@ class EdFiToS3Operator(BaseOperator):
             paged_iter = resource_endpoint.get_pages(
                 page_size=page_size,
                 step_change_version=step_change_version, change_version_step_size=change_version_step_size,
+                reverse_paging=(self.reverse_paging),
                 retry_on_failure=True, max_retries=num_retries
             )
 
