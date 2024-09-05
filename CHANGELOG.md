@@ -12,6 +12,11 @@
 - Refactor `EarthbeamDAG` to use Airflow TaskFlow syntax and simplify Earthbeam task groups
 - Deprecate `EarthbeamDAG.build_tenant_year_task_group()` argument `raw_dir`
 
+# edu_edfi_airflow v0.3.1
+## Fixes
+- Fix bug where updates to query-parameters persisted across every `EdFiResourceDAG`
+- Add logging of failed endpoints on `EdFiResourceDAG` task `failed_total_counts`
+
 
 # edu_edfi_airflow v0.3.0
 ## New features

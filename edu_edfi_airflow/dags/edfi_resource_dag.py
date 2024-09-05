@@ -1,3 +1,4 @@
+import copy
 import os
 from functools import partial
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -146,6 +147,7 @@ class EdFiResourceDAG:
         `enabled` and `fetch_deletes` are not passed into configs.
         """
         configs = {**self.DEFAULT_CONFIGS, **kwargs}
+        configs["query_parameters"] = copy.deepcopy(configs["query_parameters"])  # Prevent query_parameters from being shared across DAGs.
 
         ### For a multiyear ODS, we need to specify school year as an additional query parameter.
         # (This is an exception-case; we push all tenants to build year-specific ODSes when possible.)
@@ -396,7 +398,7 @@ class EdFiResourceDAG:
         # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
         def fail_if_xcom(xcom_value, **context):
             if xcom_value:
-                raise AirflowFailException
+                raise AirflowFailException(f"The following endpoints failed when pulling total counts: {xcom_value}")
             else:
                 raise AirflowSkipException  # Force a skip to not mark the taskgroup as a success when all tasks skip.
 
