@@ -743,13 +743,15 @@ class EarthbeamDAG:
                 )
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
+                input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs  # Taskgroup argument
                 filepaths = [filepaths] if isinstance(filepaths, str) else filepaths
-                for filepath in filepaths:
+                for env_var, filepath in zip(input_file_envs, filepaths):
                     filepath = context['task'].render_template(filepath, context)
+                    s3_filepath = os.path.join(s3_full_filepath, env_var)
 
                     local_filepath_to_s3(
                         s3_conn_id=s3_conn_id,
-                        s3_destination_key=s3_full_filepath,
+                        s3_destination_key=s3_filepath,
                         local_filepath=filepath,
                         remove_local_filepath=False
                     )
