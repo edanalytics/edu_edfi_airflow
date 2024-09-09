@@ -729,8 +729,12 @@ class EarthbeamDAG:
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
         def file_to_edfi_taskgroup(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]]):
 
+            # Force these arguments to lists if strings are passed.
+            input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
+            input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
+
             @task(pool=self.pool, dag=self.dag)
-            def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, **context):
+            def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, s3_file_subdirs: Optional[List[str]] = None, **context):
                 if not s3_filepath:
                     raise ValueError(
                         "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
@@ -743,15 +747,16 @@ class EarthbeamDAG:
                 )
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
-                input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs  # Taskgroup argument
-                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths
-                for env_var, filepath in zip(input_file_envs, filepaths):
+                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths  # Data-dir is passed as a singleton
+                s3_file_subdirs = [None] * len(filepaths) if not s3_file_subdirs else s3_file_subdirs
+
+                for filepath, file_subdir in zip(filepaths, s3_file_subdirs):
                     filepath = context['task'].render_template(filepath, context)
-                    s3_env_filepath = os.path.join(s3_full_filepath, env_var)
+                    s3_write_filepath = os.path.join(s3_full_filepath, file_subdir) if file_subdir else s3_full_filepath
 
                     local_filepath_to_s3(
                         s3_conn_id=s3_conn_id,
-                        s3_destination_key=s3_env_filepath,
+                        s3_destination_key=s3_write_filepath,
                         local_filepath=filepath,
                         remove_local_filepath=False
                     )
@@ -793,9 +798,6 @@ class EarthbeamDAG:
             
             @task(multiple_outputs=True, pool=self.earthmover_pool, dag=self.dag)
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], max_match_rate: Optional[bool] = None, **context):
-                input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
-                input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
-
                 file_basename = self.get_filename(input_filepaths[0])
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
 
@@ -1009,9 +1011,9 @@ class EarthbeamDAG:
             all_tasks = []  # Track all tasks to apply cleanup at the very end
             paths_to_clean = [input_filepaths]
 
-            # Raw to S3
+            # Raw to S3: one subfolder per input file environment variable
             if s3_conn_id:
-                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw")
+                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw", s3_file_subdirs=input_file_envs)
                 all_tasks.append(raw_to_s3)
             else:
                 raw_to_s3 = None
