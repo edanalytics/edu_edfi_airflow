@@ -750,16 +750,22 @@ class EarthbeamDAG:
                 filepaths = [filepaths] if isinstance(filepaths, str) else filepaths  # Data-dir is passed as a singleton
                 s3_file_subdirs = [None] * len(filepaths) if not s3_file_subdirs else s3_file_subdirs
 
-                for filepath, file_subdir in zip(filepaths, s3_file_subdirs):
+                # Zip optional subdirectories if specified; make secondary file-uploads optional
+                for idx, (filepath, file_subdir) in enumerate(zip(filepaths, s3_file_subdirs)):
                     filepath = context['task'].render_template(filepath, context)
                     s3_write_filepath = os.path.join(s3_full_filepath, file_subdir) if file_subdir else s3_full_filepath
 
-                    local_filepath_to_s3(
-                        s3_conn_id=s3_conn_id,
-                        s3_destination_key=s3_write_filepath,
-                        local_filepath=filepath,
-                        remove_local_filepath=False
-                    )
+                    try:
+                        local_filepath_to_s3(
+                            s3_conn_id=s3_conn_id,
+                            s3_destination_key=s3_write_filepath,
+                            local_filepath=filepath,
+                            remove_local_filepath=False
+                        )
+                    except FileNotFoundError as err:
+                        logging.warning(f"File not found for S3 upload: {filepath}")
+                        if idx == 0:  # Optional files always come secondary to required files
+                            raise AirflowFailException(str(err))
 
                 return s3_full_filepath
             
