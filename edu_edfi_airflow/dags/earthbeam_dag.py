@@ -737,8 +737,8 @@ class EarthbeamDAG:
                     )
 
                 
-                input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
-                file_basename = self.get_filename(input_filepaths[0])
+                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths
+                file_basename = self.get_filename(filepaths[0])
 
                 s3_full_filepath = edfi_api_client.url_join(
                     s3_filepath, subdirectory,
