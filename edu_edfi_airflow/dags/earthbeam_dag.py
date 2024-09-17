@@ -736,10 +736,15 @@ class EarthbeamDAG:
                         "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
                     )
 
+                
+                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths
+                file_basename = self.get_filename(filepaths[0])
+
                 s3_full_filepath = edfi_api_client.url_join(
                     s3_filepath, subdirectory,
                     tenant_code, self.run_type, api_year, grain_update,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}'
+                    '{{ ds_nodash }}', '{{ ts_nodash }}',
+                    file_basename
                 )
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
 
