@@ -739,11 +739,11 @@ class EarthbeamDAG:
                     raise ValueError(
                         "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
                     )
-
                 
-                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths
-                file_basename = self.get_filename(filepaths[0])
+                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths  # Data-dir is passed as a singleton
+                s3_file_subdirs = [None] * len(filepaths) if not s3_file_subdirs else s3_file_subdirs
 
+                file_basename = self.get_filename(filepaths[0])
                 s3_full_filepath = edfi_api_client.url_join(
                     s3_filepath, subdirectory,
                     tenant_code, self.run_type, api_year, grain_update,
@@ -751,9 +751,6 @@ class EarthbeamDAG:
                     file_basename
                 )
                 s3_full_filepath = context['task'].render_template(s3_full_filepath, context)
-
-                filepaths = [filepaths] if isinstance(filepaths, str) else filepaths  # Data-dir is passed as a singleton
-                s3_file_subdirs = [None] * len(filepaths) if not s3_file_subdirs else s3_file_subdirs
 
                 # Zip optional subdirectories if specified; make secondary file-uploads optional
                 for idx, (filepath, file_subdir) in enumerate(zip(filepaths, s3_file_subdirs)):

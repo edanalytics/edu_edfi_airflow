@@ -1,4 +1,14 @@
-## edu_edfi_airflow v0.4.0
+# edu_edfi_airflow v0.4.1
+## Under the hood
+- Wrap Snowflake stage with single quotes to support filepaths with special characters
+
+## Fixes
+- Fix bugs where files written to S3 could be overwritten in `EarthbeamDAG`
+- Fix bug where optional files fail upload to S3
+
+
+
+# edu_edfi_airflow v0.4.0
 ## New features
 - Add `EarthbeamDAG.partition_on_tenant_and_year()`, a preprocessing function to shard data to parquet on disk. This is useful when a single input file contains multiple years and/or tenants.
 - Add `EarthbeamDAG.build_dynamic_tenant_year_task_group()` to build dynamic Earthbeam task groups for each file to process in a source folder
@@ -11,6 +21,7 @@
 - Make accessing the `Total-Count` of the Ed-Fi `/deletes` endpoints optional using argument `get_deletes_cv_with_deltas` (necessary for generic Ed-Fi 5.3 ODSes)
 - Refactor `EarthbeamDAG` to use Airflow TaskFlow syntax and simplify Earthbeam task groups
 - Deprecate `EarthbeamDAG.build_tenant_year_task_group()` argument `raw_dir`
+
 
 # edu_edfi_airflow v0.3.1
 ## Fixes
