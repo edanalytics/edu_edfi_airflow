@@ -135,7 +135,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                     '{self.ods_version}' AS ods_version,
                     '{self.data_model_version}' AS data_model_version,
                     t.$1 AS v
-                FROM @{database}.util.airflow_stage/{s3_key}
+                FROM '@{database}.util.airflow_stage/{s3_key}'
                 (file_format => 'json_default') t
             )
             force = true;
