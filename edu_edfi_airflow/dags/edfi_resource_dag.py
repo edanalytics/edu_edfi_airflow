@@ -267,7 +267,8 @@ class EdFiResourceDAG:
             table=self.deletes_table,
             s3_destination_dir=os.path.join(s3_parent_directory, 'resource_deletes'),
             get_deletes=True,
-            get_with_deltas=self.get_deletes_cv_with_deltas
+            get_with_deltas=self.get_deletes_cv_with_deltas,
+            always_full_refresh=True
         )
 
         # Resource Key-Changes (only applicable in Ed-Fi v6.x and up)
@@ -472,7 +473,8 @@ class EdFiResourceDAG:
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
-        get_with_deltas: bool = True,                                           
+        get_with_deltas: bool = True,
+        always_full_refresh: bool = False,                                           
         **kwargs
     ) -> TaskGroup:
         """
@@ -486,6 +488,7 @@ class EdFiResourceDAG:
         :param get_deletes:
         :param get_key_changes:
         :param get_with_deltas:
+        :param always_full_refresh:
         :return:
         """
         if not endpoints:
@@ -499,7 +502,7 @@ class EdFiResourceDAG:
         ) as default_task_group:
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
-            if self.use_change_version:
+            if self.use_change_version and not get_deletes:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
@@ -556,6 +559,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
+                full_refresh=always_full_refresh,
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -589,6 +593,7 @@ class EdFiResourceDAG:
         get_deletes: bool = False,
         get_key_changes: bool = False,
         get_with_deltas: bool = True,
+        always_full_refresh: bool = False, 
                                
         **kwargs
     ):
@@ -603,6 +608,7 @@ class EdFiResourceDAG:
         :param get_deletes:
         :param get_key_changes:                    
         :param get_with_deltas:
+        :param always_full_refresh:
         :return:
         """
         if not endpoints:
@@ -628,7 +634,7 @@ class EdFiResourceDAG:
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
                     'resource': endpoint__cv[0],
-                    'min_change_version': endpoint__cv[1],
+                    'min_change_version': endpoint__cv[1] if not get_deletes else None,
                     's3_destination_filename': f"{endpoint__cv[0]}.jsonl",
                     **self.endpoint_configs[endpoint__cv[0]],
                 })
@@ -682,6 +688,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
+                full_refresh=always_full_refresh,
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -715,6 +722,7 @@ class EdFiResourceDAG:
         get_deletes: bool = False,
         get_key_changes: bool = False,
         get_with_deltas: bool = True,
+        always_full_refresh: bool = False,
         **kwargs
     ):
         """
@@ -728,6 +736,7 @@ class EdFiResourceDAG:
         :param get_deletes:
         :param get_key_changes:
         :param get_with_deltas:
+        :param always_full_refresh:
         :return:
         """
         if not endpoints:
@@ -751,7 +760,7 @@ class EdFiResourceDAG:
                     get_with_deltas=get_with_deltas
                 )
                 min_change_versions = [
-                    self.xcom_pull_template_get_key(get_cv_operator, endpoint)
+                    self.xcom_pull_template_get_key(get_cv_operator, endpoint) if not get_deletes else None
                     for endpoint in endpoints
                 ]
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
@@ -809,6 +818,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
+                full_refresh=always_full_refresh,
 
                 trigger_rule='none_skipped',  # Different trigger rule than default.
                 dag=self.dag
