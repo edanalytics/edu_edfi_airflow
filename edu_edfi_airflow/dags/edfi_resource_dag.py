@@ -502,7 +502,7 @@ class EdFiResourceDAG:
         ) as default_task_group:
 
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
-            if self.use_change_version and not get_deletes:
+            if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_snowflake",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
@@ -519,6 +519,13 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
+                if get_deletes:
+                    min_change_version = 0
+                elif get_cv_operator:
+                    min_change_version = self.xcom_pull_template_get_key(get_cv_operator, endpoint)
+                else:
+                    min_change_version = None
+
                 pull_edfi_to_s3 = EdFiToS3Operator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
@@ -531,7 +538,7 @@ class EdFiResourceDAG:
                     
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
-                    min_change_version=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else None,
+                    min_change_version=min_change_version,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id) if not get_deletes else None,
                     reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
