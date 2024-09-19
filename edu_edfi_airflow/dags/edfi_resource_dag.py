@@ -532,7 +532,7 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     min_change_version=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else None,
-                    max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                    max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id) if not get_deletes else None,
                     reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                     # Optional config-specified run-attributes (overridden by those in configs)
@@ -634,7 +634,7 @@ class EdFiResourceDAG:
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
                     'resource': endpoint__cv[0],
-                    'min_change_version': endpoint__cv[1] if not get_deletes else None,
+                    'min_change_version': endpoint__cv[1] if not get_deletes else 0,
                     's3_destination_filename': f"{endpoint__cv[0]}.jsonl",
                     **self.endpoint_configs[endpoint__cv[0]],
                 })
@@ -760,7 +760,7 @@ class EdFiResourceDAG:
                     get_with_deltas=get_with_deltas
                 )
                 min_change_versions = [
-                    self.xcom_pull_template_get_key(get_cv_operator, endpoint) if not get_deletes else None
+                    self.xcom_pull_template_get_key(get_cv_operator, endpoint) if not get_deletes else 0
                     for endpoint in endpoints
                 ]
                 enabled_endpoints = self.xcom_pull_template_map_idx(get_cv_operator, 0)
