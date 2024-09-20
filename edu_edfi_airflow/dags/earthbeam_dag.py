@@ -646,8 +646,8 @@ class EarthbeamDAG:
         grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
 
         # Retrieve task id to get log type
-        task_id = kwargs['task']
-        log_type = re.sub("\\>", "", re.search("(?<=\\.).*", task_id).group(0))
+        task_id = kwargs['task'].task_id
+        log_type = re.split(r'\.', task_id)[-1]
 
         qry_insert_into = f"""
             INSERT INTO {database}.{schema}.{logging_table}
