@@ -645,6 +645,10 @@ class EarthbeamDAG:
 
         grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
 
+        # Retrieve task id to get log type
+        task_id = kwargs['task']
+        log_type = re.sub("\\>", "", re.search("(?<=\\.).*", task_id).group(0))
+
         qry_insert_into = f"""
             INSERT INTO {database}.{schema}.{logging_table}
                 (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
@@ -652,9 +656,11 @@ class EarthbeamDAG:
                 '{tenant_code}' AS tenant_code,
                 '{api_year}' AS api_year,
                 {grain_update_str} AS grain_update,
+                '{log_type}' AS log_type,
                 '{self.run_type}' AS run_type,
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
+                
                 PARSE_JSON($${log_data}$$) AS result
         """
 
