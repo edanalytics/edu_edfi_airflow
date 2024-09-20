@@ -54,6 +54,8 @@ Alternatively, use argument `schedule_interval_full_refresh` to set an automatic
 | schedule_interval_full_refresh | CRON schedule that automatically triggers a full-refresh, instead of the default delta run (default `None`)                                        |
 | use_change_version             | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                                           |
 | get_key_changes                | Boolean flag for whether to build a /keyChanges task-group (only applicable in newer ODSes; default `False`)                                       |
+| get_deletes_cv_with_deltas     | Boolean flag for whether to use Total-Count for reverse paging deletes (default `True`; change only if API version does not have Total-Count)      |
+| pull_all_deletes               | Boolean flag for whether to always pull all deletes to ensure suppressed deletes are captured (default `True`; recommended for accuracy)           |
 | run_type                       | Specifies the run-type for the Ed-Fi task groups in the DAG (default `'default'`)                                                                  |
 | resource_configs               | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_resource()` and `add_resource_deletes()` methods; default `None`) |
 | descriptor_configs             | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_descriptor()` method; default `None`)                             |
