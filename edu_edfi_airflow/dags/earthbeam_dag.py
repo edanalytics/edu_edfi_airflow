@@ -651,7 +651,7 @@ class EarthbeamDAG:
 
         qry_insert_into = f"""
             INSERT INTO {database}.{schema}.{logging_table}
-                (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
+                (tenant_code, api_year, grain_update, log_type, run_type, run_date, run_timestamp, result)
             SELECT
                 '{tenant_code}' AS tenant_code,
                 '{api_year}' AS api_year,
