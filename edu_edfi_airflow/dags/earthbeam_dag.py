@@ -806,6 +806,9 @@ class EarthbeamDAG:
             
             @task(multiple_outputs=True, pool=self.earthmover_pool, dag=self.dag)
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], max_match_rate: Optional[bool] = None, **context):
+                input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
+                input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
+            
                 file_basename = self.get_filename(input_filepaths[0])
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
 
