@@ -820,8 +820,11 @@ class EarthbeamDAG:
                         env_mapping.update({
                             'EDFI_ROSTER_SOURCE_TYPE': 'snowflake',
                             'SNOWFLAKE_EDU_STG_SCHEMA': 'analytics.prod_stage',
-                            'SNOWFLAKE_TENANT_CODE': tenant_code
                         })
+                        # Don't overwrite if this was provided as an earthmover param (used for handling consolidated districts in ODS years)
+                        if 'SNOWFLAKE_TENANT_CODE' not in earthmover_kwargs['parameters']:
+                            env_mapping['SNOWFLAKE_TENANT_CODE'] = tenant_code
+
                         # Don't overwrite if this was provided as an earthmover param (used for loading historical files using a current year of roster data)
                         if 'SNOWFLAKE_API_YEAR' not in earthmover_kwargs['parameters']:
                             env_mapping['SNOWFLAKE_API_YEAR'] = api_year
@@ -1015,27 +1018,29 @@ class EarthbeamDAG:
                 return remove_filepaths(unnested_filepaths)
 
 
-            all_tasks = []  # Track all tasks to apply cleanup at the very end
+            ### Only Earthmover and Cleanup are required tasks
+            # EarthmoverOperator with optional student ID-matching
+            all_tasks = []  # Track all tasks after Earthmover to force cleanup at the very end
             paths_to_clean = [input_filepaths]
-
-            # Raw to S3: one subfolder per input file environment variable
-            if s3_conn_id:
-                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw", s3_file_subdirs=input_file_envs)
-                all_tasks.append(raw_to_s3)
-            else:
-                raw_to_s3 = None
 
             # Pull stored student ID match rates and run earthmover
             if student_id_match_rates_table:
                 max_match_rate = check_existing_match_rates()
-                all_tasks.append(max_match_rate)
                 earthmover_results = run_earthmover(input_file_envs, input_filepaths, max_match_rate)
             else:
                 earthmover_results = run_earthmover(input_file_envs, input_filepaths)
                 
-            # EarthmoverOperator: Required
             all_tasks.append(earthmover_results)
             paths_to_clean.append(earthmover_results["data_dir"])
+
+            # Final cleanup (apply at very end of the taskgroup)
+            remove_files_operator = remove_files(paths_to_clean)
+                
+
+            # Raw to S3: one subfolder per input file environment variable
+            if s3_conn_id:
+                raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw", s3_file_subdirs=input_file_envs)
+                raw_to_s3 >> remove_files_operator
 
             # Earthmover logs to Snowflake
             if logging_table:
@@ -1073,6 +1078,7 @@ class EarthbeamDAG:
             elif edfi_conn_id:
                 lightbeam_results = run_lightbeam(earthmover_results["data_dir"], command="send", lb_edfi_conn_id=edfi_conn_id)
                 all_tasks.append(lightbeam_results)
+                lightbeam_results >> remove_files_operator  # Wait for lightbeam to finish before removing Earthmover outputs
 
                 if lightbeam_validate_results:
                     lightbeam_validate_results >> lightbeam_results
@@ -1089,10 +1095,7 @@ class EarthbeamDAG:
                     python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"])
                 all_tasks.append(python_postprocess)
 
-            # Final cleanup (apply at very end of the taskgroup)
-            remove_files_operator = remove_files(paths_to_clean)
-            if raw_to_s3:
-                raw_to_s3 >> remove_files_operator
+            # Force file-removal to occur after the last task.
             all_tasks[-1] >> remove_files_operator
 
         return file_to_edfi_taskgroup
