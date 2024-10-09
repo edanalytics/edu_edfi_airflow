@@ -820,8 +820,11 @@ class EarthbeamDAG:
                         env_mapping.update({
                             'EDFI_ROSTER_SOURCE_TYPE': 'snowflake',
                             'SNOWFLAKE_EDU_STG_SCHEMA': 'analytics.prod_stage',
-                            'SNOWFLAKE_TENANT_CODE': tenant_code
                         })
+                        # Don't overwrite if this was provided as an earthmover param (used for handling consolidated districts in ODS years)
+                        if 'SNOWFLAKE_TENANT_CODE' not in earthmover_kwargs['parameters']:
+                            env_mapping['SNOWFLAKE_TENANT_CODE'] = tenant_code
+
                         # Don't overwrite if this was provided as an earthmover param (used for loading historical files using a current year of roster data)
                         if 'SNOWFLAKE_API_YEAR' not in earthmover_kwargs['parameters']:
                             env_mapping['SNOWFLAKE_API_YEAR'] = api_year
