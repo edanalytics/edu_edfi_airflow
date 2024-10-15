@@ -1,3 +1,16 @@
+# edu_edfi_airflow v0.4.2
+## New features
+- Add boolean `pull_all_deletes` argument to `EdFiResourceDAG` to re-pull all deletes for a resource when any are added (resolves deletes-skipping bug).
+- Allow `SNOWFLAKE_TENANT_CODE` to be overridden in `earthmover_kwargs` in `EarthbeamDAG`.
+
+## Under the hood
+- Simplify taskgroup declaration in `EarthbeamDAG`.
+
+## Fixes
+- Fix bug where singleton filepaths in `EarthbeamDAG` were not converted to lists upon initialization.
+- Add dependency between Lightbeam and file-deletion in `EarthbeamDAG`.
+
+
 # edu_edfi_airflow v0.4.1
 ## Under the hood
 - Wrap Snowflake stage with single quotes to support filepaths with special characters
