@@ -253,7 +253,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                     TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '{ts_regex}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
                     metadata$file_row_number AS file_row_number,
                     metadata$filename AS filename,
-                    'split_part(split_part(metadata$filename, '/', -1), '.', 0)' AS name,
+                    SPLIT_PART(SPLIT_PART(metadata$filename, '/', -1), '.', 0) AS name,
                     '{self.ods_version}' AS ods_version,
                     '{self.data_model_version}' AS data_model_version,
                     t.$1 AS v
