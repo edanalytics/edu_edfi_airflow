@@ -232,6 +232,9 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         
         S3 Path Structure:
             /{tenant_code}/{api_year}/{ds_nodash}/{ts_no_dash}/{taskgroup_type}/{name}.jsonl
+
+        Use regex to capture name: ".+/(\\w+).jsonl?"
+        Note optional args in REGEXP_SUBSTR(): position (1), occurrence (1), regex_parameters ('c'), group_num
         """
         ### Retrieve the database and schema from the Snowflake hook.
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
@@ -253,7 +256,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                     TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '{ts_regex}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
                     metadata$file_row_number AS file_row_number,
                     metadata$filename AS filename,
-                    SPLIT_PART(SPLIT_PART(metadata$filename, '/', -1), '.', 0) AS name,
+                    REGEXP_SUBSTR(filename, '.+/(\\w+).jsonl?', 1, 1, 'c', 1) AS name,
                     '{self.ods_version}' AS ods_version,
                     '{self.data_model_version}' AS data_model_version,
                     t.$1 AS v
