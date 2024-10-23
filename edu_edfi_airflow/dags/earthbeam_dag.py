@@ -1050,7 +1050,7 @@ class EarthbeamDAG:
             # Earthmover to S3
             if s3_conn_id:
                 em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
-                all_tasks.append(em_s3_filepath)
+                em_s3_filepath >> remove_files_operator
 
                 # Load match rates to Snowflake 
                 if student_id_match_rates_table:
