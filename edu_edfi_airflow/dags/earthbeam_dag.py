@@ -955,8 +955,7 @@ class EarthbeamDAG:
                 if not endpoints:
                     raise Exception("No endpoints defined for ODS-bypass!")
 
-                for endpoint in endpoints:
-                    em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
+                em_to_snowflake.override(task_id=f"copy_s3_endpoints_to_snowflake").partial(s3_destination_dir=s3_destination_dir).expand(endpoint=endpoints)
 
             @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
