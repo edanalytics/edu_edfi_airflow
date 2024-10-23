@@ -13,7 +13,7 @@ class EarthmoverOperator(BashOperator):
     """
 
     """
-    template_fields = ('output_dir', 'state_file', 'arguments', 'bash_command', 'env',)
+    template_fields = ('output_dir', 'state_file', 'arguments', 'selector', 'bash_command', 'env',)
 
     def __init__(self,
         *,
@@ -46,10 +46,7 @@ class EarthmoverOperator(BashOperator):
         if config_file:
             self.arguments['--config-file'] = config_file
 
-        if selector:  # Pre-built selector string or list of node names
-            if not isinstance(selector, str):
-                selector = ",".join(selector)
-            self.arguments['--selector'] = selector
+        self.selector = selector  # Selector string or list of node names
 
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
@@ -92,6 +89,12 @@ class EarthmoverOperator(BashOperator):
             database_conn_string = f"snowflake://{db_conn.login}:{db_conn.password}@{db_conn.extra_dejson['extra__snowflake__account']}"
             self.env['SNOWFLAKE_CONNECTION'] = database_conn_string
 
+        # Allow selector to be Jinja-templated (especially as Params)
+        if self.selector:
+            if not isinstance(self.selector, str):
+                self.selector = ",".join(self.selector)
+            self.arguments['--selector'] = self.selector
+
         # Format values before adding to the bash command.
         cli_arguments = []
         for key, val in self.arguments.items():
@@ -117,7 +120,7 @@ class LightbeamOperator(BashOperator):
     """
 
     """
-    template_fields = ('data_dir', 'state_dir', 'arguments', 'bash_command', 'env',)
+    template_fields = ('data_dir', 'state_dir', 'arguments', 'selector', 'bash_command', 'env',)
     valid_commands = ('validate', 'send', 'validate+send')
 
     def __init__(self,
@@ -162,10 +165,7 @@ class LightbeamOperator(BashOperator):
         if config_file:
             self.arguments['--config-file'] = config_file
 
-        if selector:  # Pre-built selector string or list of node names
-            if not isinstance(selector, str):
-                selector = ",".join(selector)
-            self.arguments['--selector'] = selector
+        self.selector = selector  # Selector string or list of node names
 
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
@@ -233,6 +233,12 @@ class LightbeamOperator(BashOperator):
         if airflow_util.get_context_variable(context, 'force', default=False):
             logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
             self.arguments['--force'] = ""
+
+        # Allow selector to be Jinja-templated (especially as Params)
+        if self.selector:  # Selector string or list of node names
+            if not isinstance(self.selector, str):
+                self.selector = ",".join(self.selector)
+            self.arguments['--selector'] = self.selector
 
         # Create state_dir if not already defined in filespace
         os.makedirs(self.state_dir, exist_ok=True)
