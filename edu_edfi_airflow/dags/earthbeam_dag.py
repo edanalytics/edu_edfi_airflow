@@ -912,7 +912,7 @@ class EarthbeamDAG:
                 }
             
             @task(pool=self.pool, dag=self.dag)
-            def em_to_snowflake(s3_destination_dir: str, endpoint: str, sla=None, **context):
+            def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
                 # Snowflake tables are snake_cased; Earthmover outputs are camelCased
                 snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
                 camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
@@ -955,7 +955,7 @@ class EarthbeamDAG:
                 if not endpoints:
                     raise Exception("No endpoints defined for ODS-bypass!")
 
-                em_to_snowflake.override(task_id=f"copy_s3_endpoints_to_snowflake").partial(s3_destination_dir=s3_destination_dir).expand(endpoint=endpoints)
+                em_to_snowflake.override(task_id=f"copy_s3_endpoints_to_snowflake", sla=None).partial(s3_destination_dir=s3_destination_dir).expand(endpoint=endpoints)
 
             @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
