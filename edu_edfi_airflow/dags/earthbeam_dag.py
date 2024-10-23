@@ -472,6 +472,11 @@ class EarthbeamDAG:
         """
         IMPORTANT: This approach assumes a template will use 'input_file_var' as its only input parameter!
         """
+        if isinstance(endpoints, str):
+            raise AirflowFailException(
+                "Dynamically-mapped endpoints are not possible within a dynamically-mapped taskgroup."
+            )
+
         # Group ID can be defined manually or built dynamically
         group_id = group_id or self.build_group_id(
             tenant_code, api_year, grain_update,
@@ -955,7 +960,11 @@ class EarthbeamDAG:
                 if not endpoints:
                     raise Exception("No endpoints defined for ODS-bypass!")
 
-                em_to_snowflake.override(task_id=f"copy_s3_endpoints_to_snowflake", sla=None).partial(s3_destination_dir=s3_destination_dir).expand(endpoint=endpoints)
+                if isinstance(endpoints, str):
+                    em_to_snowflake.override(task_id=f"copy_s3_endpoints_to_snowflake", sla=None).partial(s3_destination_dir=s3_destination_dir).expand(endpoint=endpoints)
+                else:
+                    for endpoint in endpoints:
+                        em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
             @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
