@@ -912,7 +912,7 @@ class EarthbeamDAG:
                 }
             
             @task(pool=self.pool, dag=self.dag)
-            def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
+            def em_to_snowflake(s3_destination_dir: str, endpoint: str, sla=None, **context):
                 # Snowflake tables are snake_cased; Earthmover outputs are camelCased
                 snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
                 camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
