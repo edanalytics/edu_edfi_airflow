@@ -1,7 +1,7 @@
 import logging
 import os
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from airflow.exceptions import AirflowSkipException
 from airflow.models import BaseOperator
@@ -172,9 +172,6 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # Force potential string columns into lists for zipping in execute.
         if isinstance(self.resource, str):
             raise ValueError("Bulk operators require lists of resources to be passed.")
-
-        if isinstance(self.table_name, str):
-            self.table_name = [self.table_name] * len(self.resource)
             
         ### Optionally set destination key by concatting separate args for dir and filename
         if not self.s3_destination_key:
@@ -204,12 +201,23 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         xcom_returns = []
 
-        for idx, (resource, table, s3_destination_key) in enumerate(zip(self.resource, self.table_name, self.s3_destination_key), start=1):
-            logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
-            self.run_sql_queries(
-                name=resource, table=table,
-                s3_key=s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
+        # If all data is sent to the same table, use a single massive SQL query to copy the data from the directory.
+        if isinstance(self.table_name, str):
+            logging.info("Running bulk statements on a single table.")
+            self.run_bulk_sql_queries(
+                names=self.resource, table=self.table_name,
+                s3_dir=self.s3_destination_dir or os.path.dirname(self.s3_destination_key[0]),  # Infer directory if not specified.
+                full_refresh=airflow_util.is_full_refresh(context)
             )
+        
+        # Otherwise, loop over each S3 destination and copy in sequence.
+        else:
+            for idx, (resource, table, s3_destination_key) in enumerate(zip(self.resource, self.table_name, self.s3_destination_key), start=1):
+                logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
+                self.run_sql_queries(
+                    name=resource, table=table,
+                    s3_key=s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
+                )
 
         # Send the prebuilt-output if specified; otherwise, send the compiled list created above.
         # This only exists to maintain backwards-compatibility with original S3ToSnowflakeOperator.
@@ -217,3 +225,59 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
             return self.xcom_return
         else:
             return xcom_returns
+
+    def run_bulk_sql_queries(self, names: List[str], table: str, s3_dir: str, full_refresh: bool = False):
+        """
+        Alternative delete and copy queries to be run when all data is sent to the same table in Snowflake.
+        
+        S3 Path Structure:
+            /{tenant_code}/{api_year}/{ds_nodash}/{ts_no_dash}/{taskgroup_type}/{name}.jsonl
+
+        Use regex to capture name: ".+/(\\w+).jsonl?"
+        Note optional args in REGEXP_SUBSTR(): position (1), occurrence (1), regex_parameters ('c'), group_num
+        """
+        ### Retrieve the database and schema from the Snowflake hook.
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
+        database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
+
+        ### Build the SQL queries to be passed into `Hook.run()`.
+        # Brackets in regex conflict with string formatting.
+        date_regex = "\\\\d{8}"
+        ts_regex = "\\\\d{8}T\\\\d{6}"
+
+        qry_copy_into = f"""
+            COPY INTO {database}.{schema}.{table}
+                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+            FROM (
+                SELECT
+                    '{self.tenant_code}' AS tenant_code,
+                    '{self.api_year}' AS api_year,
+                    TO_DATE(REGEXP_SUBSTR(metadata$filename, '{date_regex}'), 'YYYYMMDD') AS pull_date,
+                    TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '{ts_regex}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
+                    metadata$file_row_number AS file_row_number,
+                    metadata$filename AS filename,
+                    REGEXP_SUBSTR(filename, '.+/(\\\\w+).jsonl?', 1, 1, 'c', 1) AS name,
+                    '{self.ods_version}' AS ods_version,
+                    '{self.data_model_version}' AS data_model_version,
+                    t.$1 AS v
+                FROM '@{database}.util.airflow_stage/{s3_dir}'
+                (file_format => 'json_default') t
+            )
+            force = true;
+        """
+
+        ### Commit the update queries to Snowflake.
+        # Incremental runs are only available in EdFi 3+.
+        if self.full_refresh or full_refresh:
+            names_string = "', '".join(names)
+
+            qry_delete = f"""
+                DELETE FROM {database}.{schema}.{table}
+                WHERE tenant_code = '{self.tenant_code}'
+                AND api_year = '{self.api_year}'
+                AND name in ('{names_string}')
+            """
+            snowflake_hook.run(sql=[qry_delete, qry_copy_into], autocommit=False)
+        
+        else:
+            snowflake_hook.run(sql=qry_copy_into)
