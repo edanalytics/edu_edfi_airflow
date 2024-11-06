@@ -77,7 +77,7 @@ def get_config_endpoints(context) -> List[str]:
     raw_endpoints = get_context_variable(context, 'endpoints', default='')
     if raw_endpoints is not None:
         # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
-        return list(map(camel_to_snake, raw_endpoints.split(",")))
+        return list(map(camel_to_snake, raw_endpoints.replace(" ", "").split(",")))
     return []
 
 
