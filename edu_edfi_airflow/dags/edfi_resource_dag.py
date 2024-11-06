@@ -129,7 +129,7 @@ class EdFiResourceDAG:
             ),
             "endpoints": Param(
                 default=sorted(list(self.resources | self.descriptors)),
-                type="array",
+                type=["array", "null"],
                 description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
             ),
         }
