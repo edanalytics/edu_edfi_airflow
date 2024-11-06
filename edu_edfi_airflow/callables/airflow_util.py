@@ -75,10 +75,10 @@ def get_config_endpoints(context) -> List[str]:
     :return:
     """
     raw_endpoints = get_context_variable(context, 'endpoints', default='')
-    endpoint_list = raw_endpoints.split("\n")
-
-    # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
-    return list(map(camel_to_snake, endpoint_list))
+    if raw_endpoints is not None:
+        # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
+        return list(map(camel_to_snake, raw_endpoints.split(",")))
+    return []
 
 
 def xcom_pull_template(
