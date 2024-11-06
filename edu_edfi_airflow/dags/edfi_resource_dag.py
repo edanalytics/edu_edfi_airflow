@@ -128,9 +128,9 @@ class EdFiResourceDAG:
                 description="If true, deletes endpoint data in Snowflake before ingestion"
             ),
             "endpoints": Param(
-                default=str(sorted(list(self.resources | self.descriptors))),
-                type="string",
-                description="Newline-separated list of specific endpoints to ingest (case-agnostic)"
+                default=",".join(sorted(list(self.resources | self.descriptors))),
+                type=["null", "string"],
+                description="Comma-separated list of specific endpoints to ingest (case-agnostic)"
             ),
         }
 
