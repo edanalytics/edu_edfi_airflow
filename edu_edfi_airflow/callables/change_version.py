@@ -250,6 +250,9 @@ def update_change_versions(
             "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
         )
     
+    # FIXME:
+    endpoints = list(endpoints)
+    
     logging.info(f"Collected updated change versions for {len(endpoints)} endpoints.")
     
     # Deletes and KeyChanges are mutually-exclusive. Delete-status is original and required to output.
