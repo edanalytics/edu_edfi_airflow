@@ -452,9 +452,8 @@ class EdFiResourceDAG:
         """
         Many XComs in this DAG are lists of tuples. This overloads xcom_pull_template to retrieve a list of items at a given index.
         """
-        print(f"SUFFIX --->> | map(attribute={idx}) | list")
         return airflow_util.xcom_pull_template(
-            task_ids, suffix=f" | map(attribute={idx}) | list"
+            task_ids, suffix=f" or [] | map(attribute={idx}) | list"
         )
     
     @staticmethod
