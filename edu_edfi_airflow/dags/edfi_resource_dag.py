@@ -452,9 +452,9 @@ class EdFiResourceDAG:
         """
         Many XComs in this DAG are lists of tuples. This overloads xcom_pull_template to retrieve a list of items at a given index.
         """
-        return airflow_util.xcom_pull_template(
-            task_ids, suffix=f" | map(attribute={idx}) or [] | list"
-        )
+        return list(airflow_util.xcom_pull_template(
+            task_ids, suffix=f" | map(attribute={idx}) | list"
+        ))
     
     @staticmethod
     def xcom_pull_template_get_key(task_ids, key: str):
