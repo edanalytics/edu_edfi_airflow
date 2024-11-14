@@ -1,13 +1,13 @@
 from typing import List, Optional
 
 from airflow.decorators import task, task_group
+from airflow.exceptions import AirflowFailException
 from airflow.models.param import Param
 
 import edfi_api_client
 from ea_airflow_util import EACustomDAG
 
 from edu_edfi_airflow.callables.s3 import remove_filepaths
-from edu_edfi_airflow.callables import emlb_logging_util
 from edu_edfi_airflow.providers.earthbeam.operators import LightbeamOperator
 
 
@@ -27,14 +27,12 @@ class LightbeamDeleteDAG:
 
     params_dict = {
         "lightbeam_fetch_query": Param(
-            default=None,
-            examples=f'"assessmentIdentifier": "SAT"',
-            type="string",
+            default={"exampleKey": "exampleValue"},
+            type="object",
             description="Dictionary of query parameters to define which records are to be deleted. At least one parameter is requied. For more information, see https://github.com/edanalytics/lightbeam?tab=readme-ov-file#fetch",
         ),
         "endpoints": Param(
             default=ENDPOINTS_LIST,
-            examples=ENDPOINTS_LIST,
             type="array",
             description="Newline-separated list of endpoints to delete"
         ),
@@ -60,12 +58,10 @@ class LightbeamDeleteDAG:
         api_year: int,
         edfi_conn_id: Optional[str] = None,
         lightbeam_kwargs: Optional[dict] = None,
-        snowflake_conn_id: Optional[str] = None,
-        logging_table: Optional[str] = None,
         **kwargs
     ):
         """
-        Lightbeam: fetch -> Lightbeam: delete -> (Snowflake: LB Logs) -> Clean-up
+        Lightbeam: fetch -> Lightbeam: delete -> Clean-up
 
         """
 
@@ -74,6 +70,9 @@ class LightbeamDeleteDAG:
 
             @task(multiple_outputs=True, pool=self.pool, dag=self.dag)
             def run_lightbeam(command: str, **context):
+                if 'exampleKey' in context['params']['lightbeam_fetch_query']:
+                    raise AirflowFailException("No query parameters provided! At least one is required. This is a safety mechanism to prevent the deletion of entire resources.")
+
                 lightbeam_kwargs['query'] = context['params']['lightbeam_fetch_query']
                 lightbeam_kwargs['selector'] = context['params']['endpoints']
 
@@ -82,6 +81,7 @@ class LightbeamDeleteDAG:
                     tenant_code, api_year,
                     '{{ ds_nodash }}', '{{ ts_nodash }}'
                 )
+                lb_output_dir = context['task'].render_template(lb_output_dir, context)
 
                 lb_state_dir = edfi_api_client.url_join(
                     self.emlb_state_directory,
@@ -89,20 +89,11 @@ class LightbeamDeleteDAG:
                     'lightbeam'
                 )
 
-                lb_results_file = edfi_api_client.url_join(
-                    self.emlb_results_directory,
-                    tenant_code, api_year,
-                    '{{ ds_nodash }}', '{{ ts_nodash }}',
-                    f'lightbeam_{command}_results.json'
-                ) if logging_table else None
-                lb_results_file = context['task'].render_template(lb_results_file, context)
-
                 run_lightbeam = LightbeamOperator(
                     task_id=f"run_lightbeam",
                     lightbeam_path=self.lightbeam_path,
                     data_dir=lb_output_dir,
                     state_dir=lb_state_dir,
-                    results_file=lb_results_file,
                     edfi_conn_id=edfi_conn_id,
                     **(lightbeam_kwargs or {}),
                     command=command,
@@ -111,20 +102,8 @@ class LightbeamDeleteDAG:
                 
                 return {
                     "data_dir": run_lightbeam.execute(**context),
-                    "state_dir": lb_state_dir,
-                    "results_file": lb_results_file,
+                    "state_dir": lb_state_dir
                 }
-            
-            @task(pool=self.pool, dag=self.dag)
-            def log_to_snowflake(results_filepath: str, **context):
-                return emlb_logging_util.log_to_snowflake(
-                    snowflake_conn_id=snowflake_conn_id,
-                    logging_table=logging_table,
-                    log_filepath=results_filepath,
-                    tenant_code=tenant_code,
-                    api_year=api_year,
-                    **context
-                )
 
             @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
             def remove_files(filepaths):
@@ -137,18 +116,12 @@ class LightbeamDeleteDAG:
                 
                 return remove_filepaths(unnested_filepaths)
 
-            lightbeam_fetch = run_lightbeam(command="fetch")
-            lightbeam_delete = run_lightbeam(command="delete")
+            lightbeam_fetch = run_lightbeam.override(task_id="run_lightbeam_fetch")(command="fetch")
+            lightbeam_delete = run_lightbeam.override(task_id="run_lightbeam_delete")(command="delete")
 
             # Final cleanup (apply at very end of the taskgroup)
             remove_files_operator = remove_files(lightbeam_fetch["data_dir"])
 
-            # Lightbeam logs to Snowflake
-            if logging_table:
-                log_delete_to_snowflake = log_to_snowflake.override(task_id="log_delete_to_snowflake")(lightbeam_delete["results_file"])
-                lightbeam_fetch >> lightbeam_delete >> log_delete_to_snowflake >> remove_files_operator
+            lightbeam_fetch >> lightbeam_delete >> remove_files_operator
 
-            else:
-                lightbeam_fetch >> lightbeam_delete >> remove_files_operator
-
-        return tenant_year_taskgroup
+        return tenant_year_taskgroup()

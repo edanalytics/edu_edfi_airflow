@@ -243,8 +243,9 @@ class LightbeamOperator(BashOperator):
             logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
             self.arguments['--force'] = ""
 
-        # Create state_dir if not already defined in filespace
+        # Create state_dir and data_dir if not already defined in filespace
         os.makedirs(self.state_dir, exist_ok=True)
+        os.makedirs(self.data_dir, exist_ok=True)
 
         # Format values before adding to the bash command.
         cli_arguments = []
