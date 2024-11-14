@@ -26,10 +26,10 @@ class LightbeamDeleteDAG:
     ]
 
     params_dict = {
-        "lightbeam_fetch_query": Param(
+        "query_parameters": Param(
             default={"exampleKey": "exampleValue"},
             type="object",
-            description="Dictionary of query parameters to define which records are to be deleted. At least one parameter is requied. For more information, see https://github.com/edanalytics/lightbeam?tab=readme-ov-file#fetch",
+            description="JSON object of query parameters to define which records are to be deleted. At least one parameter is requied. For more information, see https://github.com/edanalytics/lightbeam?tab=readme-ov-file#fetch",
         ),
         "endpoints": Param(
             default=ENDPOINTS_LIST,
