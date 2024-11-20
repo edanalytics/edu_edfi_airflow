@@ -250,9 +250,10 @@ def update_change_versions(
             "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
         )
     
-    # FIXME:
+    # we have to do this for the time being because the XCom that produces this list
+    # actually returns a lazily-evaluated object with no len() property
     endpoints = list(endpoints)
-    
+
     logging.info(f"Collected updated change versions for {len(endpoints)} endpoints.")
     
     # Deletes and KeyChanges are mutually-exclusive. Delete-status is original and required to output.

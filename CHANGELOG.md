@@ -1,3 +1,7 @@
+# Unreleased changes
+## New features
+- Update Resources DAG UI for compatibility with Airflow 2.9.x (backwards compatibility with prior versions is retained)
+
 # edu_edfi_airflow v0.4.2
 ## New features
 - Add boolean `pull_all_deletes` argument to `EdFiResourceDAG` to re-pull all deletes for a resource when any are added (resolves deletes-skipping bug).

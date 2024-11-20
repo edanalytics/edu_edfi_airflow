@@ -172,8 +172,9 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # Force potential string columns into lists for zipping in execute.
         if isinstance(self.resource, str):
             raise ValueError("Bulk operators require lists of resources to be passed.")
-        
-        # FIXME: why do we have to do this?
+
+        # we have to do this for the time being because the XCom that produces this list
+        # actually returns a lazily-evaluated object with no len() property
         self.resource = list(self.resource)
 
         if isinstance(self.table_name, str):
