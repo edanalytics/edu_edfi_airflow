@@ -53,6 +53,8 @@ class EarthbeamDAG:
 
         fast_cleanup: bool = False,
 
+        extra_params: Optional[dict] = None,
+
         **kwargs
     ):
         self.run_type = run_type
