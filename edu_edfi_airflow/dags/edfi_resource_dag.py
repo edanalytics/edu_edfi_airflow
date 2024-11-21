@@ -658,6 +658,7 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 = (EdFiToS3Operator
                 .partial(
                     task_id=f"pull_dynamic_endpoints_to_s3",
+                    map_index_template="""{{ task.resource }}""",
                     edfi_conn_id=self.edfi_conn_id,
 
                     tmp_dir= self.tmp_dir,
