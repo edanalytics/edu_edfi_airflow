@@ -66,7 +66,7 @@ class EarthbeamDAG:
 
         self.fast_cleanup = fast_cleanup
 
-        self.dag = EACustomDAG(params=self.params_dict, **kwargs)
+        self.dag = EACustomDAG(params=self.params_dict.update(extra_params), **kwargs)
 
 
     def build_local_raw_dir(self, tenant_code: str, api_year: int, grain_update: Optional[str] = None) -> str:
