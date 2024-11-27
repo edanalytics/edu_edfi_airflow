@@ -76,7 +76,9 @@ def get_config_endpoints(context) -> List[str]:
     """
     # Apply camel_to_snake transform on all specified endpoints to circumvent user-input error.
     raw_endpoints = get_context_variable(context, 'endpoints', default=[])
-    return list(map(camel_to_snake, raw_endpoints))
+    if raw_endpoints is not None:
+        return list(map(camel_to_snake, raw_endpoints))
+    return []
 
 
 def xcom_pull_template(
