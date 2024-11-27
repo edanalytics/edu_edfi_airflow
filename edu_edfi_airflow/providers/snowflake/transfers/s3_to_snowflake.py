@@ -176,9 +176,6 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # we have to do this for the time being because the XCom that produces this list
         # actually returns a lazily-evaluated object with no len() property
         self.resource = list(self.resource)
-
-        if isinstance(self.table_name, str):
-            self.table_name = [self.table_name] * len(self.resource)
             
         ### Optionally set destination key by concatting separate args for dir and filename
         if not self.s3_destination_key:
