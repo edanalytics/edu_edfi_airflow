@@ -123,7 +123,12 @@ class EdFiToS3Operator(BaseOperator):
             query_parameters=self.query_parameters, s3_destination_key=self.s3_destination_key
         )
 
-        return (self.resource, self.s3_destination_key)
+        resource_all_records = edfi_conn.resource(
+            resource=self.resource, namespace=self.namespace,
+            min_change_version=0, max_change_version=self.max_change_version
+        )
+
+        return (self.resource, self.s3_destination_key, resource_all_records.total_count())
 
 
     @staticmethod

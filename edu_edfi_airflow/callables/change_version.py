@@ -236,6 +236,7 @@ def update_change_versions(
     
     edfi_change_version: int,
     endpoints: List[str],
+    total_counts: List[int],
     get_deletes: bool,
     get_key_changes: bool,
 
@@ -258,7 +259,7 @@ def update_change_versions(
         "tenant_code", "api_year", "name",
         "pull_date", "pull_timestamp",
         "max_version", "is_active",
-        "is_deletes",
+        "is_deletes", "total_count",
     ]
 
     if get_key_changes:
@@ -267,12 +268,12 @@ def update_change_versions(
     # Build and insert row tuples for each endpoint.
     rows_to_insert = []
 
-    for endpoint in endpoints:
+    for endpoint, total_count in zip(endpoints, total_counts):
         row = [
             tenant_code, api_year, endpoint,
             kwargs["ds"], kwargs["ts"],
             edfi_change_version, True,
-            get_deletes,
+            get_deletes, total_count
         ]
 
         if get_key_changes:

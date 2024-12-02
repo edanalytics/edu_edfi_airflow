@@ -418,6 +418,7 @@ class EdFiResourceDAG:
     def build_change_version_update_operator(self,
         task_id: str,
         endpoints: List[str],
+        total_counts: List[int],
         get_deletes: bool,
         get_key_changes: bool,
         **kwargs
@@ -437,6 +438,7 @@ class EdFiResourceDAG:
                 
                 'edfi_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 'endpoints': endpoints,
+                'total_counts': total_counts,
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
             },
@@ -702,6 +704,7 @@ class EdFiResourceDAG:
                 update_cv_operator = self.build_change_version_update_operator(
                     task_id=f"update_change_versions_in_snowflake",
                     endpoints=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
+                    total_counts=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 2),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     trigger_rule='all_success'
