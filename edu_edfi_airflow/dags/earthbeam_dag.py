@@ -118,21 +118,29 @@ class EarthbeamDAG:
 
         return return_files
 
-    @staticmethod
-    def partition_on_tenant_and_year(
-        csv_paths: Union[Union[str, Path], List[Union[str, Path]]],
-        output_dir: str,
+    # Helper method for sharding data into input for tenant-year taskgroups
+    PathLike = Union[str, Path]
+    Unary = Callable[[str], str]
+
+    @classmethod
+    def partition_on_tenant_and_year(cls,
+        csv_paths: Union[PathLike, List[PathLike]],
+        output_dir: Optional[PathLike] = None,
+        output_dirs: Optional[Union[PathLike, List[PathLike]]] = None,
         tenant_col: str = "tenant_code",
-        tenant_map: dict = None,
+        tenant_map: Optional[Union[dict, Unary]] = None,
         year_col: str = "api_year",
-        year_map: dict = None,
+        year_map: Optional[Union[dict, Unary]] = None,
     ):
         """
         Preprocessing function to shard data to parquet on disk.
         This is useful when a single input file contains multiple years and/or tenants.
 
+        Note that the CSV filepath can be referenced using `__path__` column during sharding.
+
         :param csv_paths: one or more complete file paths pointing to input data
-        :param output_dir: root directory of the parquet
+        :param output_dir: root directory of the parquet (subdirectories built dynamically)
+        :param output_dirs: list of root directories of the parquet (one per csv_path)
         :param tenant_col: (optional) name of the column to use as tenant code
         :param tenant_map: (optional) map values from the contents of tenant_col to valid tenant codes
         :param year_col: (optional) name of the column to use as API year
@@ -145,48 +153,71 @@ class EarthbeamDAG:
         import dask.dataframe as dd
         import pandas as pd
 
-        tenant_code = "tenant_code"
-        api_year = "api_year"
-
+        # Check existence of inputs and force to a list.
         csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
-
         for csv_path in csv_paths:
             if not Path(csv_path).is_file() or not Path(csv_path).suffix == '.csv':
                 raise ValueError(f"Input path '{csv_path}' is not a path to a file whose name ends with '.csv'")
 
-        path_mapping = {
-            # use the input file basenames as the parquet directory names
-            csv_path: PurePath(output_dir, PurePath(csv_path).name).with_suffix('')
-            for csv_path in csv_paths
-        }
+        # Prepare outputs and enforce cardinality with inputs.
+        if bool(output_dir) == bool(output_dirs):
+            raise ValueError("Arguments `output_dir` and `output_dirs` are mutually-exclusive!")
 
-        Path(output_dir).mkdir(exist_ok=True)
-
+        if output_dir:
+            output_dirs = [  # use the input file basenames as the parquet directory names
+                PurePath(output_dir, PurePath(csv_path).name).with_suffix('')
+                for csv_path in csv_paths
+            ]
+        else:
+            output_dirs = output_dirs if isinstance(output_dirs, list) else [output_dirs]
+            if not len(csv_paths) == len(output_dirs):
+                raise ValueError("List arguments `csv_paths` and `output_dirs` must be the same length!")
+        
+        for dir in output_dirs:
+            Path(dir).mkdir(exist_ok=True)
+        
+        # Wrap Dask in a context to set temporary variables that will not affect Earthmover behavior.
         with dask.config.set({
             "temporary_directory": "./dask_temp/",
             "dataframe.convert-string": True,
-            }), pd.option_context("mode.string_storage", "pyarrow"):
+        }), pd.option_context("mode.string_storage", "pyarrow"):
 
-            for csv_path, parquet_path in path_mapping.items():
-                df = dd.read_csv(csv_path, dtype=str, na_filter=False).fillna('')
-
+            for csv_path, parquet_path in zip(csv_paths, output_dirs):
+                df = dd.read_csv(csv_path, dtype=str, na_filter=False, include_path_column="__path__")
+                
                 if tenant_col not in df:
                     raise KeyError(f"provided tenant_code column '{tenant_col}' not present in data")
                 if year_col not in df:
-                    raise KeyError(f"provided api_year column '{year_col}' not present in data")    
+                    raise KeyError(f"provided api_year column '{year_col}' not present in data")
+
+                # Fill nulls with empty strings. Categorical columns cause this operation to fail.
+                try:
+                    df = df.fillna('')
+                except:
+                    logging.warning("Unable to fill NaNs with empty strings: categorical columns present.")
             
+                if isinstance(tenant_map, dict):
+                    logging.info(f"Applying mapping with {len(tenant_map)} elements to column `{tenant_col}`")
+                
+                if isinstance(year_map, dict):
+                    logging.info(f"Applying mapping with {len(year_col)} elements to column `{year_col}`")
+
                 # if needed, add tenant_code and api_year as columns so we can partition on them
-                if tenant_map is not None:
-                    df[tenant_code] = df[tenant_col].map(tenant_map, meta=dd.utils.make_meta(df[tenant_col]))
+                if tenant_map:
+                    df["tenant_code"] = df[tenant_col].map(tenant_map, meta=dd.utils.make_meta(df[tenant_col]))
                 else:
-                    df[tenant_code] = df[tenant_col]
-
-                if year_map is not None:
-                    df[api_year] = df[year_col].map(year_map, meta=dd.utils.make_meta(df[year_col]))
+                    df["tenant_code"] = df[tenant_col]
+                
+                if year_map:
+                    df["api_year"] = df[year_col].map(year_map, meta=dd.utils.make_meta(df[year_col]))
                 else:
-                    df[api_year] = df[year_col]
+                    df["api_year"] = df[year_col]
 
-                df.to_parquet(parquet_path, write_index=False, overwrite=True, partition_on=[tenant_code, api_year])
+                del df['__path__']  # Delete new column created by `include_path_column` on read.
+                df.to_parquet(parquet_path, write_index=False, overwrite=True, partition_on=['tenant_code', 'api_year'])
+
+        return output_dirs
+
 
     # One or more endpoints can fail total-get count. Create a second operator to track that failed status.
     # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
