@@ -1,4 +1,5 @@
 from edu_edfi_airflow.dags.earthbeam_dag import EarthbeamDAG
+from edu_edfi_airflow.dags.earthbeam_dag_factory import EarthbeamDAGFactory, S3EarthbeamDAGFactory, SFTPEarthbeamDAGFactory, SharefileEarthbeamDAGFactory
 from edu_edfi_airflow.dags.edfi_resource_dag import EdFiResourceDAG
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
