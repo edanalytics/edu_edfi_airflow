@@ -156,6 +156,10 @@ class EarthbeamDAG:
         # Check existence of inputs and force to a list.
         csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
         for csv_path in csv_paths:
+            # Ignore wildcard filepaths in check.
+            if '*' in csv_path:
+                continue
+
             if not Path(csv_path).is_file() or not Path(csv_path).suffix == '.csv':
                 raise ValueError(f"Input path '{csv_path}' is not a path to a file whose name ends with '.csv'")
 
