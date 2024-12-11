@@ -1017,7 +1017,7 @@ class EarthbeamDAG:
                             '{assessment_bundle}' as assessment_name,
                             $1, $2, $3, $4, $5
                         FROM @{database}.util.airflow_stage/{match_rates_s3_filepath})
-                        FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1)
+                        FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1 FIELD_OPTIONALLY_ENCLOSED_BY = '"')
                 '''
 
                 snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
