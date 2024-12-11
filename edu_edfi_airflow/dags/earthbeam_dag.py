@@ -178,7 +178,7 @@ class EarthbeamDAG:
                 raise ValueError("List arguments `csv_paths` and `output_dirs` must be the same length!")
         
         for dir in output_dirs:
-            Path(dir).mkdir(exist_ok=True)
+            Path(dir).mkdir(parents=True, exist_ok=True)
         
         # Wrap Dask in a context to set temporary variables that will not affect Earthmover behavior.
         with dask.config.set({
