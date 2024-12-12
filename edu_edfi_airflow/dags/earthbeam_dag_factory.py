@@ -85,7 +85,7 @@ class EarthbeamDAGFactory:
         schedule_interval: Optional[str] = None,
         default_args: Optional[dict] = None,
 
-        run_in_dev: bool = True,  # When true, sideloads data to dev Stadium instead of posting to Ed-Fi.
+        run_in_dev: bool = False,  # When true, sideloads data to dev Stadium instead of posting to Ed-Fi.
     ):
         # Globals can't be updated within a method: `globals()[earthbeam_dag.dag.dag_id] = earthbeam_dag.dag`
         # Save these in a dictionary to be accessed with `keys`, `values`, and `items`.
