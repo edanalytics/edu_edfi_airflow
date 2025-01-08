@@ -56,6 +56,7 @@ class EarthbeamDAGFactory:
         python_postprocess_kwargs: Optional[dict] = None,
 
         # Optional Earthmover parameter overrides
+        earthmover_pool: str = 'memory_intensive',
         input_filetype: str = 'csv',
         descriptor_namespace: str = 'uri://ed-fi.org',
         opt_earthmover_kwargs: Optional[Dict[str, str]] = None,
@@ -149,7 +150,7 @@ class EarthbeamDAGFactory:
                 run_type=run_type_full,
                 earthmover_path="/home/airflow/.venv/airflow/bin/earthmover",
                 lightbeam_path="/home/airflow/.venv/airflow/bin/lightbeam",
-                earthmover_pool='memory_intensive',
+                earthmover_pool=earthmover_pool,
 
                 dag_id=f"earthbeam__{run_type_full}_{api_year}",
                 schedule_interval=schedule_interval,
