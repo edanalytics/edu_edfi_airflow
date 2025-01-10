@@ -25,18 +25,14 @@ def get_total_counts(
     # Only ping the API if the endpoint is specified in the run.
     config_endpoints = airflow_util.get_config_endpoints(context)
 
-    # Convert (namespace, endpoint) tuples to a {endpoint: namespace} dictionary.
-    endpoint_namespaces = {endpoint: namespace for namespace, endpoint in endpoints}
-
     successful_endpoints = []
     failed_endpoints = []
 
-    for endpoint in endpoints:
+    for namespace, endpoint in endpoints:
 
         # If a subset of endpoints have been selected, only get CV counts for these.
         if config_endpoints and endpoint not in config_endpoints:
             continue
-        namespace = endpoint_namespaces[endpoint]
 
         try:
             resource = edfi_conn.resource(

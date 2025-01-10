@@ -870,7 +870,7 @@ class EdFiResourceDAG:
                 return None
 
             with TaskGroup(
-                group_id="group_id",
+                group_id="Ed-Fi Total Counts",
                 prefix_group_id=False,
                 parent_group=None,
                 dag=self.dag
