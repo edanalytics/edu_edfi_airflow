@@ -12,7 +12,7 @@ from ea_airflow_util import EACustomDAG
 from ea_airflow_util import update_variable
 from edfi_api_client import camel_to_snake
 
-from edu_edfi_airflow.callables import airflow_util, change_version
+from edu_edfi_airflow.callables import airflow_util, change_version, total_counts
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator, BulkEdFiToS3Operator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkS3ToSnowflakeOperator
 
@@ -79,6 +79,7 @@ class EdFiResourceDAG:
         deletes_table: str = '_deletes',
         key_changes_table: str = '_key_changes',
         descriptors_table: str = '_descriptors',
+        total_counts_table: str = '_meta_total_counts',
 
         dbt_incrementer_var: Optional[str] = None,
 
@@ -106,6 +107,7 @@ class EdFiResourceDAG:
         self.descriptors_table = descriptors_table
         self.get_deletes_cv_with_deltas = get_deletes_cv_with_deltas
         self.pull_all_deletes = pull_all_deletes
+        self.total_counts_table = total_counts_table
 
         self.dbt_incrementer_var = dbt_incrementer_var
         
@@ -841,3 +843,77 @@ class EdFiResourceDAG:
             airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_s3, copy_s3_to_snowflake, update_cv_operator)
 
         return bulk_task_group
+
+
+    def build_total_counts_task_group(self,
+            endpoints: List[str],
+            group_id: str,
+
+            *,
+            s3_destination_dir: str,
+            table: Optional[str] = None,
+            **kwargs
+        ):
+            """
+            Build one EdFiToS3 task (with inner for-loop across endpoints).
+            Bulk copy the data to its respective table in Snowflake.
+
+            :param endpoints:
+            :param group_id:
+            :param s3_destination_dir:
+            :param table:
+            :return:
+            """
+            if not endpoints:
+                return None
+
+            with TaskGroup(
+                group_id=group_id,
+                prefix_group_id=True,
+                parent_group=None,
+                dag=self.dag
+            ) as total_counts_task_group:
+                
+                get_total_counts = PythonOperator(
+                    task_id="get_edfi_total_counts",
+                    python_callable=total_counts.get_total_counts,
+                    op_kwargs={
+                        'endpoints': [(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
+                        'edfi_conn_id': self.edfi_conn_id,
+                        'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                    },
+                    trigger_rule='none_failed',
+                    dag=self.dag
+                )
+
+                # Clear the Snowflake total counts table (if a full-refresh).
+                delete_total_counts = PythonOperator(
+                    task_id="delete_previous_total_counts_in_snowflake",
+                    python_callable=total_counts.delete_total_counts,
+                    op_kwargs={
+                        'tenant_code': self.tenant_code,
+                        'api_year': self.api_year,
+                        'snowflake_conn_id': self.snowflake_conn_id,
+                        'total_counts_table': self.total_counts_table,
+                    },
+                    dag=self.dag
+                )
+
+                load_total_counts = PythonOperator(
+                    task_id="load_total_counts_to_snowflake", 
+                    python_callable=total_counts.insert_total_counts,
+                    op_kwargs={
+                        'tenant_code': self.tenant_code,
+                        'api_year': self.api_year,
+                        'snowflake_conn_id': self.snowflake_conn_id,
+                        'total_counts_table': self.total_counts_table,
+                        'endpoint_counts': self.xcom_pull_template_map_idx(get_total_counts, 0),
+                    },
+                    provide_context=True,
+                    dag=self.dag,
+                    **kwargs
+                )
+
+                get_total_counts >> delete_total_counts >> load_total_counts
+
+            return total_counts_task_group

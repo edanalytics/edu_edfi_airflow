@@ -24,6 +24,7 @@ rename_mapping = {
             "change_version": "change_version",
             "s3": "s3",
             "snowflake": "snowflake",
+            "total_counts": "total_counts"
         }
     },
 }
