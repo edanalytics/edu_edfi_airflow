@@ -71,6 +71,7 @@ class EdFiResourceDAG:
         get_key_changes: bool = False,
         get_deletes_cv_with_deltas: bool = True,
         pull_all_deletes: bool = True,
+        pull_total_counts: bool = False,
         run_type: str = "default",
         resource_configs: Optional[List[dict]] = None,
         descriptor_configs: Optional[List[dict]] = None,
@@ -108,6 +109,7 @@ class EdFiResourceDAG:
         self.get_deletes_cv_with_deltas = get_deletes_cv_with_deltas
         self.pull_all_deletes = pull_all_deletes
         self.total_counts_table = total_counts_table
+        self.pull_total_counts = pull_total_counts
 
         self.dbt_incrementer_var = dbt_incrementer_var
         
@@ -300,6 +302,11 @@ class EdFiResourceDAG:
         else:
             cv_task_group = None
 
+        if self.pull_total_counts: 
+            total_counts_taskgroup: TaskGroup = self.build_total_counts_task_group(endpoints=sorted(list(self.resources)))
+        else:
+            total_counts_taskgroup = None
+
         # Build an operator to increment the DBT var at the end of the run.
         if self.dbt_incrementer_var:
             dbt_var_increment_operator = PythonOperator(
@@ -324,7 +331,7 @@ class EdFiResourceDAG:
         )
 
         # Chain tasks and taskgroups into the DAG; chain sentinel after all task groups.
-        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, dbt_var_increment_operator)
+        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, total_counts_taskgroup, dbt_var_increment_operator)
         airflow_util.chain_tasks(edfi_task_groups, dag_state_sentinel)
 
 
@@ -847,11 +854,6 @@ class EdFiResourceDAG:
 
     def build_total_counts_task_group(self,
             endpoints: List[str],
-            group_id: str,
-
-            *,
-            s3_destination_dir: str,
-            table: Optional[str] = None,
             **kwargs
         ):
             """
@@ -868,8 +870,8 @@ class EdFiResourceDAG:
                 return None
 
             with TaskGroup(
-                group_id=group_id,
-                prefix_group_id=True,
+                group_id="group_id",
+                prefix_group_id=False,
                 parent_group=None,
                 dag=self.dag
             ) as total_counts_task_group:
