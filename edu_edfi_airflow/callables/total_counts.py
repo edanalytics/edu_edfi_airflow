@@ -100,7 +100,7 @@ def insert_total_counts(
     *,
     snowflake_conn_id: str,
     total_counts_table: str,
-    endpoint_counts: List[Tuple[str, str]],
+    endpoint_counts: List[Tuple[str, int]],
 
     **kwargs
 ):
@@ -120,11 +120,11 @@ def insert_total_counts(
     # Build and insert row tuples for each endpoint.
     rows_to_insert = []
 
-    for endpoint, total_count in endpoint_counts:
+    for endpoint in endpoint_counts:
         row = [
-            tenant_code, api_year, endpoint,
+            tenant_code, api_year, endpoint[0],
             kwargs["ds"], kwargs["ts"],
-            total_count
+            endpoint[1]
         ]
         rows_to_insert.append(row)
 
