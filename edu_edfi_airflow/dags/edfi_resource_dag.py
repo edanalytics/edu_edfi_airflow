@@ -853,70 +853,70 @@ class EdFiResourceDAG:
 
 
     def build_total_counts_task_group(self,
-            endpoints: List[str],
-            **kwargs
-        ):
-            """
-            Build one EdFiToS3 task (with inner for-loop across endpoints).
-            Bulk copy the data to its respective table in Snowflake.
+        endpoints: List[str],
+        **kwargs
+    ):
+        """
+        Build one EdFiToS3 task (with inner for-loop across endpoints).
+        Bulk copy the data to its respective table in Snowflake.
 
-            :param endpoints:
-            :param group_id:
-            :param s3_destination_dir:
-            :param table:
-            :return:
-            """
-            if not endpoints:
-                return None
+        :param endpoints:
+        :param group_id:
+        :param s3_destination_dir:
+        :param table:
+        :return:
+        """
+        if not endpoints:
+            return None
 
-            with TaskGroup(
-                group_id="Ed-Fi Total Counts",
-                prefix_group_id=False,
-                parent_group=None,
+        with TaskGroup(
+            group_id="Ed-Fi Total Counts",
+            prefix_group_id=False,
+            parent_group=None,
+            dag=self.dag
+        ) as total_counts_task_group:
+            
+            get_total_counts = PythonOperator(
+                task_id="get_edfi_total_counts",
+                python_callable=total_counts.get_total_counts,
+                op_kwargs={
+                    'endpoints': [(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
+                    'edfi_conn_id': self.edfi_conn_id,
+                    'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                },
+                trigger_rule='none_failed',
                 dag=self.dag
-            ) as total_counts_task_group:
-                
-                get_total_counts = PythonOperator(
-                    task_id="get_edfi_total_counts",
-                    python_callable=total_counts.get_total_counts,
-                    op_kwargs={
-                        'endpoints': [(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
-                        'edfi_conn_id': self.edfi_conn_id,
-                        'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
-                    },
-                    trigger_rule='none_failed',
-                    dag=self.dag
-                )
+            )
 
-                # Clear the Snowflake total counts table (if a full-refresh).
-                delete_total_counts = PythonOperator(
-                    task_id="delete_previous_total_counts_in_snowflake",
-                    python_callable=total_counts.delete_total_counts,
-                    op_kwargs={
-                        'tenant_code': self.tenant_code,
-                        'api_year': self.api_year,
-                        'snowflake_conn_id': self.snowflake_conn_id,
-                        'total_counts_table': self.total_counts_table,
-                    },
-                    dag=self.dag
-                )
+            # Clear the Snowflake total counts table (if a full-refresh).
+            delete_total_counts = PythonOperator(
+                task_id="delete_previous_total_counts_in_snowflake",
+                python_callable=total_counts.delete_total_counts,
+                op_kwargs={
+                    'tenant_code': self.tenant_code,
+                    'api_year': self.api_year,
+                    'snowflake_conn_id': self.snowflake_conn_id,
+                    'total_counts_table': self.total_counts_table,
+                },
+                dag=self.dag
+            )
 
-                load_total_counts = PythonOperator(
-                    task_id="load_total_counts_to_snowflake", 
-                    python_callable=total_counts.insert_total_counts,
-                    op_kwargs={
-                        'tenant_code': self.tenant_code,
-                        'api_year': self.api_year,
-                        'snowflake_conn_id': self.snowflake_conn_id,
-                        'total_counts_table': self.total_counts_table,
-                        'endpoint_counts': airflow_util.xcom_pull_template(get_total_counts),
-                    },
-                    trigger_rule='none_failed',
-                    provide_context=True,
-                    dag=self.dag,
-                    **kwargs
-                )
+            load_total_counts = PythonOperator(
+                task_id="load_total_counts_to_snowflake", 
+                python_callable=total_counts.insert_total_counts,
+                op_kwargs={
+                    'tenant_code': self.tenant_code,
+                    'api_year': self.api_year,
+                    'snowflake_conn_id': self.snowflake_conn_id,
+                    'total_counts_table': self.total_counts_table,
+                    'endpoint_counts': airflow_util.xcom_pull_template(get_total_counts),
+                },
+                trigger_rule='none_failed',
+                provide_context=True,
+                dag=self.dag,
+                **kwargs
+            )
 
-                get_total_counts >> delete_total_counts >> load_total_counts
+            get_total_counts >> delete_total_counts >> load_total_counts
 
-            return total_counts_task_group
+        return total_counts_task_group
