@@ -362,7 +362,12 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
         if completed_process.returncode == 99:
             raise AirflowSkipException("Task skipped because no files were found!")
         
-        return local_dirs
+        # Apply glob filepaths if the S3 paths are files instead of directories.
+        return [
+            os.path.join(local_dir, "*" + os.path.splitext(s3_path)[-1]) if os.path.splitext(s3_path)[-1]
+            else local_dir
+            for local_dir, s3_path in zip(local_dirs, s3_paths)
+        ]
     
     @classmethod
     def build_copy_check_command(cls, s3_bucket: str, s3_paths: List[str], local_dirs: List[str]):
