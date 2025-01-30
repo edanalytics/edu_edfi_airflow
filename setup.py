@@ -6,7 +6,7 @@ README = (HERE / "README.md").read_text()
 
 setuptools.setup(
       name='edu_edfi_airflow',
-      version='0.4.2',
+      version='0.4.4',
 
       description='EDU Airflow tools for Ed-Fi',
       license_files=['LICENSE.md'],
