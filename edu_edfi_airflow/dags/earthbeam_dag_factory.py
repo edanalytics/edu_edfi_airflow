@@ -366,8 +366,10 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
     
     @classmethod
     def build_copy_check_command(cls, s3_bucket: str, s3_paths: List[str], local_dirs: List[str]):
+        # Recursive flag only works on directories, not files.
         copy_commands = [
-            f"aws s3 cp s3://{s3_bucket}/{path} {dir} --recursive"
+            f"aws s3 cp s3://{s3_bucket}/{path} {dir}" if os.path.splitext(path)[-1]
+            else f"aws s3 cp s3://{s3_bucket}/{path} {dir} --recursive"
             for path, dir in zip(s3_paths, local_dirs)
         ]
 
