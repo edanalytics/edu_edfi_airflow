@@ -1,3 +1,19 @@
+# edu_edfi_airflow v0.4.4
+## Under the hood
+- Allow CSV files to optionally enclose fields in quotes when copying in `EarthbeamDAG`.
+
+## Fixes
+- Wrap filepath in quotes in `EarthbeamDAG` to copy paths with spaces and escape characters.
+
+
+# edu_edfi_airflow v0.4.3
+## Under the hood
+- Use bulk copies to Snowflake when writing deletes to circumvent statement-limit errors.
+
+## Fixes
+- Add dependency between S3 and file removal in `EarthbeamDAG` to avoid race condition where files are removed prematurely.
+
+
 # edu_edfi_airflow v0.4.2
 ## New features
 - Add boolean `pull_all_deletes` argument to `EdFiResourceDAG` to re-pull all deletes for a resource when any are added (resolves deletes-skipping bug).
