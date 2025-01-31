@@ -334,8 +334,8 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
 
         local_raw_dir = earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype)
         formatted_local_dirs = [
-            os.path.join(local_raw_dir, subfolder, os.path.basename(s3_path)).format(**format_kwargs) if os.path.splitext(s3_path)[-1]
-            else os.path.join(local_raw_dir, subfolder).format(**format_kwargs)
+            os.path.join(local_raw_dir, subfolder, os.path.basename(s3_path).format(**format_kwargs)) if os.path.splitext(s3_path)[-1]
+            else os.path.join(local_raw_dir, subfolder)
             for subfolder, s3_path in zip(self.input_vars, self.s3_paths)
         ]
         input_file_mapping = dict(zip(self.input_vars, formatted_local_dirs))
