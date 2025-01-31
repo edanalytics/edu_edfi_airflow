@@ -333,7 +333,11 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
         formatted_s3_paths = [path.format(**format_kwargs) for path in self.s3_paths]
 
         local_raw_dir = earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype)
-        formatted_local_dirs = [os.path.join(local_raw_dir, subfolder) for subfolder in self.input_vars]
+        formatted_local_dirs = [
+            os.path.join(local_raw_dir, subfolder, "*" + os.path.splitext(s3_path)[-1]) if os.path.splitext(s3_path)[-1]
+            else os.path.join(local_raw_dir, subfolder)
+            for subfolder, s3_path in zip(self.input_vars, self.s3_paths)
+        ]
         input_file_mapping = dict(zip(self.input_vars, formatted_local_dirs))
         
         python_kwargs={
@@ -362,12 +366,7 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
         if completed_process.returncode == 99:
             raise AirflowSkipException("Task skipped because no files were found!")
         
-        # Apply glob filepaths if the S3 paths are files instead of directories.
-        return [
-            os.path.join(local_dir, "*" + os.path.splitext(s3_path)[-1]) if os.path.splitext(s3_path)[-1]
-            else local_dir
-            for local_dir, s3_path in zip(local_dirs, s3_paths)
-        ]
+        return local_dirs
     
     @classmethod
     def build_copy_check_command(cls, s3_bucket: str, s3_paths: List[str], local_dirs: List[str]):
