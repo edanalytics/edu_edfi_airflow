@@ -509,6 +509,47 @@ If you are using XComs in this manner, it is recommended to use the optional `gr
 your task-group to ensure that its value is static and easily-referenced in your DAG-initialization code.
 
 
+
+-----
+
+# LightbeamDeleteDAG
+`LightbeamDeleteDAG` is an Airflow DAG that can be used to delete data from an Ed-FI ODS using the `LightbeamOperator`.
+
+To avoid accidental deletions of entire resources, the `query_paramters` DAG-level config is required. 
+There is also an optional DAG-level config for the list of endpoints to target for deletion (defaults to `assessments`, `objectiveAssessments`, and `studentAssessments`).
+
+<details>
+<summary>DAG-level Arguments:</summary>
+
+| Argument        | Description                                                                                                    |
+|:----------------|:---------------------------------------------------------------------------------------------------------------|
+| lightbeam_path  | Path to installed Lightbeam package                                                                            |
+| pool            | Airflow pool against which all operations are applied                                                          |
+| fast_cleanup    | Boolean flag for whether to remove local files immediately upon failure, or only after success (default False) |
+
+Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
+
+-----
+
+</details>
+
+`LightbeamDeleteDAG` builds task-groups for each (tenant, year). Task-groups are fully independent of one another.
+
+<details>
+<summary>Taskgroup-level Arguments:</summary>
+
+| Argument                     | Description                                                                                                                    |
+|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------------------|
+| tenant_code                  | ODS-tenant representation to be saved in Snowflake tables                                                                      |
+| api_year                     | ODS API-year to be saved in Snowflake tables                                                                                   |
+| edfi_conn_id                 | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                       |
+| lightbeam_kwargs             | Kwarg command-line arguments to be passed into `LightbeamOperator`                                                             |
+
+-----
+
+</details>
+
+
 -----
 
 ## Operators
@@ -548,7 +589,7 @@ Extends `BashOperator` to run Lightbeam with optional CLI arguments.
 | Argument            | Description                                                                                                                       |
 |:--------------------|:----------------------------------------------------------------------------------------------------------------------------------|
 | lightbeam_path      | Path to installed Ligthbeam package                                                                                               | 
-| command             | Lightbeam run command (i.e., `send`, `send+validate`, `validate`, `delete`) (default `send`)                                      | 
+| command             | Lightbeam run command (i.e., `send`, `send+validate`, `validate`, `fetch`, `delete`) (default `send`)                             | 
 | data_dir            | Directory of files for Lightbeam to use (also definable within the config file)                                                   |  
 | state_dir           | Path to directory where Lightbeam saves state between runs  (also definable within the config file)                               |
 | edfi_conn_id        | Optional Airflow connection with Ed-Fi ODS credentials (if present, fills config environment variables prefixed with `EDFI_API_`) |
@@ -560,6 +601,9 @@ Extends `BashOperator` to run Lightbeam with optional CLI arguments.
 | force               | Boolean flag to force a Lightbeam run, even if payloads have already been sent (default `False`)                                  |
 | older_than          | Optional timestamp string to filter payloads against when re-running Lightbeam                                                    |
 | newer_than          | Optional timestamp string to filter payloads against when re-running Lightbeam                                                    |
+| query               | Optional JSON payload to add query parameters to `fetch`commands                                                                  |
+| keep_keys           | Optional string to keep only specific keys from every `fetch`ed payload                                                           |
+| drop_keys           | Optional string to remove specific keys from every `fetch`ed payload                                                              |
 | resend_status_codes | Optional list of status-codes to filter payloads against when re-running Lightbeam                                                |
 
 -----
