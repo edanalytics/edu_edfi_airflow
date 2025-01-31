@@ -70,10 +70,10 @@ class LightbeamDeleteDAG:
 
             @task(multiple_outputs=True, pool=self.pool, dag=self.dag)
             def run_lightbeam(command: str, **context):
-                if 'exampleKey' in context['params']['lightbeam_fetch_query']:
+                if 'exampleKey' in context['params']['query_parameters']:
                     raise AirflowFailException("No query parameters provided! At least one is required. This is a safety mechanism to prevent the deletion of entire resources.")
 
-                lightbeam_kwargs['query'] = context['params']['lightbeam_fetch_query']
+                lightbeam_kwargs['query'] = context['params']['query_parameters']
                 lightbeam_kwargs['selector'] = context['params']['endpoints']
 
                 lb_output_dir = edfi_api_client.url_join(
