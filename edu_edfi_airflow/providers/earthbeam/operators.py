@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from typing import Iterable, Optional, Union
+import subprocess
 
 from airflow.models import Connection
 from airflow.operators.bash import BashOperator
@@ -107,8 +108,16 @@ class EarthmoverOperator(BashOperator):
 
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
-
+        
         super().execute(context)
+
+        exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
+    
+        # Push exit code to XCom 
+        context["ti"].xcom_push(key="exit_code", value=exit_code)
+        
+        print(exit_code)
+
         return self.output_dir
 
 
@@ -251,4 +260,6 @@ class LightbeamOperator(BashOperator):
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 
         super().execute(context)
+
+        
         return self.data_dir
