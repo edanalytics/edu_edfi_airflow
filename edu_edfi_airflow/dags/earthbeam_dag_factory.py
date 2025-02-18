@@ -5,6 +5,8 @@ import re
 import subprocess
 import tempfile
 
+from jinja2 import Template
+
 from typing import Callable, Dict, List, Optional
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -330,11 +332,11 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
             'api_year': api_year,
             'subtype': subtype,
         }
-        formatted_s3_paths = [path.format(**format_kwargs) for path in self.s3_paths]
+        formatted_s3_paths = [Template(path).render(format_kwargs) for path in self.s3_paths]
 
         local_raw_dir = earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype)
         formatted_local_dirs = [
-            os.path.join(local_raw_dir, subfolder, os.path.basename(s3_path).format(**format_kwargs)) if os.path.splitext(s3_path)[-1]
+            os.path.join(local_raw_dir, subfolder, Template(os.path.basename(s3_path)).render(format_kwargs)) if os.path.splitext(s3_path)[-1]
             else os.path.join(local_raw_dir, subfolder)
             for subfolder, s3_path in zip(self.input_vars, self.s3_paths)
         ]
@@ -461,7 +463,7 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
             'api_year': api_year,
             'subtype': subtype,
         }
-        formatted_file_patterns = [file_pattern.format(**format_kwargs) for file_pattern in self.file_patterns]
+        formatted_file_patterns = [Template(file_pattern).render(format_kwargs) for file_pattern in self.file_patterns]
 
         extract_zips_to_disk = earthbeam_dag.build_python_preprocessing_operator(
             self.extract_match_zips,
@@ -559,7 +561,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
 
         python_kwargs={
             'sharefile_conn_id': self.sharefile_conn_id,
-            'sharefile_path': self.remote_path.format(**format_kwargs),
+            'sharefile_path': Template(self.remote_path).render(format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
             'delete_remote': False,
         }
