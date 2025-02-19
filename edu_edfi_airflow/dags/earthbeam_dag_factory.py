@@ -95,6 +95,7 @@ class EarthbeamDAGFactory:
         self.DAGS_MAPPING = {}
         self.RUN_IN_DEV: bool = run_in_dev 
 
+        self.run_type: str = run_type
         self.earthmover_bundle: str = earthmover_bundle
         self.student_id_types: str = student_id_types
         self.input_vars: List[str] = [input_vars] if isinstance(input_vars, str) else input_vars
@@ -128,7 +129,7 @@ class EarthbeamDAGFactory:
         # Build one DAG per year and subtype
         for api_year, subtype in itertools.product(api_years, subtypes):
 
-            run_type_full = f"{run_type}_{subtype.lower()}" if subtype else run_type
+            run_type_full = f"{self.run_type}_{subtype.lower()}" if subtype else self.run_type
 
             # Instantiate and register DAG with run-level params.
             params = {
@@ -208,6 +209,14 @@ class EarthbeamDAGFactory:
         Internal helper method to simplify declaration of EarthbeamDAG.build_tenant_year_taskgroup().
         """
         # Build the formatted preprocess and file pathing arguments based on the grain of the taskgroup.
+        format_kwargs = {
+            'tenant_code': tenant_code,
+            'api_year': api_year,
+            'subtype': subtype,
+            'run_type': self.run_type,
+            'earthmover_bundle': self.earthmover_bundle,
+        }
+
         taskgroup_kwargs: dict = self.build_taskgroup_kwargs(tenant_code, api_year, subtype, earthbeam_dag=earthbeam_dag)
         
         python_kwargs: dict = taskgroup_kwargs.get('python_kwargs', {})
@@ -259,7 +268,7 @@ class EarthbeamDAGFactory:
 
             python_postprocess_callable=self.python_postprocess_callable,
             python_postprocess_kwargs={  # Inject grain-level variables into postprocess.
-                **self.python_postprocess_kwargs,
+                **Template(self.python_postprocess_kwargs).render(format_kwargs),  # Apply Jinja templating to postprocess kwargs.
                 'tenant_code': tenant_code,
                 'api_year': api_year,
                 'subtype': subtype,
