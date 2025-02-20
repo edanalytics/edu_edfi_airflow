@@ -211,7 +211,7 @@ class EarthbeamDAGFactory:
         # Build the formatted preprocess and file pathing arguments based on the grain of the taskgroup.
         format_kwargs = {
             'tenant_code': tenant_code,
-            'api_year': api_year,
+            'api_year': str(api_year),
             'subtype': subtype,
             'run_type': self.run_type,
             'earthmover_bundle': self.earthmover_bundle,
@@ -269,7 +269,7 @@ class EarthbeamDAGFactory:
             python_postprocess_callable=self.python_postprocess_callable,
             python_postprocess_kwargs={  # Inject grain-level variables into postprocess.
                 **{
-                    key: Template(value).render(map(str, format_kwargs)) if isinstance(value, str) else value
+                    key: Template(value).render(format_kwargs) if isinstance(value, str) else value
                     for key, value in self.python_postprocess_kwargs.items()
                 },  # Apply Jinja templating to postprocess kwargs.
                 'tenant_code': tenant_code,
