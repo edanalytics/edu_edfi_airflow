@@ -269,7 +269,7 @@ class EarthbeamDAGFactory:
             python_postprocess_callable=self.python_postprocess_callable,
             python_postprocess_kwargs={  # Inject grain-level variables into postprocess.
                 **{
-                    key: Template(value).render(format_kwargs) if isinstance(value, str) else value
+                    key: Template(value).render(map(str, format_kwargs)) if isinstance(value, str) else value
                     for key, value in self.python_postprocess_kwargs.items()
                 },  # Apply Jinja templating to postprocess kwargs.
                 'tenant_code': tenant_code,
