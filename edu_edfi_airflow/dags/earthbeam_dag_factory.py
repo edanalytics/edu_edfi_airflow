@@ -5,9 +5,10 @@ import re
 import subprocess
 import tempfile
 
+from collections.abc import Iterable
 from jinja2 import Template
 
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from airflow import DAG
@@ -268,10 +269,7 @@ class EarthbeamDAGFactory:
 
             python_postprocess_callable=self.python_postprocess_callable,
             python_postprocess_kwargs={  # Inject grain-level variables into postprocess.
-                **{
-                    key: Template(value).render(format_kwargs) if isinstance(value, str) else value
-                    for key, value in self.python_postprocess_kwargs.items()
-                },  # Apply Jinja templating to postprocess kwargs.
+                **self.render_jinja(self.python_postprocess_kwargs, format_kwargs),  # Apply Jinja templating to postprocess kwargs.
                 'tenant_code': tenant_code,
                 'api_year': api_year,
                 'subtype': subtype,
@@ -322,6 +320,19 @@ class EarthbeamDAGFactory:
         )
 
         return tenant_year_taskgroup
+    
+
+    # Helper method to render Jinja in any kwargs passed to the factory
+    def render_jinja(self, obj: Any, **context) -> Any:
+            
+        if isinstance(obj, dict):
+            return {key: self.render_jinja(value, context) for key, value in obj.items()}
+        elif isinstance(obj, str):
+            return Template(obj).render(context)
+        elif isinstance(obj, Iterable):
+            return [self.render_jinja(item, context) for item in obj]
+        else:
+            return obj
 
 
 
@@ -344,13 +355,13 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
             'api_year': api_year,
             'subtype': subtype,
         }
-        formatted_s3_paths = [Template(path).render(format_kwargs) for path in self.s3_paths]
+        formatted_s3_paths = self.render_jinja(self.s3_paths, format_kwargs)
 
         local_raw_dir = earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype)
         formatted_local_dirs = [
-            os.path.join(local_raw_dir, subfolder, Template(os.path.basename(s3_path)).render(format_kwargs)) if os.path.splitext(s3_path)[-1]
+            os.path.join(local_raw_dir, subfolder, os.path.basename(s3_path)) if os.path.splitext(s3_path)[-1]
             else os.path.join(local_raw_dir, subfolder)
-            for subfolder, s3_path in zip(self.input_vars, self.s3_paths)
+            for subfolder, s3_path in zip(self.input_vars, formatted_s3_paths)
         ]
         input_file_mapping = dict(zip(self.input_vars, formatted_local_dirs))
         
@@ -475,7 +486,7 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
             'api_year': api_year,
             'subtype': subtype,
         }
-        formatted_file_patterns = [Template(file_pattern).render(format_kwargs) for file_pattern in self.file_patterns]
+        formatted_file_patterns = self.render_jinja(self.file_patterns, format_kwargs)
 
         extract_zips_to_disk = earthbeam_dag.build_python_preprocessing_operator(
             self.extract_match_zips,
@@ -573,7 +584,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
 
         python_kwargs={
             'sharefile_conn_id': self.sharefile_conn_id,
-            'sharefile_path': Template(self.remote_path).render(format_kwargs),
+            'sharefile_path': self.render_jinja(self.remote_path, format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
             'delete_remote': False,
         }
