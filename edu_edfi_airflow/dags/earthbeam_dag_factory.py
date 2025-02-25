@@ -5,6 +5,7 @@ import re
 import subprocess
 import tempfile
 
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from collections.abc import Iterable
 from jinja2 import Template
 
@@ -340,8 +341,7 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
     """
     Access data in S3 pre-sharded by tenant and year in separate subdirectories.
     """
-    def __init__(self, *args, s3_bucket: str, s3_paths: List[str], **kwargs):
-        self.s3_bucket: str = s3_bucket
+    def __init__(self, *args, s3_paths: List[str], **kwargs):
         self.s3_paths: List[str] = [s3_paths] if isinstance(s3_paths, str) else s3_paths
         super().__init__(*args, **kwargs)
 
@@ -366,7 +366,7 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
         input_file_mapping = dict(zip(self.input_vars, formatted_local_dirs))
         
         python_kwargs={
-            's3_bucket': self.s3_bucket,
+            's3_conn_id': self.s3_conn_id,
             's3_paths': formatted_s3_paths,
             'local_dirs': formatted_local_dirs,
         }
@@ -377,12 +377,15 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
         }
 
     @classmethod
-    def python_preprocess_callable(cls, s3_bucket: str, s3_paths: List[str], local_dirs: List[str]) -> List[str]:
+    def python_preprocess_callable(cls, s3_conn_id: str, s3_paths: List[str], local_dirs: List[str]) -> List[str]:
         """
         
         """
         if len(s3_paths) != len(local_dirs):
             raise Exception("Arguments `s3_paths` and `local_dirs` must be equal in length!")
+        
+        s3_hook = S3Hook(aws_conn_id=s3_conn_id)
+        s3_bucket = s3_hook.get_connection(s3_conn_id).schema
 
         copy_check_command = cls.build_copy_check_command(s3_bucket, s3_paths, local_dirs)
         logging.info(f"Running shell command: {copy_check_command}")
