@@ -466,6 +466,12 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
         return path
     
     def build_custom_preprocess(self, api_year: str, subtype: Optional[str], earthbeam_dag: 'DAG'):
+        ### Format variables with subtype-year grain information
+        format_kwargs = {
+            'api_year': api_year,
+            'subtype': subtype,
+        }
+
         # Preprocess ZIP and shard by district IDs.
         preprocess_raw_dir = earthbeam_dag.build_local_raw_dir("_preprocess", api_year, subtype)
         downloaded_dir = os.path.join(preprocess_raw_dir, '_downloaded')
@@ -481,22 +487,15 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
         download_sftp_to_disk = earthbeam_dag.build_python_preprocessing_operator(
             ftp.download_all,
             ftp_conn_id=self.ftp_conn_id,
-            remote_dir=self.remote_path,
+            remote_dir=self.render_jinja(self.remote_path, format_kwargs),
             local_dir=downloaded_dir,
         )
-
-        ### Format variables with subtype-year grain information
-        format_kwargs = {
-            'api_year': api_year,
-            'subtype': subtype,
-        }
-        formatted_file_patterns = self.render_jinja(self.file_patterns, format_kwargs)
 
         extract_zips_to_disk = earthbeam_dag.build_python_preprocessing_operator(
             self.extract_match_zips,
             zip_dir=downloaded_dir,
             local_dirs=extracted_dirs,
-            file_patterns=formatted_file_patterns
+            file_patterns=self.render_jinja(self.file_patterns, format_kwargs)
         )
 
         shard_extracted_to_parquet = earthbeam_dag.build_python_preprocessing_operator(
