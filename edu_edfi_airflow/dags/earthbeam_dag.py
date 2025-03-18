@@ -867,18 +867,12 @@ class EarthbeamDAG:
                     state_file=em_state_file,
                     snowflake_read_conn_id=snowflake_read_conn_id,
                     results_file=em_results_file,
+                    return_exit_code=True,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     dag=self.dag
                 )
 
-                earthmover_results = earthmover_operator.execute(**context)
-
-                # Cross-version compatibility before exit-code was added an as output.
-                if isinstance(earthmover_results, str):
-                    data_dir, exit_code = earthmover_results, None
-                else:
-                    data_dir, exit_code = earthmover_results
-                
+                data_dir, exit_code = earthmover_operator.execute(**context)
                 id_match_failed = (int(exit_code) == self.no_match_exit_code)
 
                 return {
