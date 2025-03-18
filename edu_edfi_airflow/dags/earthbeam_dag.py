@@ -883,7 +883,10 @@ class EarthbeamDAG:
                 }
             
             @task(multiple_outputs=True, pool=self.lightbeam_pool, dag=self.dag)
-            def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
+            def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, upstream_failed: bool = False, **context):
+                if upstream_failed:
+                    raise AirflowSkipException("Upstream Earthmover process failed with exit code. Lightbeam run is skipped.")
+                
                 dir_basename = self.get_filename(data_dir)
 
                 lb_state_dir = edfi_api_client.url_join(
@@ -919,7 +922,10 @@ class EarthbeamDAG:
                 }
             
             @task(pool=self.pool, dag=self.dag)
-            def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
+            def em_to_snowflake(s3_destination_dir: str, endpoint: str, upstream_failed: bool = False, **context):
+                if upstream_failed:
+                    raise AirflowSkipException("Upstream Earthmover process failed with exit code. Sideload to Stadium is skipped.")
+
                 # Snowflake tables are snake_cased; Earthmover outputs are camelCased
                 snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
                 camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
@@ -952,7 +958,7 @@ class EarthbeamDAG:
                 return sideload_op.execute(context)
         
             @task_group(prefix_group_id=True, dag=self.dag)
-            def sideload_to_stadium(s3_destination_dir: str):
+            def sideload_to_stadium(s3_destination_dir: str, upstream_failed: bool = False):
                 if not s3_conn_id:
                     raise Exception("S3 connection required to copy into Snowflake.")
 
@@ -963,7 +969,7 @@ class EarthbeamDAG:
                     raise Exception("No endpoints defined for ODS-bypass!")
 
                 for endpoint in endpoints:
-                    em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
+                    em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint, upstream_failed=upstream_failed)
 
             @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
@@ -1069,14 +1075,14 @@ class EarthbeamDAG:
 
             # Lightbeam Validate
             if validate_edfi_conn_id:
-                lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
+                lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id, upstream_failed=earthmover_results['id_match_failed'])
                 all_tasks.append(lightbeam_validate_results)
             else:
                 lightbeam_validate_results = None  # Validation must come before sending or sideloading
 
             # Option 1: Bypass the ODS and sideload into Stadium
             if s3_conn_id and snowflake_conn_id and not edfi_conn_id:
-                sideload_taskgroup = sideload_to_stadium(em_s3_filepath)
+                sideload_taskgroup = sideload_to_stadium(em_s3_filepath, upstream_failed=earthmover_results['id_match_failed'])
                 all_tasks.append(sideload_taskgroup)
 
                 if lightbeam_validate_results:
@@ -1084,7 +1090,7 @@ class EarthbeamDAG:
 
             # Option 2: LightbeamOperator
             elif edfi_conn_id:
-                lightbeam_results = run_lightbeam(earthmover_results["data_dir"], command="send", lb_edfi_conn_id=edfi_conn_id)
+                lightbeam_results = run_lightbeam(earthmover_results["data_dir"], command="send", lb_edfi_conn_id=edfi_conn_id, upstream_failed=earthmover_results['id_match_failed'])
                 all_tasks.append(lightbeam_results)
                 lightbeam_results >> remove_files_operator  # Wait for lightbeam to finish before removing Earthmover outputs
 
