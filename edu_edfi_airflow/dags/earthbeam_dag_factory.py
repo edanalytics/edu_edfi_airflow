@@ -419,6 +419,9 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
 
 
 class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
+    # TODO:
+    # * Allow glob paths for remote path
+    # * If file patterns are not specified, turn off ZIP functionality.
     """
     Access data on an SFTP to be unzipped and sharded before processing
     """
@@ -454,14 +457,12 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
         SFTP-pull returns XComs for all possible filepaths, regardless if they are defined.
         This skips if the XCom returns an empty string.
         """
-        if not path or not os.path.exists(path):
-            logging.info(f"Filepath not found: {path}")
-            raise AirflowSkipException
-        
-        # Raise if the file is empty as well.
-        if not os.path.getsize(path):
-            logging.info(f"File is empty: {path}")
-            raise AirflowSkipException
+        if not path or not glob.glob(path):
+            raise AirflowSkipException(f"Filepath not found: {path}")
+
+        # Check the filesize of non-wildcard paths.
+        if "*" not in path and not os.path.getsize(path):
+            raise AirflowSkipException(f"File is empty: {path}")
 
         return path
     
