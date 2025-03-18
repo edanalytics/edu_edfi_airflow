@@ -110,15 +110,9 @@ class EarthmoverOperator(BashOperator):
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
         
         super().execute(context)
-
         exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
-    
-        # Push exit code to XCom 
-        context["ti"].xcom_push(key="exit_code", value=exit_code)
         
-        print(exit_code)
-
-        return self.output_dir
+        return self.output_dir, exit_code
 
 
 

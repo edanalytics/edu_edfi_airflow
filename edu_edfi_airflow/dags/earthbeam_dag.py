@@ -52,6 +52,7 @@ class EarthbeamDAG:
         lightbeam_pool: Optional[str] = None,
 
         fast_cleanup: bool = False,
+        no_match_exit_code: int = 42,  # TODO
 
         **kwargs
     ):
@@ -65,6 +66,7 @@ class EarthbeamDAG:
         self.lightbeam_pool = lightbeam_pool or self.pool
 
         self.fast_cleanup = fast_cleanup
+        self.no_match_exit_code = no_match_exit_code
 
         self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
@@ -868,11 +870,22 @@ class EarthbeamDAG:
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     dag=self.dag
                 )
+
+                earthmover_results = earthmover_operator.execute(**context)
+
+                # Cross-version compatibility before exit-code was added an as output.
+                if isinstance(earthmover_results, str):
+                    data_dir, exit_code = earthmover_results, None
+                else:
+                    data_dir, exit_code = earthmover_results
                 
+                id_match_failed = (int(exit_code) == self.no_match_exit_code)
+
                 return {
-                    "data_dir": earthmover_operator.execute(**context),
+                    "data_dir": data_dir,
                     "state_file": em_state_file,
                     "results_file": em_results_file,
+                    "id_match_failed": id_match_failed,
                 }
             
             @task(multiple_outputs=True, pool=self.lightbeam_pool, dag=self.dag)
