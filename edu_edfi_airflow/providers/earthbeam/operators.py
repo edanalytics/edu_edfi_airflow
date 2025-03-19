@@ -111,14 +111,13 @@ class EarthmoverOperator(BashOperator):
         
         super().execute(context)
 
-        exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
-    
-        # Push exit code to XCom 
-        context["ti"].xcom_push(key="exit_code", value=exit_code)
+        output_dir = self.output_dir
         
+        # Retrieve earthmover exit code
+        exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
         print(exit_code)
-
-        return self.output_dir
+       
+        return [output_dir, exit_code]
 
 
 

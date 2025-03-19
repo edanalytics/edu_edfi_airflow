@@ -3,6 +3,7 @@ from typing import Callable, List, Optional, Union
 import logging
 import os
 import re
+import shutil
 
 
 from airflow.decorators import task, task_group
@@ -800,7 +801,7 @@ class EarthbeamDAG:
                 else:
                     return None
             
-            @task(multiple_outputs=True, pool=self.earthmover_pool, dag=self.dag)
+            @task(multiple_outputs=True, pool=self.earthmover_pool, dag=self.dag, on_failure_call_back = check_em_exit_code)
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], max_match_rate: Optional[bool] = None, **context):
                 input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
                 input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
@@ -868,12 +869,43 @@ class EarthbeamDAG:
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     dag=self.dag
                 )
+
+                em_output = earthmover_operator.execute(**context)
+
+                context['ti'].xcom_push(key = "em_exit_code", value = em_output[1])
+                context['ti'].xcom_push(key = "em_input_file", value = input_filepaths)
                 
                 return {
-                    "data_dir": earthmover_operator.execute(**context),
+                    "data_dir": em_output[0],
                     "state_file": em_state_file,
-                    "results_file": em_results_file,
+                    "results_file": em_results_file
                 }
+
+
+            # To do: copy full input file over to no matching_student_ids.csv and upload to s3
+            @task.branch(trigger_rule = 'one_failed', dag=self.dag, pool=self.pool,)
+            # @static.method
+            def check_em_exit_code(**context):
+
+                em_input_file = context['ti'].xcom_pull(task_id = "run_eathmover", key = "em_input_file")[0]
+                em_exit_code = context['ti'].xcom_pull(task_id = "run_earthmover", key = 'exit_code')
+                no_matching_student_ids_file = os.path.join(os.path.dirname(em_input_file), "no_matching_student_ids.csv")
+
+                if em_exit_code == "17":
+                    try:
+                        print(em_exit_code)
+                    except Exception as e:
+                        logging.info(f"Failed to copy fail: {e}")
+                        
+                    # down_stream_tasks = ['log_em_to_snowflake', 'match_rates_to_snowflake', 'run_python_postprocess', 'remove_files']
+                    # logging.error(f"Task `run_earthmover` failed with exit code 17: No student id match rate. Scheduling tasks {down_stream_tasks}")
+
+                    # for down_stream_task in down_stream_tasks:
+                    #     if down_stream_task:
+                    #         down_stream_task = context[dag_run].get_task_instance(down_stream_task)
+                    #         down_stream_task = down_stream_task.set_state()
+
+
             
             @task(multiple_outputs=True, pool=self.lightbeam_pool, dag=self.dag)
             def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
