@@ -32,6 +32,16 @@ class EarthbeamDAG:
     raw_output_directory  : str = '/efs/tmp_storage/raw'
     em_output_directory   : str = '/efs/tmp_storage/earthmover'
 
+    match_rates_query: str = """
+        SELECT match_rate
+        FROM {student_id_match_rates_table}
+        WHERE tenant_code = $${tenant_code}$$
+            AND api_year = {api_year}
+            AND assessment_name = $${assessment_bundle}$$
+        ORDER BY match_rate desc, edfi_column_name desc
+        LIMIT 1
+    """
+
     params_dict = {
         "force": Param(
             default=False,
@@ -52,7 +62,6 @@ class EarthbeamDAG:
         lightbeam_pool: Optional[str] = None,
 
         fast_cleanup: bool = False,
-        no_match_exit_code: int = 42,  # TODO
 
         **kwargs
     ):
@@ -66,11 +75,12 @@ class EarthbeamDAG:
         self.lightbeam_pool = lightbeam_pool or self.pool
 
         self.fast_cleanup = fast_cleanup
-        self.no_match_exit_code = no_match_exit_code
 
         self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
 
+
+    ### TaskGroup-external helper methods
     def build_local_raw_dir(self, tenant_code: str, api_year: int, grain_update: Optional[str] = None) -> str:
         """
         Helper function to force consistency when building raw filepathing in Python operators.
@@ -87,8 +97,8 @@ class EarthbeamDAG:
         )
         return raw_dir
     
-    
-    def list_files_in_raw_dir(self, raw_dir: str, file_pattern: Optional[str] = None, **context):
+    @staticmethod
+    def list_files_in_raw_dir(raw_dir: str, file_pattern: Optional[str] = None, **context):
         """
         List files in a raw directory. Skip if no files found
         """
@@ -245,6 +255,205 @@ class EarthbeamDAG:
         )
 
 
+
+    ### TaskGroup-internal helper methods
+    @staticmethod
+    def build_group_id(
+        tenant_code: str, api_year: str, grain_update: Optional[str], *,
+        edfi_conn_id: bool, snowflake_conn_id: bool, s3_conn_id: bool,
+    ) -> str:
+        group_id = f"{tenant_code}_{api_year}"
+        if grain_update:
+            group_id += f"_{grain_update}"
+
+        # Group ID can be defined manually or built dynamically
+        group_id += "__earthmover"
+
+        # TaskGroups have three shapes:
+        if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
+            group_id += "_to_lightbeam"
+        elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
+            group_id += "_to_snowflake"
+        elif s3_conn_id:         # Earthmover-to-S3
+            group_id += "_to_s3"
+        
+        return group_id
+
+    @staticmethod
+    def log_to_snowflake(
+        snowflake_conn_id: str,
+        logging_table: str,
+
+        run_type: str,
+        tenant_code: str,
+        api_year: int,
+        grain_update: Optional[str] = None,
+
+        # Mutually-exclusive arguments
+        log_filepath: Optional[str] = None,
+        log_data: Optional[dict] = None,
+        **kwargs
+    ):
+        """
+
+        :return:
+        """
+        # Short-circuit fail before imports.
+        if not snowflake_conn_id:
+            raise Exception(
+                "Snowflake connection required to copy logs into Snowflake."
+            )
+
+        from airflow.exceptions import AirflowSkipException
+        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
+        if log_filepath:
+            # Assume the results file is overwritten at every run.
+            # If not found, raise a skip-exception instead of failing.
+            try:
+                with open(log_filepath, 'r') as fp:
+                    log_data = fp.read()
+            except FileNotFoundError:
+                raise AirflowSkipException(
+                    f"Results file not found: {log_filepath}\n"
+                    "Did Earthmover/Lightbeam run without error?"
+                )
+
+        # Retrieve the database and schema from the Snowflake hook and build the insert-query.
+        database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+
+        grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
+
+        qry_insert_into = f"""
+            INSERT INTO {database}.{schema}.{logging_table}
+                (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
+            SELECT
+                '{tenant_code}' AS tenant_code,
+                '{api_year}' AS api_year,
+                {grain_update_str} AS grain_update,
+                '{run_type}' AS run_type,
+                '{kwargs['ds']}' AS run_date,
+                '{kwargs['ts']}' AS run_timestamp,
+                PARSE_JSON($${log_data}$$) AS result
+        """
+
+        # Insert each row into the table, passing the values as parameters.
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
+        snowflake_hook.run(
+            sql=qry_insert_into
+        )
+    
+    @staticmethod
+    def inject_parameters_into_kwargs(parameters: dict, earthmover_kwargs: Optional[dict]) -> dict:
+        """
+        Helper for injecting parameters into kwargs passed to Earthmover in dynamic runs.
+        """
+        copied_kwargs = dict(earthmover_kwargs or ())
+
+        if not 'parameters' in copied_kwargs:
+            copied_kwargs['parameters'] = {}
+
+        copied_kwargs['parameters'].update(parameters)
+        return copied_kwargs
+    
+    @staticmethod
+    def get_filename(filepath: str) -> str:
+        return os.path.splitext(os.path.basename(filepath))[0]
+
+    @staticmethod
+    def format_log_record(record, args, kwargs):
+
+        from datetime import datetime, timezone
+        import json
+
+        def serialize_argument(arg):
+            try:
+                return json.dumps(arg)
+            except TypeError:
+                return str(arg)
+
+        log_record = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'name': record.name,
+            'level': record.levelname,
+            'message': record.getMessage(),
+            'pathname': record.pathname,
+            'lineno': record.lineno,
+            'args': {k: serialize_argument(v) for k, v in enumerate(args)},
+            'kwargs': {k: serialize_argument(v) for k, v in kwargs.items()},
+        }
+        return json.dumps(log_record)
+
+
+    def capture_logs(self,
+        python_callable: Callable,
+        snowflake_conn_id: str,
+        logging_table: Optional[str],
+
+        tenant_code: str,
+        api_year: int,
+        grain_update: Optional[str] = None,
+    ):
+        def wrapper(*args, **kwargs):
+
+            import logging
+            import json
+            import io
+
+            # Create a logger
+            logger = logging.getLogger(python_callable.__name__)
+            logger.setLevel(logging.DEBUG)
+
+            # Create StringIO stream to capture logs
+            log_capture_string = io.StringIO()
+            ch = logging.StreamHandler(log_capture_string)
+            ch.setLevel(logging.DEBUG)
+            logger.addHandler(ch)
+
+            try:
+                result = python_callable(*args, **kwargs)
+
+            except Exception as err:
+                logger.error(f"Error in {python_callable.__name__}: {err}")
+                raise
+
+            finally:
+                # Ensure all log entries are flushed before closing the stream
+                ch.flush()
+                log_contents = log_capture_string.getvalue()
+
+                # Remove the handler and close the StringIO stream
+                logger.removeHandler(ch)
+                log_capture_string.close()
+
+                # Send logs to Snowflake
+                log_entries = log_contents.splitlines()
+                for entry in log_entries:
+                    record = logging.LogRecord(
+                        name=python_callable.__name__,
+                        level=logging.DEBUG,
+                        pathname='',
+                        lineno=0,
+                        msg=entry,
+                        args=None,
+                        exc_info=None
+                    )
+                    log_data = json.loads(self.format_log_record(record, args, kwargs))
+                    self.log_to_snowflake(
+                        snowflake_conn_id=snowflake_conn_id,
+                        logging_table=logging_table,
+                        log_data=log_data,
+                        run_type=self.run_type,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update,
+                        **kwargs
+                    )
+
+            return result
+        return wrapper
+
+    ### Static Earthbeam across single files
     def build_tenant_year_taskgroup(self,
         tenant_code: str,
         api_year: int,
@@ -581,121 +790,8 @@ class EarthbeamDAG:
         
         return dynamic_tenant_year_task_group
 
-    @staticmethod
-    def build_group_id(
-        tenant_code: str, api_year: str, grain_update: Optional[str], *,
-        edfi_conn_id: bool, snowflake_conn_id: bool, s3_conn_id: bool,
-    ) -> str:
-        group_id = f"{tenant_code}_{api_year}"
-        if grain_update:
-            group_id += f"_{grain_update}"
-
-        # Group ID can be defined manually or built dynamically
-        group_id += "__earthmover"
-
-        # TaskGroups have three shapes:
-        if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
-            group_id += "_to_lightbeam"
-        elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
-            group_id += "_to_snowflake"
-        elif s3_conn_id:         # Earthmover-to-S3
-            group_id += "_to_s3"
-        
-        return group_id
-
-
-    def log_to_snowflake(self,
-        snowflake_conn_id: str,
-        logging_table: str,
-
-        tenant_code: str,
-        api_year: int,
-        grain_update: Optional[str] = None,
-
-        # Mutually-exclusive arguments
-        log_filepath: Optional[str] = None,
-        log_data: Optional[dict] = None,
-        **kwargs
-    ):
-        """
-
-        :return:
-        """
-        # Short-circuit fail before imports.
-        if not snowflake_conn_id:
-            raise Exception(
-                "Snowflake connection required to copy logs into Snowflake."
-            )
-
-        from airflow.exceptions import AirflowSkipException
-        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-
-        if log_filepath:
-            # Assume the results file is overwritten at every run.
-            # If not found, raise a skip-exception instead of failing.
-            try:
-                with open(log_filepath, 'r') as fp:
-                    log_data = fp.read()
-            except FileNotFoundError:
-                raise AirflowSkipException(
-                    f"Results file not found: {log_filepath}\n"
-                    "Did Earthmover/Lightbeam run without error?"
-                )
-
-        # Retrieve the database and schema from the Snowflake hook and build the insert-query.
-        database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
-
-        grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
-
-        qry_insert_into = f"""
-            INSERT INTO {database}.{schema}.{logging_table}
-                (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
-            SELECT
-                '{tenant_code}' AS tenant_code,
-                '{api_year}' AS api_year,
-                {grain_update_str} AS grain_update,
-                '{self.run_type}' AS run_type,
-                '{kwargs['ds']}' AS run_date,
-                '{kwargs['ts']}' AS run_timestamp,
-                PARSE_JSON($${log_data}$$) AS result
-        """
-
-        # Insert each row into the table, passing the values as parameters.
-        snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
-        snowflake_hook.run(
-            sql=qry_insert_into
-        )
     
-    @staticmethod
-    def inject_parameters_into_kwargs(parameters: dict, earthmover_kwargs: Optional[dict]) -> dict:
-        """
-        Helper for injecting parameters into kwargs passed to Earthmover in dynamic runs.
-        """
-        copied_kwargs = dict(earthmover_kwargs or ())
-
-        if not 'parameters' in copied_kwargs:
-            copied_kwargs['parameters'] = {}
-
-        copied_kwargs['parameters'].update(parameters)
-        return copied_kwargs
-    
-    @staticmethod
-    def get_filename(filepath: str) -> str:
-        return os.path.splitext(os.path.basename(filepath))[0]
-    
-    @staticmethod
-    def get_match_rates_query(student_id_match_rates_table: str, tenant_code: str, api_year: str, assessment_bundle: str) -> str:
-        qry_match_rates = f"""
-                    SELECT *
-                    FROM {student_id_match_rates_table}
-                    WHERE tenant_code = $${tenant_code}$$
-                        AND api_year = {api_year}
-                        AND assessment_name = $${assessment_bundle}$$
-                    ORDER BY match_rate desc
-                    LIMIT 1
-                """
-        return qry_match_rates
-
+    ### Unified method for building EMLB taskgroup across both approaches
     def build_file_to_edfi_taskgroup(self,
         *,
         tenant_code: str,
@@ -733,11 +829,6 @@ class EarthbeamDAG:
 
             @task(pool=self.pool, dag=self.dag)
             def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, s3_file_subdirs: Optional[List[str]] = None, **context):
-                if not s3_filepath:
-                    raise ValueError(
-                        "Argument `s3_filepath` must be defined to upload transformed Earthmover files to S3."
-                    )
-                
                 filepaths = [filepaths] if isinstance(filepaths, str) else filepaths  # Data-dir is passed as a singleton
                 s3_file_subdirs = [None] * len(filepaths) if not s3_file_subdirs else s3_file_subdirs
 
@@ -775,6 +866,7 @@ class EarthbeamDAG:
                     snowflake_conn_id=snowflake_conn_id,
                     logging_table=logging_table,
                     log_filepath=results_filepath,
+                    run_type=self.run_type,
                     tenant_code=tenant_code,
                     api_year=api_year,
                     grain_update=grain_update,
@@ -785,22 +877,21 @@ class EarthbeamDAG:
             def check_existing_match_rates():
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
                 from snowflake.connector import DictCursor
+
+                qry_match_rates = self.match_rates_query.format(
+                    student_id_match_rates_table=student_id_match_rates_table,
+                    tenant_code=tenant_code,
+                    api_year=api_year,
+                    assessment_bundle=assessment_bundle,
+                )
+                logging.info(f'Pulling previous match rates: {qry_match_rates}')
                 
-                snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
-                conn = snowflake_hook.get_conn()
+                conn = SnowflakeHook(snowflake_conn_id=snowflake_conn_id).get_conn()
                 cursor = conn.cursor(DictCursor)
 
-                qry_match_rates = self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle)
-                logging.info(f'Pulling previous match rates: {qry_match_rates}')
-
                 cursor.execute(qry_match_rates)
-                match_rates = cursor.fetchall()
-
-                if len(match_rates) > 0:
-                    max_match_rate = max(record['MATCH_RATE'] for record in match_rates)
-                    return max_match_rate
-                else:
-                    return None
+                match_rate = cursor.fetchone()
+                return match_rate[0] if match_rate else None
             
             @task(multiple_outputs=True, pool=self.earthmover_pool, dag=self.dag)
             def run_earthmover(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]], max_match_rate: Optional[bool] = None, **context):
@@ -873,20 +964,16 @@ class EarthbeamDAG:
                 )
 
                 data_dir, exit_code = earthmover_operator.execute(**context)
-                id_match_failed = (int(exit_code) == self.no_match_exit_code)
 
                 return {
                     "data_dir": data_dir,
+                    "exit_code": int(exit_code),
                     "state_file": em_state_file,
                     "results_file": em_results_file,
-                    "id_match_failed": id_match_failed,
                 }
             
             @task(multiple_outputs=True, pool=self.lightbeam_pool, dag=self.dag)
-            def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, upstream_failed: bool = False, **context):
-                if upstream_failed:
-                    raise AirflowSkipException("Upstream Earthmover process failed with exit code. Lightbeam run is skipped.")
-                
+            def run_lightbeam(data_dir: str, lb_edfi_conn_id: str, command: str, **context):
                 dir_basename = self.get_filename(data_dir)
 
                 lb_state_dir = edfi_api_client.url_join(
@@ -922,10 +1009,7 @@ class EarthbeamDAG:
                 }
             
             @task(pool=self.pool, dag=self.dag)
-            def em_to_snowflake(s3_destination_dir: str, endpoint: str, upstream_failed: bool = False, **context):
-                if upstream_failed:
-                    raise AirflowSkipException("Upstream Earthmover process failed with exit code. Sideload to Stadium is skipped.")
-
+            def em_to_snowflake(s3_destination_dir: str, endpoint: str, **context):
                 # Snowflake tables are snake_cased; Earthmover outputs are camelCased
                 snake_endpoint = edfi_api_client.camel_to_snake(endpoint)
                 camel_endpoint = edfi_api_client.snake_to_camel(endpoint)
@@ -958,10 +1042,7 @@ class EarthbeamDAG:
                 return sideload_op.execute(context)
         
             @task_group(prefix_group_id=True, dag=self.dag)
-            def sideload_to_stadium(s3_destination_dir: str, upstream_failed: bool = False):
-                if not s3_conn_id:
-                    raise Exception("S3 connection required to copy into Snowflake.")
-
+            def sideload_to_stadium(s3_destination_dir: str):
                 if not (ods_version and data_model_version):
                     raise Exception("ODS-bypass requires arguments `ods_version` and `data_model_version` to be defined.")
 
@@ -969,7 +1050,7 @@ class EarthbeamDAG:
                     raise Exception("No endpoints defined for ODS-bypass!")
 
                 for endpoint in endpoints:
-                    em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint, upstream_failed=upstream_failed)
+                    em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
             @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
@@ -1030,9 +1111,8 @@ class EarthbeamDAG:
                         unnested_filepaths.extend(filepath)
                 
                 return remove_filepaths(unnested_filepaths)
+            
 
-
-            ### Only Earthmover and Cleanup are required tasks
             # EarthmoverOperator with optional student ID-matching
             all_tasks = []  # Track all tasks after Earthmover to force cleanup at the very end
             paths_to_clean = [input_filepaths]
@@ -1113,95 +1193,3 @@ class EarthbeamDAG:
             all_tasks[-1] >> remove_files_operator
 
         return file_to_edfi_taskgroup
-
-    @staticmethod
-    def format_log_record(record, args, kwargs):
-
-        from datetime import datetime, timezone
-        import json
-
-        def serialize_argument(arg):
-            try:
-                return json.dumps(arg)
-            except TypeError:
-                return str(arg)
-
-        log_record = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'name': record.name,
-            'level': record.levelname,
-            'message': record.getMessage(),
-            'pathname': record.pathname,
-            'lineno': record.lineno,
-            'args': {k: serialize_argument(v) for k, v in enumerate(args)},
-            'kwargs': {k: serialize_argument(v) for k, v in kwargs.items()},
-        }
-        return json.dumps(log_record)
-
-
-    def capture_logs(self,
-        python_callable: Callable,
-        snowflake_conn_id: str,
-        logging_table: Optional[str],
-
-        tenant_code: str,
-        api_year: int,
-        grain_update: Optional[str] = None,
-    ):
-        def wrapper(*args, **kwargs):
-
-            import logging
-            import json
-            import io
-
-            # Create a logger
-            logger = logging.getLogger(python_callable.__name__)
-            logger.setLevel(logging.DEBUG)
-
-            # Create StringIO stream to capture logs
-            log_capture_string = io.StringIO()
-            ch = logging.StreamHandler(log_capture_string)
-            ch.setLevel(logging.DEBUG)
-            logger.addHandler(ch)
-
-            try:
-                result = python_callable(*args, **kwargs)
-
-            except Exception as err:
-                logger.error(f"Error in {python_callable.__name__}: {err}")
-                raise
-
-            finally:
-                # Ensure all log entries are flushed before closing the stream
-                ch.flush()
-                log_contents = log_capture_string.getvalue()
-
-                # Remove the handler and close the StringIO stream
-                logger.removeHandler(ch)
-                log_capture_string.close()
-
-                # Send logs to Snowflake
-                log_entries = log_contents.splitlines()
-                for entry in log_entries:
-                    record = logging.LogRecord(
-                        name=python_callable.__name__,
-                        level=logging.DEBUG,
-                        pathname='',
-                        lineno=0,
-                        msg=entry,
-                        args=None,
-                        exc_info=None
-                    )
-                    log_data = json.loads(self.format_log_record(record, args, kwargs))
-                    self.log_to_snowflake(
-                        snowflake_conn_id=snowflake_conn_id,
-                        logging_table=logging_table,
-                        log_data=log_data,
-                        tenant_code=tenant_code,
-                        api_year=api_year,
-                        grain_update=grain_update,
-                        **kwargs
-                    )
-
-            return result
-        return wrapper
