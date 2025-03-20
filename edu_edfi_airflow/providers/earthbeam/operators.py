@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from typing import Iterable, Optional, Union
+import subprocess
 
 from airflow.models import Connection
 from airflow.operators.bash import BashOperator
@@ -31,6 +32,7 @@ class EarthmoverOperator(BashOperator):
         skip_hashing   : bool = False,
         show_graph     : bool = False,
         show_stacktrace: bool = False,
+        return_exit_code: bool = False,
 
         **kwargs
     ):
@@ -38,6 +40,7 @@ class EarthmoverOperator(BashOperator):
         self.output_dir = output_dir
         self.state_file = state_file
         self.snowflake_read_conn_id = snowflake_read_conn_id
+        self.return_exit_code = return_exit_code
 
         ### Building the Earthmover CLI command
         self.arguments = {}
@@ -109,7 +112,12 @@ class EarthmoverOperator(BashOperator):
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
         super().execute(context)
-        return self.output_dir
+
+        if self.return_exit_code:
+            exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
+            return self.output_dir, int(exit_code)
+        else:
+            return self.output_dir
 
 
 
