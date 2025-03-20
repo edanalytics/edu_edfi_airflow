@@ -111,12 +111,14 @@ class EarthmoverOperator(BashOperator):
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
-        super().execute(context)
-
         if self.return_exit_code:
-            exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
-            return self.output_dir, int(exit_code)
+            try:
+                super().execute(context)
+            finally:
+                exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
+                return self.output_dir, int(exit_code)
         else:
+            super().execute(context)
             return self.output_dir
 
 
