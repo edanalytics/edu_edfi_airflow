@@ -729,7 +729,7 @@ class EarthbeamDAG:
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
         def file_to_edfi_taskgroup(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]]):
 
-            @task(pool=self.pool, dag=self.dag)
+            @task(pool=self.pool, trigger_rule="none_skipped", dag=self.dag)
             def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, s3_file_subdirs: Optional[List[str]] = None, **context):
                 if not s3_filepath:
                     raise ValueError(
@@ -865,12 +865,18 @@ class EarthbeamDAG:
                     state_file=em_state_file,
                     snowflake_read_conn_id=snowflake_read_conn_id,
                     results_file=em_results_file,
+                    return_exit_code=True,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     dag=self.dag
                 )
+
+                data_dir, exit_code = earthmover_operator.execute(**context)
+
+                if exit_code:
+                    raise AirflowFailException(f"Earthmover run failed with exit code {exit_code}.")
                 
                 return {
-                    "data_dir": earthmover_operator.execute(**context),
+                    "data_dir": data_dir,
                     "state_file": em_state_file,
                     "results_file": em_results_file,
                 }
