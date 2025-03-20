@@ -80,7 +80,7 @@ class EarthmoverOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.earthmover_path} run "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, xcom_push=True, **kwargs)
 
     def execute(self, conf=None, **context) -> str:
         """
@@ -113,10 +113,9 @@ class EarthmoverOperator(BashOperator):
 
         if self.return_exit_code:
             try:
-                super().execute(context)
+                subprocess_result = super().execute(context)
             finally:
-                exit_code = subprocess.run("echo $?", shell=True, capture_output=True, text=True).stdout.strip()
-                return self.output_dir, int(exit_code)
+                return self.output_dir, subprocess_result.exit_code
         else:
             super().execute(context)
             return self.output_dir
