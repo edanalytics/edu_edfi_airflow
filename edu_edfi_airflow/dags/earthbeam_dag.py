@@ -32,16 +32,6 @@ class EarthbeamDAG:
     raw_output_directory  : str = '/efs/tmp_storage/raw'
     em_output_directory   : str = '/efs/tmp_storage/earthmover'
 
-    match_rates_query: str = """
-        SELECT match_rate
-        FROM {student_id_match_rates_table}
-        WHERE tenant_code = $${tenant_code}$$
-            AND api_year = {api_year}
-            AND assessment_name = $${assessment_bundle}$$
-        ORDER BY match_rate desc, edfi_column_name desc
-        LIMIT 1
-    """
-
     params_dict = {
         "force": Param(
             default=False,
@@ -60,8 +50,24 @@ class EarthbeamDAG:
         pool: str = 'default_pool',
         earthmover_pool: Optional[str] = None,
         lightbeam_pool: Optional[str] = None,
-
         fast_cleanup: bool = False,
+
+        s3_conn_id: Optional[str] = None,
+        python_callable: Optional[Callable] = None,
+        python_postprocess_callable: Optional[Callable] = None,
+
+        snowflake_conn_id: Optional[str] = None,
+        logging_table: Optional[str] = None,
+
+        assessment_bundle: Optional[str] = None,
+        student_id_match_rates_table: Optional[str] = None,
+        snowflake_read_conn_id: Optional[str] = None,
+        required_id_match_rate: Optional[float] = None,
+
+        ods_version: Optional[str] = None,
+        data_model_version: Optional[str] = None,
+        endpoints: Optional[List[str]] = None,
+        full_refresh: bool = False,
 
         **kwargs
     ):
@@ -73,8 +79,24 @@ class EarthbeamDAG:
         self.pool = pool
         self.earthmover_pool = earthmover_pool or self.pool
         self.lightbeam_pool = lightbeam_pool or self.pool
-
         self.fast_cleanup = fast_cleanup
+
+        self.s3_conn_id = s3_conn_id
+        self.python_callable = python_callable
+        self.python_postprocess_callable = python_postprocess_callable
+
+        self.snowflake_conn_id = snowflake_conn_id
+        self.logging_table = logging_table
+        
+        self.assessment_bundle = assessment_bundle
+        self.student_id_match_rates_table = student_id_match_rates_table
+        self.snowflake_read_conn_id = snowflake_read_conn_id
+        self.required_id_match_rate = required_id_match_rate
+
+        self.ods_version = ods_version
+        self.data_model_version = data_model_version
+        self.endpoints = endpoints
+        self.full_refresh = full_refresh
 
         self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
@@ -209,10 +231,7 @@ class EarthbeamDAG:
         else:
             raise AirflowSkipException  # Force a skip to not mark the taskgroup as a success when all tasks skip.
 
-    def build_python_preprocessing_operator(self,
-        python_callable: Callable,
-        **kwargs
-    ) -> PythonOperator:
+    def build_python_preprocessing_operator(self, **kwargs) -> PythonOperator:
         """
         Optional Python preprocessing operator to run before Earthmover and Lightbeam.
 
@@ -220,22 +239,19 @@ class EarthbeamDAG:
         :param kwargs:
         :return:
         """
-        callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
+        callable_name = self.python_callable.__name__.strip('<>')  # Remove brackets around lambdas
         task_id = f"{self.run_type}__preprocess_python_callable__{callable_name}"
 
         return PythonOperator(
             task_id=task_id,
-            python_callable=python_callable,
+            python_callable=self.python_callable,
             op_kwargs=kwargs,
             provide_context=True,
             pool=self.pool,
             dag=self.dag
         )
 
-    def build_bash_preprocessing_operator(self,
-        bash_command: str,
-        **kwargs
-    ) -> PythonOperator:
+    def build_bash_preprocessing_operator(self, bash_command: str, **kwargs) -> PythonOperator:
         """
         Optional Bash preprocessing operator to run before Earthmover and Lightbeam.
 
@@ -259,9 +275,7 @@ class EarthbeamDAG:
     ### TaskGroup-internal helper methods
     @staticmethod
     def build_group_id(
-        tenant_code: str, api_year: str, grain_update: Optional[str], *,
-        edfi_conn_id: bool, snowflake_conn_id: bool, s3_conn_id: bool,
-    ) -> str:
+        tenant_code: str, api_year: str, grain_update: Optional[str], *, edfi_conn_id: bool) -> str:
         group_id = f"{tenant_code}_{api_year}"
         if grain_update:
             group_id += f"_{grain_update}"
@@ -272,19 +286,14 @@ class EarthbeamDAG:
         # TaskGroups have three shapes:
         if edfi_conn_id:         # Earthmover-to-Lightbeam (with optional S3)
             group_id += "_to_lightbeam"
-        elif snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
+        elif self.snowflake_conn_id:  # Earthmover-to-Snowflake (through S3)
             group_id += "_to_snowflake"
-        elif s3_conn_id:         # Earthmover-to-S3
+        elif self.s3_conn_id:         # Earthmover-to-S3
             group_id += "_to_s3"
         
         return group_id
 
-    @staticmethod
-    def log_to_snowflake(
-        snowflake_conn_id: str,
-        logging_table: str,
-
-        run_type: str,
+    def log_to_snowflake(self,
         tenant_code: str,
         api_year: int,
         grain_update: Optional[str] = None,
@@ -299,7 +308,7 @@ class EarthbeamDAG:
         :return:
         """
         # Short-circuit fail before imports.
-        if not snowflake_conn_id:
+        if not self.snowflake_conn_id:
             raise Exception(
                 "Snowflake connection required to copy logs into Snowflake."
             )
@@ -320,28 +329,26 @@ class EarthbeamDAG:
                 )
 
         # Retrieve the database and schema from the Snowflake hook and build the insert-query.
-        database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+        database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
 
         grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
 
         qry_insert_into = f"""
-            INSERT INTO {database}.{schema}.{logging_table}
+            INSERT INTO {database}.{schema}.{self.logging_table}
                 (tenant_code, api_year, grain_update, run_type, run_date, run_timestamp, result)
             SELECT
                 '{tenant_code}' AS tenant_code,
                 '{api_year}' AS api_year,
                 {grain_update_str} AS grain_update,
-                '{run_type}' AS run_type,
+                '{self.run_type}' AS run_type,
                 '{kwargs['ds']}' AS run_date,
                 '{kwargs['ts']}' AS run_timestamp,
                 PARSE_JSON($${log_data}$$) AS result
         """
 
         # Insert each row into the table, passing the values as parameters.
-        snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
-        snowflake_hook.run(
-            sql=qry_insert_into
-        )
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
+        snowflake_hook.run(sql=qry_insert_into)
     
     @staticmethod
     def inject_parameters_into_kwargs(parameters: dict, earthmover_kwargs: Optional[dict]) -> dict:
@@ -384,16 +391,25 @@ class EarthbeamDAG:
         }
         return json.dumps(log_record)
 
+    def get_match_rates_query(self, tenant_code: str, api_year: str) -> str:
+        return f"""
+            SELECT match_rate
+            FROM {self.student_id_match_rates_table}
+            WHERE tenant_code = $${tenant_code}$$
+                AND api_year = {api_year}
+                AND assessment_name = $${self.assessment_bundle}$$
+            ORDER BY match_rate desc, edfi_column_name desc
+            LIMIT 1
+        """
 
-    def capture_logs(self,
-        python_callable: Callable,
-        snowflake_conn_id: str,
-        logging_table: Optional[str],
 
+    def build_capture_logs_python_operator(self,
+        python_callable: 'Callable',
         tenant_code: str,
         api_year: int,
         grain_update: Optional[str] = None,
-    ):
+    ) -> PythonOperator:
+
         def wrapper(*args, **kwargs):
 
             import logging
@@ -411,10 +427,10 @@ class EarthbeamDAG:
             logger.addHandler(ch)
 
             try:
-                result = python_callable(*args, **kwargs)
+                result = self.python_callable(*args, **kwargs)
 
             except Exception as err:
-                logger.error(f"Error in {python_callable.__name__}: {err}")
+                logger.error(f"Error in {self.python_callable.__name__}: {err}")
                 raise
 
             finally:
@@ -440,8 +456,8 @@ class EarthbeamDAG:
                     )
                     log_data = json.loads(self.format_log_record(record, args, kwargs))
                     self.log_to_snowflake(
-                        snowflake_conn_id=snowflake_conn_id,
-                        logging_table=logging_table,
+                        snowflake_conn_id=self.snowflake_conn_id,
+                        logging_table=self.logging_table,
                         log_data=log_data,
                         run_type=self.run_type,
                         tenant_code=tenant_code,
@@ -451,7 +467,65 @@ class EarthbeamDAG:
                     )
 
             return result
-        return wrapper
+
+        if self.logging_table:
+            # Wrap the callable with log capturing
+            wrapped_callable = wrapper(python_callable)
+        else:
+            wrapped_callable = python_callable
+
+        callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
+        python_preprocess = PythonOperator(
+            task_id=f"preprocess_python_callable__{callable_name}",
+            python_callable=wrapped_callable,
+            op_kwargs=python_kwargs or {},
+            provide_context=True,
+            pool=self.pool,
+            dag=self.dag
+        )
+        return python_preprocess
+
+    def set_static_taskgroup_arguments(self,
+        s3_conn_id: Optional[str] = None,
+        python_callable: Optional[Callable] = None,
+        python_postprocess_callable: Optional[Callable] = None,
+
+        snowflake_conn_id: Optional[str] = None,
+        logging_table: Optional[str] = None,
+
+        assessment_bundle: Optional[str] = None,
+        student_id_match_rates_table: Optional[str] = None,
+        snowflake_read_conn_id: Optional[str] = None,
+        required_id_match_rate: Optional[float] = None,
+
+        ods_version: Optional[str] = None,
+        data_model_version: Optional[str] = None,
+        endpoints: Optional[List[str]] = None,
+        full_refresh: bool = False,
+        
+        **kwargs
+    ):
+        """
+        DAG-level static values were originally set at the taskgroup level.
+        This method simplifies method arguments throughout the codebase.
+        """
+        self.s3_conn_id = s3_conn_id or self.s3_conn_id
+        self.python_callable = python_callable or self.python_callable
+        self.python_postprocess_callable = python_postprocess_callable or self.python_postprocess_callable
+
+        self.snowflake_conn_id = snowflake_conn_id or self.snowflake_conn_id
+        self.logging_table = logging_table or self.logging_table
+
+        self.assessment_bundle = assessment_bundle or self.assessment_bundle
+        self.student_id_match_rates_table = student_id_match_rates_table or self.student_id_match_rates_table
+        self.snowflake_read_conn_id = snowflake_read_conn_id or self.snowflake_read_conn_id
+        self.required_id_match_rate = required_id_match_rate or self.required_id_match_rate
+
+        self.ods_version = ods_version or self.ods_version
+        self.data_model_version = data_model_version or self.data_model_version
+        self.endpoints = endpoints or self.endpoints
+        self.full_refresh = full_refresh or self.full_refresh
+
 
     ### Static Earthbeam across single files
     def build_tenant_year_taskgroup(self,
@@ -463,35 +537,15 @@ class EarthbeamDAG:
         grain_update: Optional[str] = None,
         group_id: Optional[str] = None,
 
-        earthmover_kwargs: Optional[dict] = None,
+        s3_filepath: Optional[str] = None,
+        input_file_mapping: Optional[dict] = None,  # Mapping of input environment variables to be injected into the taskgroup.
         edfi_conn_id: Optional[str] = None,
         validate_edfi_conn_id: Optional[str] = None,
+
+        earthmover_kwargs: Optional[dict] = None,
         lightbeam_kwargs: Optional[dict] = None,
-
-        s3_conn_id: Optional[str] = None,
-        s3_filepath: Optional[str] = None,
-
-        python_callable: Optional[Callable] = None,
         python_kwargs: Optional[dict] = None,
-
-        python_postprocess_callable: Optional[Callable] = None,
         python_postprocess_kwargs: Optional[dict] = None,
-
-        snowflake_conn_id: Optional[str] = None,
-        logging_table: Optional[str] = None,
-
-        ods_version: Optional[str] = None,
-        data_model_version: Optional[str] = None,
-        endpoints: Optional[List[str]] = None,
-        full_refresh: bool = False,
-
-        assessment_bundle: Optional[str] = None,
-        student_id_match_rates_table: Optional[str] = None,
-        snowflake_read_conn_id: Optional[str] = None,
-        required_id_match_rate: Optional[float] = 0.5,
-
-        # Mapping of input environment variables to be injected into the taskgroup.
-        input_file_mapping: Optional[dict] = None,
 
         **kwargs
     ):
@@ -514,41 +568,25 @@ class EarthbeamDAG:
 
         :param grain_update:
         :param group_id:
+        
+        :param s3_filepath:
+        :param input_file_mapping:
+        :param edfi_conn_id:
+        :param validate_conn_id:
 
         :param earthmover_kwargs:
-        :param edfi_conn_id:
         :param lightbeam_kwargs:
-
-        :param s3_conn_id:
-        :param s3_filepath:
-
-        :param python_callable:
         :param python_kwargs:
-
-        :param python_postprocess_callable:
         :param python_postprocess_kwargs:
-
-        :param snowflake_conn_id:
-        :param logging_table:
-
-        :param ods_version:
-        :param data_model_version:
-        :param endpoints:
-        :param full_refresh:
-
-        :param assessment_bundle:
-        :param student_id_match_rates_table:
-        :param snowflake_read_conn_id:
-        :param required_id_match_rate:
-
-        :param input_file_mapping:
 
         :return:
         """
+        self.set_static_taskgroup_arguments(**kwargs)
+
         # Group ID can be defined manually or built dynamically
         group_id = group_id or self.build_group_id(
             tenant_code, api_year, grain_update,
-            edfi_conn_id=edfi_conn_id, snowflake_conn_id=snowflake_conn_id, s3_conn_id=s3_conn_id
+            edfi_conn_id=edfi_conn_id
         )
 
         with TaskGroup(
@@ -561,29 +599,13 @@ class EarthbeamDAG:
             task_order = []
 
             ### PythonOperator Preprocess
-            if python_callable:
+            if self.python_callable:
 
-                if logging_table:
-                    # Wrap the callable with log capturing
-                    wrapped_callable = self.capture_logs(
-                        python_callable,
-                        snowflake_conn_id=snowflake_conn_id,
-                        logging_table=logging_table,
-                        tenant_code=tenant_code,
-                        api_year=api_year,
-                        grain_update=grain_update
-                    )
-                else:
-                    wrapped_callable = python_callable
-
-                callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
-                python_preprocess = PythonOperator(
-                    task_id=f"preprocess_python_callable__{callable_name}",
-                    python_callable=wrapped_callable,
-                    op_kwargs=python_kwargs or {},
-                    provide_context=True,
-                    pool=self.pool,
-                    dag=self.dag
+                python_preprocess = self.build_capture_logs_python_operator(
+                    self.python_callable,
+                    tenant_code=tenant_code,
+                    api_year=api_year,
+                    grain_update=grain_update
                 )
                 task_order.append(python_preprocess)
             
@@ -600,29 +622,13 @@ class EarthbeamDAG:
                 api_year=api_year,
                 grain_update=grain_update,
 
-                earthmover_kwargs=earthmover_kwargs,
+                s3_filepath=s3_filepath, 
                 edfi_conn_id=edfi_conn_id,
                 validate_edfi_conn_id=validate_edfi_conn_id,
+                
+                earthmover_kwargs=earthmover_kwargs,
                 lightbeam_kwargs=lightbeam_kwargs,
-
-                python_postprocess_callable=python_postprocess_callable,
                 python_postprocess_kwargs=python_postprocess_kwargs,
-
-                s3_conn_id=s3_conn_id,
-                s3_filepath=s3_filepath,
-
-                snowflake_conn_id=snowflake_conn_id,
-                logging_table=logging_table,
-
-                ods_version=ods_version,
-                data_model_version=data_model_version,
-                endpoints=endpoints,
-                full_refresh=full_refresh,
-
-                assessment_bundle=assessment_bundle,
-                student_id_match_rates_table=student_id_match_rates_table,
-                snowflake_read_conn_id=snowflake_read_conn_id,
-                required_id_match_rate=required_id_match_rate, 
 
             )(
                 input_file_envs=list(input_file_mapping.keys()),
@@ -640,43 +646,21 @@ class EarthbeamDAG:
         tenant_code: str,
         api_year: int,
         raw_dir: Optional[str] = None,
+        input_file_var: str = "INPUT_FILE",  # Allows overwrite of expected environment variable.
 
         *,
         grain_update: Optional[str] = None,
         group_id: Optional[str] = None,
 
-        earthmover_kwargs: Optional[dict] = None,
+        file_pattern: Optional[str] = None,  # Unique to dynamic version: fails list task if any files don't match pattern.
+        s3_filepath: Optional[str] = None,
         edfi_conn_id: Optional[str] = None,
         validate_edfi_conn_id: Optional[str] = None,
-        lightbeam_kwargs: Optional[dict] = None,
         
-        # Unique to dynamic version: fails list task if any files don't match pattern.
-        file_pattern: Optional[str] = None, 
-
-        s3_conn_id: Optional[str] = None,
-        s3_filepath: Optional[str] = None,
-
-        python_callable: Optional[Callable] = None,
+        earthmover_kwargs: Optional[dict] = None,
+        lightbeam_kwargs: Optional[dict] = None,
         python_kwargs: Optional[dict] = None,
-
-        python_postprocess_callable: Optional[Callable] = None,
         python_postprocess_kwargs: Optional[dict] = None,        
-
-        snowflake_conn_id: Optional[str] = None,
-        logging_table: Optional[str] = None,
-
-        ods_version: Optional[str] = None,
-        data_model_version: Optional[str] = None,
-        endpoints: Optional[List[str]] = None,
-        full_refresh: bool = False,
-
-        assessment_bundle: Optional[str] = None,
-        student_id_match_rates_table: Optional[str] = None,
-        snowflake_read_conn_id: Optional[str] = None,
-        required_id_match_rate: Optional[float] = 0.5,
-
-        # Allows overwrite of expected environment variable.
-        input_file_var: str = "INPUT_FILE",
 
         **kwargs
     ):
@@ -686,7 +670,7 @@ class EarthbeamDAG:
         # Group ID can be defined manually or built dynamically
         group_id = group_id or self.build_group_id(
             tenant_code, api_year, grain_update,
-            edfi_conn_id=edfi_conn_id, snowflake_conn_id=snowflake_conn_id, s3_conn_id=s3_conn_id
+            edfi_conn_id=edfi_conn_id,
         )
 
         with TaskGroup(
@@ -699,32 +683,16 @@ class EarthbeamDAG:
             task_order = []
 
             ### PythonOperator Preprocess
-            if bool(python_callable) == bool(raw_dir):
+            if bool(self.python_callable) == bool(raw_dir):
                 raise ValueError("Taskgroup arguments `python_callable` and `raw_dir` are mutually exclusive.")
 
-            if python_callable:
+            if self.python_callable:
 
-                if logging_table:
-                    # Wrap the callable with log capturing
-                    wrapped_callable = self.capture_logs(
-                        python_callable,
-                        snowflake_conn_id=snowflake_conn_id,
-                        logging_table=logging_table,
-                        tenant_code=tenant_code,
-                        api_year=api_year,
-                        grain_update=grain_update
-                    )
-                else:
-                    wrapped_callable = python_callable
-
-                callable_name = python_callable.__name__.strip('<>')  # Remove brackets around lambdas
-                python_preprocess = PythonOperator(
-                    task_id=f"preprocess_python_callable__{callable_name}",
-                    python_callable=wrapped_callable,
-                    op_kwargs=python_kwargs or {},
-                    provide_context=True,
-                    pool=self.pool,
-                    dag=self.dag
+                python_preprocess = self.build_capture_logs_python_operator(
+                    self.python_callable,
+                    tenant_code=tenant_code,
+                    api_year=api_year,
+                    grain_update=grain_update
                 )
                 task_order.append(python_preprocess)
                 # paths_to_clean.append(airflow_util.xcom_pull_template(python_preprocess.task_id))
@@ -758,29 +726,14 @@ class EarthbeamDAG:
                 api_year=api_year,
                 grain_update=grain_update,
 
-                earthmover_kwargs=earthmover_kwargs,
+                s3_filepath=s3_filepath,
                 edfi_conn_id=edfi_conn_id,
                 validate_edfi_conn_id=validate_edfi_conn_id,
+                
+                earthmover_kwargs=earthmover_kwargs,
                 lightbeam_kwargs=lightbeam_kwargs,
-
-                python_postprocess_callable=python_postprocess_callable,
                 python_postprocess_kwargs=python_postprocess_kwargs,
 
-                s3_conn_id=s3_conn_id,
-                s3_filepath=s3_filepath,
-
-                snowflake_conn_id=snowflake_conn_id,
-                logging_table=logging_table,
-
-                assessment_bundle=assessment_bundle,
-                student_id_match_rates_table=student_id_match_rates_table,
-                snowflake_read_conn_id=snowflake_read_conn_id,
-                required_id_match_rate=required_id_match_rate,
-
-                ods_version=ods_version,
-                data_model_version=data_model_version,
-                endpoints=endpoints,
-                full_refresh=full_refresh,
             ).partial(input_file_envs=input_file_var).expand(
                 input_filepaths=list_files_task.output
             )
@@ -798,29 +751,13 @@ class EarthbeamDAG:
         api_year: int,
         grain_update: Optional[str] = None,
 
-        earthmover_kwargs: Optional[dict] = None,
+        s3_filepath: Optional[str] = None,
         edfi_conn_id: Optional[str] = None,
         validate_edfi_conn_id: Optional[str] = None,
+        
+        earthmover_kwargs: Optional[dict] = None,
         lightbeam_kwargs: Optional[dict] = None,
-
-        python_postprocess_callable: Optional[Callable] = None,
         python_postprocess_kwargs: Optional[dict] = None,
-
-        s3_conn_id: Optional[str] = None,
-        s3_filepath: Optional[str] = None,
-
-        snowflake_conn_id: Optional[str] = None,
-        logging_table: Optional[str] = None,
-
-        assessment_bundle: Optional[str] = None,
-        student_id_match_rates_table: Optional[str] = None,
-        snowflake_read_conn_id: Optional[str] = None,
-        required_id_match_rate: Optional[float] = 0.5,
-
-        ods_version: Optional[str] = None,
-        data_model_version: Optional[str] = None,
-        endpoints: Optional[List[str]] = None,
-        full_refresh: bool = False,
 
         **kwargs
     ):
@@ -848,7 +785,7 @@ class EarthbeamDAG:
 
                     try:
                         local_filepath_to_s3(
-                            s3_conn_id=s3_conn_id,
+                            s3_conn_id=self.s3_conn_id,
                             s3_destination_key=s3_write_filepath,
                             local_filepath=filepath,
                             remove_local_filepath=False
@@ -863,10 +800,7 @@ class EarthbeamDAG:
             @task(pool=self.pool, dag=self.dag)
             def log_to_snowflake(results_filepath: str, **context):
                 return self.log_to_snowflake(
-                    snowflake_conn_id=snowflake_conn_id,
-                    logging_table=logging_table,
                     log_filepath=results_filepath,
-                    run_type=self.run_type,
                     tenant_code=tenant_code,
                     api_year=api_year,
                     grain_update=grain_update,
@@ -878,15 +812,10 @@ class EarthbeamDAG:
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
                 from snowflake.connector import DictCursor
 
-                qry_match_rates = self.match_rates_query.format(
-                    student_id_match_rates_table=student_id_match_rates_table,
-                    tenant_code=tenant_code,
-                    api_year=api_year,
-                    assessment_bundle=assessment_bundle,
-                )
+                qry_match_rates = self.get_match_rates_query(tenant_code, api_year)
                 logging.info(f'Pulling previous match rates: {qry_match_rates}')
                 
-                conn = SnowflakeHook(snowflake_conn_id=snowflake_conn_id).get_conn()
+                conn = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id).get_conn()
                 cursor = conn.cursor(DictCursor)
 
                 cursor.execute(qry_match_rates)
@@ -902,10 +831,10 @@ class EarthbeamDAG:
                 env_mapping = dict(zip(input_file_envs, input_filepaths))
 
                 # Add params needed for the student ID bundle
-                if student_id_match_rates_table is not None:
+                if self.student_id_match_rates_table is not None:
                     env_mapping.update({
-                        'ASSESSMENT_BUNDLE': assessment_bundle,
-                        'REQUIRED_ID_MATCH_RATE': required_id_match_rate
+                        'ASSESSMENT_BUNDLE': self.assessment_bundle,
+                        'REQUIRED_ID_MATCH_RATE': self.required_id_match_rate
                     })
 
                     # Add params for Snowflake Ed-Fi roster source if a file source was not provided
@@ -923,10 +852,10 @@ class EarthbeamDAG:
                             env_mapping['SNOWFLAKE_API_YEAR'] = api_year
 
                     # Add params for querying existing match rates if a high enough match has previously been found
-                    if max_match_rate is not None and max_match_rate >= required_id_match_rate:
+                    if max_match_rate is not None and max_match_rate >= self.required_id_match_rate:
                         env_mapping.update({
                             'MATCH_RATES_SOURCE_TYPE': 'snowflake',
-                            'MATCH_RATES_SNOWFLAKE_QUERY': self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle)
+                            'MATCH_RATES_SNOWFLAKE_QUERY': self.get_match_rates_query(tenant_code, api_year)
                         })
                 
                 em_output_dir = edfi_api_client.url_join(
@@ -956,7 +885,7 @@ class EarthbeamDAG:
                     earthmover_path=self.earthmover_path,
                     output_dir=em_output_dir,
                     state_file=em_state_file,
-                    snowflake_read_conn_id=snowflake_read_conn_id,
+                    snowflake_read_conn_id=self.snowflake_read_conn_id,
                     results_file=em_results_file,
                     return_exit_code=True,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
@@ -1031,10 +960,10 @@ class EarthbeamDAG:
                     s3_destination_dir=s3_destination_dir,
                     s3_destination_filename=f"{camel_endpoint}.jsonl",
 
-                    snowflake_conn_id=snowflake_conn_id,
-                    ods_version=ods_version,
-                    data_model_version=data_model_version,
-                    full_refresh=full_refresh,
+                    snowflake_conn_id=self.snowflake_conn_id,
+                    ods_version=self.ods_version,
+                    data_model_version=self.data_model_version,
+                    full_refresh=self.full_refresh,
 
                     dag=self.dag
                 )
@@ -1043,19 +972,19 @@ class EarthbeamDAG:
         
             @task_group(prefix_group_id=True, dag=self.dag)
             def sideload_to_stadium(s3_destination_dir: str):
-                if not (ods_version and data_model_version):
+                if not (self.ods_version and self.data_model_version):
                     raise Exception("ODS-bypass requires arguments `ods_version` and `data_model_version` to be defined.")
 
                 if not endpoints:
                     raise Exception("No endpoints defined for ODS-bypass!")
 
-                for endpoint in endpoints:
+                for endpoint in self.endpoints:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
             @task(pool=self.pool, dag=self.dag)
-            def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
+            def match_rates_to_snowflake(s3_full_filepath: str):
                 match_rates_s3_filepath = os.path.join(s3_full_filepath, 'student_id_match_rates.csv')
-                match_rates_exist = check_for_key(match_rates_s3_filepath, s3_conn_id)
+                match_rates_exist = check_for_key(match_rates_s3_filepath, self.s3_conn_id)
 
                 if match_rates_exist == False:
                     raise AirflowSkipException(f"Nothing to load! Match rates were not calculated.")
@@ -1063,30 +992,30 @@ class EarthbeamDAG:
                 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
                 delete_sql = f'''
-                    DELETE FROM {student_id_match_rates_table}
+                    DELETE FROM {self.student_id_match_rates_table}
                     WHERE tenant_code = '{tenant_code}'
                         AND api_year = '{api_year}'
-                        AND assessment_name = '{assessment_bundle}'
+                        AND assessment_name = '{self.assessment_bundle}'
                 '''
 
                 database = student_id_match_rates_table.partition('.')[0]
                 copy_sql = f'''
-                    COPY INTO {student_id_match_rates_table}
+                    COPY INTO {self.student_id_match_rates_table}
                     (tenant_code, api_year, assessment_name, source_column_name, edfi_column_name, num_matches, num_rows, match_rate)
                     FROM (
                         SELECT
                             '{tenant_code}' as tenant_code,
                             {api_year} as api_year,
-                            '{assessment_bundle}' as assessment_name,
+                            '{self.assessment_bundle}' as assessment_name,
                             $1, $2, $3, $4, $5
                         FROM '@{database}.util.airflow_stage/{match_rates_s3_filepath}'
                     )
                     FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1 FIELD_OPTIONALLY_ENCLOSED_BY = '"')
                 '''
 
-                snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
+                snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
 
-                logging.info(f"Deleting existing match rate data from {student_id_match_rates_table}")
+                logging.info(f"Deleting existing match rate data from {self.student_id_match_rates_table}")
                 cursor_log_delete = snowflake_hook.run(sql=delete_sql)
                 logging.info(cursor_log_delete)
 
@@ -1097,8 +1026,8 @@ class EarthbeamDAG:
                 return
 
             @task(pool=self.pool, dag=self.dag)
-            def run_python_postprocess(python_postprocess_callable: Callable, python_postprocess_kwargs: dict, em_data_dir: str, em_s3_filepath: Optional[str] = None, **context):
-                python_postprocess = python_postprocess_callable(**python_postprocess_kwargs, em_data_dir=em_data_dir, em_s3_filepath=em_s3_filepath, **context)
+            def run_python_postprocess(python_postprocess_kwargs: dict, em_data_dir: str, em_s3_filepath: Optional[str] = None, **context):
+                python_postprocess = self.python_postprocess_callable(**python_postprocess_kwargs, em_data_dir=em_data_dir, em_s3_filepath=em_s3_filepath, **context)
                 return python_postprocess
 
             @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
@@ -1133,7 +1062,7 @@ class EarthbeamDAG:
             em_s3_filepath >> remove_files_operator
 
             # Load match rates to Snowflake 
-            load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath)
+            load_match_rates_to_snowflake = match_rates_to_snowflake(em_s3_filepath)
 
             # Lightbeam Validate
             if validate_edfi_conn_id:
