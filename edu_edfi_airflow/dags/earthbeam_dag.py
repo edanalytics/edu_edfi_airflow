@@ -724,7 +724,7 @@ class EarthbeamDAG:
                     WHERE tenant_code = $${tenant_code}$$
                         AND api_year = {api_year}
                         AND assessment_name = $${assessment_bundle}$$
-                    ORDER BY match_rate desc
+                    ORDER BY match_rate desc, edfi_column_name desc, source_column_name desc
                     LIMIT 1
                 """
         return qry_match_rates

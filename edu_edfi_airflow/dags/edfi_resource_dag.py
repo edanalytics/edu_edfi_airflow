@@ -129,8 +129,8 @@ class EdFiResourceDAG:
             ),
             "endpoints": Param(
                 default=sorted(list(self.resources | self.descriptors)),
-                type="array",
-                description="Newline-separated list of specific endpoints to ingest (case-agnostic)\n(Bug: even if unused, enter a newline)"
+                type=["array", "null"],
+                description="Newline-separated list of specific endpoints to ingest (case-agnostic). If left blank, ingests all endpionts"
             ),
         }
 
@@ -658,6 +658,7 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 = (EdFiToS3Operator
                 .partial(
                     task_id=f"pull_dynamic_endpoints_to_s3",
+                    map_index_template="""{{ task.resource }}""",
                     edfi_conn_id=self.edfi_conn_id,
 
                     tmp_dir= self.tmp_dir,

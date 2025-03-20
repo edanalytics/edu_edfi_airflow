@@ -1,3 +1,8 @@
+# edu_edfi_airflow v0.4.5
+## New features
+- Update Resources DAG UI for compatibility with Airflow 2.9.x (backwards compatibility with prior versions is retained)
+
+
 # edu_edfi_airflow v0.4.4
 ## Under the hood
 - Allow CSV files to optionally enclose fields in quotes when copying in `EarthbeamDAG`.
@@ -12,7 +17,7 @@
 
 ## Fixes
 - Add dependency between S3 and file removal in `EarthbeamDAG` to avoid race condition where files are removed prematurely.
-
+- 
 
 # edu_edfi_airflow v0.4.2
 ## New features
