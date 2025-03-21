@@ -111,11 +111,11 @@ class EarthmoverOperator(BashOperator):
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
+        # If return_exit_code is enabled, the command always succeeds and the exit code is returned.
         if self.return_exit_code:
-            try:
-                subprocess_result = super().execute(context)
-            finally:
-                return self.output_dir, subprocess_result.exit_code
+            self.bash_command += "; echo $?"
+            exit_code = super().execute(context)
+            return self.output_dir, int(exit_code)
         else:
             super().execute(context)
             return self.output_dir
