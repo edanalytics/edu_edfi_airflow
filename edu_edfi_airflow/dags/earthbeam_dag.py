@@ -1114,6 +1114,7 @@ class EarthbeamDAG:
             if s3_conn_id and snowflake_conn_id and not edfi_conn_id:
                 sideload_taskgroup = sideload_to_stadium(em_s3_filepath)
                 all_tasks.append(sideload_taskgroup)
+                earthmover_results >> sideload_taskgroup  # If Earthmover fails, do not attempt sideload.
 
                 if lightbeam_validate_results:
                     lightbeam_validate_results >> sideload_taskgroup
