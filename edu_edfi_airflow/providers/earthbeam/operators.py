@@ -80,7 +80,7 @@ class EarthmoverOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.earthmover_path} run "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, xcom_push=True, **kwargs)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, do_xcom_push=True, **kwargs)
 
     def execute(self, conf=None, **context) -> str:
         """
