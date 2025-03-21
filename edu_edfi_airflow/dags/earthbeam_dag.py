@@ -873,6 +873,8 @@ class EarthbeamDAG:
                 data_dir, exit_code = earthmover_operator.execute(**context)
 
                 if exit_code:
+                    context['ti'].xcom_push(key="data_dir", value=data_dir)
+                    context['ti'].xcom_push(key="results_file", value=em_results_file)
                     raise AirflowFailException(f"Earthmover run failed with exit code {exit_code}.")
                 
                 return {
