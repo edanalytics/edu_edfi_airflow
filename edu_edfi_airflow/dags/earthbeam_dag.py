@@ -901,12 +901,13 @@ class EarthbeamDAG:
                     state_file=em_state_file,
                     snowflake_read_conn_id=snowflake_read_conn_id,
                     results_file=em_results_file,
-                    return_exit_code=True,
+                    # return_exit_code=True,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     dag=self.dag
                 )
 
-                data_dir, exit_code = earthmover_operator.execute(**context)
+                # data_dir, exit_code = earthmover_operator.execute(**context)
+                data_dir, exit_code = earthmover_operator.execute(**context), None
 
                 if exit_code:
                     context['ti'].xcom_push(key="data_dir", value=data_dir)
