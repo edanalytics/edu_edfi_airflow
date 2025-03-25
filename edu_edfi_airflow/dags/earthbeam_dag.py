@@ -765,7 +765,7 @@ class EarthbeamDAG:
         @task_group(prefix_group_id=True, group_id="file_to_earthbeam", dag=self.dag)
         def file_to_edfi_taskgroup(input_file_envs: Union[str, List[str]], input_filepaths: Union[str, List[str]]):
 
-            @task(pool=self.pool, trigger_rule="none_skipped", dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def upload_to_s3(filepaths: Union[str, List[str]], subdirectory: str, s3_file_subdirs: Optional[List[str]] = None, **context):
                 if not s3_filepath:
                     raise ValueError(
