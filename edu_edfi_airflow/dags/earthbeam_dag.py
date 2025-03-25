@@ -717,7 +717,7 @@ class EarthbeamDAG:
         return os.path.splitext(os.path.basename(filepath))[0]
     
     @staticmethod
-    def get_match_rates_query(student_id_match_rates_table: str, tenant_code: str, api_year: str, assessment_bundle: str) -> str:
+    def get_match_rates_query(student_id_match_rates_table: str, tenant_code: str, api_year: str, assessment_bundle: str, required_id_match_rate: int) -> str:
         qry_match_rates = f"""
             SELECT *
             FROM {student_id_match_rates_table}
@@ -824,7 +824,7 @@ class EarthbeamDAG:
                 conn = snowflake_hook.get_conn()
                 cursor = conn.cursor(DictCursor)
 
-                qry_match_rates = self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle)
+                qry_match_rates = self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle, required_id_match_rate)
                 logging.info(f'Pulling previous match rates: {qry_match_rates}')
 
                 cursor.execute(qry_match_rates)
@@ -869,7 +869,7 @@ class EarthbeamDAG:
                     if max_match_rate is not None and max_match_rate >= required_id_match_rate:
                         env_mapping.update({
                             'MATCH_RATES_SOURCE_TYPE': 'snowflake',
-                            'MATCH_RATES_SNOWFLAKE_QUERY': self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle)
+                            'MATCH_RATES_SNOWFLAKE_QUERY': self.get_match_rates_query(student_id_match_rates_table, tenant_code, api_year, assessment_bundle, required_id_match_rate)
                         })
                 
                 em_output_dir = edfi_api_client.url_join(
