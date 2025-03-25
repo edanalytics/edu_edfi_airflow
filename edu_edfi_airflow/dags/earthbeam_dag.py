@@ -1154,8 +1154,9 @@ class EarthbeamDAG:
                 python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"], em_s3_filepath=em_s3_filepath)
                 python_postprocess >> remove_files_operator
 
-            ### Chain together all tasks
-            chain(*list(filter(None, all_tasks))) >> remove_files_operator
+            ### Chain together all tasks, always ending in file cleanup
+            all_tasks.append(remove_files_operator)
+            chain(*list(filter(None, all_tasks)))
 
         return file_to_edfi_taskgroup
 
