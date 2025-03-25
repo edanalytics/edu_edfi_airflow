@@ -1004,6 +1004,27 @@ class EarthbeamDAG:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
             @task(pool=self.pool, dag=self.dag)
+            def check_new_match_rates(data_dir: str):
+                """
+                Earthmover always succeeds, even if no IDs met the required match rate.
+                This task verifies the file output as expected and that at least one record met the rate.
+                """
+                local_filepath = os.path.join(data_dir, 'student_id_match_rates.csv')
+
+                if not os.path.exists(local_filepath):
+                    raise AirflowSkipException(f"Nothing to load! Match rates were not calculated.")
+                
+                import csv
+
+                with open(local_filepath, 'r') as fp:
+                    reader = csv.DictReader(fp)
+                    for row in reader:
+                        if int(row['match_rate']) >= required_id_match_rate:
+                            return True
+
+                raise AirflowSkipException(f"Nothing to load! No match met the required match rate of {required_match_rate}.")
+
+            @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
                 match_rates_s3_filepath = os.path.join(s3_full_filepath, 'student_id_match_rates.csv')
                 match_rates_exist = check_for_key(match_rates_s3_filepath, s3_conn_id)
@@ -1064,86 +1085,77 @@ class EarthbeamDAG:
                 return remove_filepaths(unnested_filepaths)
 
 
-            ### Only Earthmover and Cleanup are required tasks
-            # EarthmoverOperator with optional student ID-matching
-            all_tasks = []  # Track all tasks after Earthmover to force cleanup at the very end
-            paths_to_clean = [input_filepaths]
+            ### (Raw-to-S3) -> (Check Existing Match Rates) -> Earthmover -> ((Sending Tasks)) -> Remove Files
+            ###                                                           \> (EM-to-S3) -> (Python Postprocess)
+            ###                                                           \> (EM-to-SF)
 
-            # Pull stored student ID match rates and run earthmover
-            if student_id_match_rates_table:
-                max_match_rate = check_existing_match_rates()
-                earthmover_results = run_earthmover(input_file_envs, input_filepaths, max_match_rate)
-            else:
-                earthmover_results = run_earthmover(input_file_envs, input_filepaths)
-                
-            all_tasks.append(earthmover_results)
-            paths_to_clean.append(earthmover_results["data_dir"])
+            ### ((Sending Tasks)): (Check New Match Rates) -> (Lightbeam Validate)    -> (Lightbeam Send) -> (LB-to-SF)
+            ###                                            \> (EM Match Rates-to-SF)  \> (Sideload-to-Stadium)
 
-            # Final cleanup (apply at very end of the taskgroup)
-            remove_files_operator = remove_files(paths_to_clean)
-                
+            ### Compile the primary chain of tasks, and add offshoots when necessary
+            all_tasks = []
 
-            # Raw to S3: one subfolder per input file environment variable
+            # (Raw to S3): one subfolder per input file environment variable
             if s3_conn_id:
                 raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw", s3_file_subdirs=input_file_envs)
-                raw_to_s3 >> remove_files_operator
+                all_tasks.append(raw_to_s3)
+            
+            # (Check Existing Match Rates)
+            if student_id_match_rates_table:
+                max_match_rate = check_existing_match_rates()
+            else:
+                max_match_rate = None
 
-            # Earthmover logs to Snowflake
+            # Earthmover
+            earthmover_results = run_earthmover(input_file_envs, input_filepaths, max_match_rate)
+            all_tasks.append(earthmover_results)
+
+            # Remove Files: applied at the very end of the taskgroup, but defined early to allow chaining of tasks
+            paths_to_clean = [input_filepaths, earthmover_results["data_dir"]]
+            remove_files_operator = remove_files(paths_to_clean)
+
+            # (EM-to-SF): Earthmover results
             if logging_table:
                 log_em_to_snowflake = log_to_snowflake.override(task_id="log_em_to_snowflake")(earthmover_results["results_file"])
-                all_tasks.append(log_em_to_snowflake)
 
-            # Earthmover to S3
+            # (EM-to-S3): Earthmover data dir and student match files
             if s3_conn_id:
                 em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
-                em_s3_filepath >> remove_files_operator
-
-                # Load match rates to Snowflake 
-                if student_id_match_rates_table:
-                    load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath)
-                    all_tasks.append(load_match_rates_to_snowflake)
             else:
                 em_s3_filepath = None
 
-            # Lightbeam Validate
+            # (Check New Match Rates) -> (EM Match Rates-to-SF)
+            if student_id_match_rates_table:
+                new_match_rates = check_new_match_rates(earthmover_results["data_dir"])
+                load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath)
+                all_tasks.extend([new_match_rates, load_match_rates_to_snowflake])
+
+            # (Lightbeam Validate): must come before sending or sideloading
             if validate_edfi_conn_id:
                 lightbeam_validate_results = run_lightbeam.override(task_id="run_lightbeam_validate")(earthmover_results["data_dir"], command="validate", lb_edfi_conn_id=validate_edfi_conn_id)
                 all_tasks.append(lightbeam_validate_results)
-            else:
-                lightbeam_validate_results = None  # Validation must come before sending or sideloading
 
-            # Option 1: Bypass the ODS and sideload into Stadium
-            if s3_conn_id and snowflake_conn_id and not edfi_conn_id:
+            # Option 1 (Sideload-to-Stadium): Bypass the ODS and sideload into Stadium (requires EM output be sent to S3)
+            if em_s3_filepath and snowflake_conn_id and not edfi_conn_id:
                 sideload_taskgroup = sideload_to_stadium(em_s3_filepath)
-                all_tasks.append(sideload_taskgroup)
-                earthmover_results >> sideload_taskgroup  # If Earthmover fails, do not attempt sideload.
+                all_tasks.append(sideload_taskgroup)  # If Earthmover fails, do not attempt sideload.
 
-                if lightbeam_validate_results:
-                    lightbeam_validate_results >> sideload_taskgroup
-
-            # Option 2: LightbeamOperator
+            # Option 2 (Lightbeam Send): Main LightbeamOperator run
             elif edfi_conn_id:
                 lightbeam_results = run_lightbeam(earthmover_results["data_dir"], command="send", lb_edfi_conn_id=edfi_conn_id)
-                all_tasks.append(lightbeam_results)
-                lightbeam_results >> remove_files_operator  # Wait for lightbeam to finish before removing Earthmover outputs
+                all_tasks.append(lightbeam_results)  # Wait for lightbeam to finish before removing Earthmover outputs
 
-                if lightbeam_validate_results:
-                    lightbeam_validate_results >> lightbeam_results
-
-                # Lightbeam logs to Snowflake
+                # (LB-to-SF): Lightbeam logs to Snowflake
                 if logging_table:
                     log_lb_to_snowflake = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
-                    all_tasks.append(log_lb_to_snowflake)
 
+            # (Python Postprocess): Optionally uses output sent to S3
             if python_postprocess_callable:
-                if em_s3_filepath:
-                    python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"], em_s3_filepath=em_s3_filepath)
-                else: 
-                    python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"])
-                all_tasks.append(python_postprocess)
+                python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"], em_s3_filepath=em_s3_filepath)
+                python_postprocess >> remove_files_operator
 
-            # Force file-removal to occur after the last task.
-            all_tasks[-1] >> remove_files_operator
+            ### Chain together all tasks
+            chain(*list(filter(None, all_tasks))) >> remove_files_operator
 
         return file_to_edfi_taskgroup
 
