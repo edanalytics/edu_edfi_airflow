@@ -1152,7 +1152,7 @@ class EarthbeamDAG:
             if student_id_match_rates_table:
                 new_match_rates = check_new_match_rates(earthmover_results["data_dir"], force=max_match_rate)
                 load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath, skip=max_match_rate)
-                sending_tasks.extend([new_match_rates, load_match_rates_to_snowflake])
+                sending_tasks.append(new_match_rates)
 
             # (Check New Match Rates) -> (LIGHTBEAM VALIDATE) -> (Lightbeam Send OR Sideload-to-Stadium)
             # Validation must come before sending or sideloading and fails immediately if validation fails.
