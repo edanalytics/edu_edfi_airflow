@@ -1019,10 +1019,10 @@ class EarthbeamDAG:
                 with open(local_filepath, 'r') as fp:
                     reader = csv.DictReader(fp)
                     for row in reader:
-                        if int(row['match_rate']) >= required_id_match_rate:
+                        if float(row['match_rate']) >= required_id_match_rate:
                             return True
 
-                raise AirflowSkipException(f"Nothing to load! No match met the required match rate of {required_match_rate}.")
+                raise AirflowSkipException(f"Nothing to load! No match met the required match rate of {required_id_match_rate}.")
 
             @task(pool=self.pool, dag=self.dag)
             def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
