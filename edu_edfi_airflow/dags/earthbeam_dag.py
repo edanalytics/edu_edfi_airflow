@@ -1162,7 +1162,7 @@ class EarthbeamDAG:
                 sideload_taskgroup = sideload_to_stadium(em_s3_filepath)
                 sending_tasks.append(sideload_taskgroup)  # If Earthmover fails, do not attempt sideload.
 
-            # Option 2 (Check New Match Rates) -> () -> (LIGHTBEAM SEND)
+            # Option 2: (Check New Match Rates) -> () -> (LIGHTBEAM SEND)
             # Send EM output to Ed-Fi using Lightbeam (note that this task always succeeds, even when Lightbeam fails)
             elif edfi_conn_id:
                 lightbeam_results = run_lightbeam(earthmover_results["data_dir"], command="send", lb_edfi_conn_id=edfi_conn_id)
