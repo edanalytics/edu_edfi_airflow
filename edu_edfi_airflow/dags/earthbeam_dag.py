@@ -1004,13 +1004,16 @@ class EarthbeamDAG:
                     em_to_snowflake.override(task_id=f"copy_s3_to_snowflake__{endpoint}")(s3_destination_dir, endpoint)
 
             @task(pool=self.pool, dag=self.dag)
-            def check_new_match_rates(data_dir: str):
+            def check_new_match_rates(data_dir: str, force: Optional[int] = None):
                 """
                 Earthmover always succeeds, even if no IDs met the required match rate.
                 This task verifies the file output as expected and that at least one record met the rate.
+                If the match rates were pulled from Stadium this run, a true return is forced for this task.
                 """
-                local_filepath = os.path.join(data_dir, 'student_id_match_rates.csv')
+                if bool(force):
+                    return True
 
+                local_filepath = os.path.join(data_dir, 'student_id_match_rates.csv')
                 if not os.path.exists(local_filepath):
                     raise AirflowSkipException(f"Nothing to load! Match rates were not calculated.")
                 
@@ -1025,7 +1028,14 @@ class EarthbeamDAG:
                 raise AirflowSkipException(f"Nothing to load! No match met the required match rate of {required_id_match_rate}.")
 
             @task(pool=self.pool, dag=self.dag)
-            def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str):
+            def match_rates_to_snowflake(s3_conn_id: str, s3_full_filepath: str, skip: Optional[int] = None):
+                """
+                Upload the computed match rates to Snowflake. If match rates were output, this means at least one met the threshold.
+                If the match rates were pulled from Stadium this run, this task is skipped.
+                """
+                if bool(skip):
+                    raise AirflowSkipException(f"Match rates were pulled from Stadium and were not calculated.")
+
                 match_rates_s3_filepath = os.path.join(s3_full_filepath, 'student_id_match_rates.csv')
                 match_rates_exist = check_for_key(match_rates_s3_filepath, s3_conn_id)
 
@@ -1126,7 +1136,7 @@ class EarthbeamDAG:
                 em_s3_filepath = None
 
             # () -> Earthmover -> (PYTHON POSTPROCESS) -> Remove Files
-            # Optional Python Postprocess before cleanup (Optionally uses output sent to S3)
+            # Optional Python Postprocess before cleanup (optionally uses output sent to S3)
             if python_postprocess_callable:
                 python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"], em_s3_filepath=em_s3_filepath)
                 all_tasks.append(python_postprocess)
@@ -1145,9 +1155,10 @@ class EarthbeamDAG:
             # (CHECK NEW MATCH RATES) -> ()
             #                         \> (EM MATCH RATES-TO-SF)
             # Check New Match Rates is a gate that skips if match rates were used but did not meet the required threshold.
+            # If match rates were pulled from Stadium this run, the threshold was met.
             if student_id_match_rates_table:
-                new_match_rates = check_new_match_rates(earthmover_results["data_dir"])
-                load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath)
+                new_match_rates = check_new_match_rates(earthmover_results["data_dir"], force=max_match_rate)
+                load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath, skip=max_match_rate)
                 sending_tasks.extend([new_match_rates, load_match_rates_to_snowflake])
 
             # (Check New Match Rates) -> (LIGHTBEAM VALIDATE) -> (Lightbeam Send OR Sideload-to-Stadium)
