@@ -1002,6 +1002,7 @@ class EarthbeamDAG:
                 If the match rates were pulled from Stadium this run, a true return is forced for this task.
                 """
                 if bool(force):
+                    logging.info("Match rates calculated previously and pulled from Snowflake.")
                     return True
 
                 local_filepath = os.path.join(data_dir, 'student_id_match_rates.csv')
@@ -1014,6 +1015,7 @@ class EarthbeamDAG:
                     reader = csv.DictReader(fp)
                     for row in reader:
                         if float(row['match_rate']) >= required_id_match_rate:
+                            logging.info(f"At least one computed match rate exceeds the required ID match rate of {required_id_match_rate}")
                             return True
 
                 raise AirflowSkipException(f"Nothing to load! No match met the required match rate of {required_id_match_rate}.")
