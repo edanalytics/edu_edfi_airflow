@@ -1,4 +1,5 @@
 import csv
+import logging
 from typing import Optional
 
 from airflow.decorators import task, task_group
@@ -28,7 +29,7 @@ class LightbeamDeleteDAG:
 
     params_dict = {
         "query_parameters": Param(
-            default={"exampleKey": "exampleValue"},
+            default={"assessmentIdentifier": "some_value"},
             type="object",
             description="JSON object of query parameters to define which records are to be deleted. At least one parameter is requied. For more information, see https://github.com/edanalytics/lightbeam?tab=readme-ov-file#fetch",
         ),
@@ -129,8 +130,10 @@ class LightbeamDeleteDAG:
                             num_records = sum(1 for _ in open(endpoint_file))
                             if num_records == row[0]:
                                 raise AirflowFailException(
-                                    f"Endpoint {row[1]} has {num_records} records, which is the same as the total count. This means that all records will be deleted. Please check your query parameters."
+                                    f"All records were returned for the {row[1]} resource. Please check your query parameters."
                                 )
+                            else:
+                                logging.info(f"Check passed for {row[1]}: {num_records} records to be deleted out of {row[0]} total records.")
                 return 
 
             @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
