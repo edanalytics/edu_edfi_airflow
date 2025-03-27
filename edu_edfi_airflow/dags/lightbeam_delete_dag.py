@@ -1,4 +1,5 @@
-from typing import List, Optional
+import csv
+from typing import Optional
 
 from airflow.decorators import task, task_group
 from airflow.exceptions import AirflowFailException
@@ -105,6 +106,33 @@ class LightbeamDeleteDAG:
                     "state_dir": lb_state_dir
                 }
 
+            @task(pool=self.pool, dag=self.dag)
+            def check_endpoint_total_counts(data_dir: str, **context):
+                endpoints = context['params']['endpoints']
+                count_results_file = edfi_api_client.url_join(data_dir, 'endpoint_counts.txt')
+                
+                run_lightbeam = LightbeamOperator(
+                    task_id=f"run_lightbeam",
+                    lightbeam_path=self.lightbeam_path,
+                    results_file=count_results_file,
+                    edfi_conn_id=edfi_conn_id,
+                    command='count',
+                    dag=self.dag
+                )
+                run_lightbeam.execute(**context)
+
+                with open(count_results_file) as f:
+                    rows = csv.reader(f, delimiter="\t")
+                    for row in rows:
+                        if row[1] in endpoints:
+                            endpoint_file = edfi_api_client.url_join(data_dir, f"{row[1]}.jsonl")
+                            num_records = sum(1 for _ in open(endpoint_file))
+                            if num_records == row[0]:
+                                raise AirflowFailException(
+                                    f"Endpoint {row[1]} has {num_records} records, which is the same as the total count. This means that all records will be deleted. Please check your query parameters."
+                                )
+                return 
+
             @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
             def remove_files(filepaths):
                 unnested_filepaths = []
@@ -119,9 +147,12 @@ class LightbeamDeleteDAG:
             lightbeam_fetch = run_lightbeam.override(task_id="run_lightbeam_fetch")(command="fetch")
             lightbeam_delete = run_lightbeam.override(task_id="run_lightbeam_delete")(command="delete")
 
+            # Validate that endpoints will not be deleted entirely
+            check_counts = check_endpoint_total_counts(lightbeam_fetch["data_dir"])
+
             # Final cleanup (apply at very end of the taskgroup)
             remove_files_operator = remove_files(lightbeam_fetch["data_dir"])
 
-            lightbeam_fetch >> lightbeam_delete >> remove_files_operator
+            lightbeam_fetch >> check_counts >> lightbeam_delete >> remove_files_operator
 
         return tenant_year_taskgroup()

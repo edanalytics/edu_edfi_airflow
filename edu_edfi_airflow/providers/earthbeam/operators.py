@@ -118,7 +118,7 @@ class LightbeamOperator(BashOperator):
 
     """
     template_fields = ('data_dir', 'state_dir', 'arguments', 'bash_command', 'env',)
-    valid_commands = ('validate', 'send', 'validate+send', 'fetch', 'delete')
+    valid_commands = ('validate', 'send', 'validate+send', 'fetch', 'delete', 'count')
 
     def __init__(self,
         *,
