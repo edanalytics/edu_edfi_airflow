@@ -353,7 +353,7 @@ class S3EarthbeamDAGFactory(EarthbeamDAGFactory):
         ### Format variables with tenant-year grain information
         format_kwargs = {
             'tenant_code': tenant_code,
-            'api_year': api_year,
+            'api_year': str(api_year),
             'subtype': subtype,
         }
         formatted_s3_paths = self.render_jinja(self.s3_paths, format_kwargs)
@@ -468,7 +468,7 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
     def build_custom_preprocess(self, api_year: str, subtype: Optional[str], earthbeam_dag: 'DAG'):
         ### Format variables with subtype-year grain information
         format_kwargs = {
-            'api_year': api_year,
+            'api_year': str(api_year),
             'subtype': subtype,
         }
 
@@ -581,7 +581,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         ### Format variables with tenant-year grain information
         format_kwargs = {
             'tenant_code': tenant_code,
-            'api_year': api_year,
+            'api_year': str(api_year),
             'subtype': subtype,
         }
 
