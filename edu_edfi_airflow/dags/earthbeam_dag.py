@@ -1096,13 +1096,13 @@ class EarthbeamDAG:
             ###                                            \> (EM Match Rates-to-SF)                  \> (LB-to-SF)
 
             ### Compile the primary chain of tasks, and add offshoots when necessary
-            all_tasks = []
+            main_tasks = []
 
             # (RAW-TO-S3) -> Earthmover -> () -> Remove Files
             # One subfolder per input file environment variable
             if s3_conn_id:
                 raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw", s3_file_subdirs=input_file_envs)
-                all_tasks.append(raw_to_s3)
+                main_tasks.append(raw_to_s3)
             
             # (CHECK EXISTING MATCH RATES) -> Earthmover
             # Optional input to Earthmover
@@ -1113,7 +1113,7 @@ class EarthbeamDAG:
 
             # () -> EARTHMOVER -> () -> Remove Files
             earthmover_results = run_earthmover(input_file_envs, input_filepaths, max_match_rate)
-            all_tasks.append(earthmover_results)
+            main_tasks.append(earthmover_results)
 
             # Earthmover -> (EM-TO-SF)
             # Earthmover results to Snowflake logging table
@@ -1124,7 +1124,7 @@ class EarthbeamDAG:
             # Earthmover data dir and student match files to S3
             if s3_conn_id:
                 em_s3_filepath = upload_to_s3.override(task_id="upload_em_to_s3")(earthmover_results["data_dir"], "earthmover")
-                all_tasks.append(em_s3_filepath)
+                main_tasks.append(em_s3_filepath)
             else:
                 em_s3_filepath = None
 
@@ -1132,13 +1132,13 @@ class EarthbeamDAG:
             # Optional Python Postprocess before cleanup (optionally uses output sent to S3)
             if python_postprocess_callable:
                 python_postprocess = run_python_postprocess(python_postprocess_callable, python_postprocess_kwargs, em_data_dir=earthmover_results["data_dir"], em_s3_filepath=em_s3_filepath)
-                all_tasks.append(python_postprocess)
+                main_tasks.append(python_postprocess)
 
             # () -> Earthmover -> () -> REMOVE FILES
             # Clean up the local environment of intermediate files
             paths_to_clean = [input_filepaths, earthmover_results["data_dir"]]
             remove_files_operator = remove_files(paths_to_clean)
-            all_tasks.append(remove_files_operator)
+            main_tasks.append(remove_files_operator)
 
 
             ### Earthmover -> ((SENDING TASKS)) -> Remove Files
@@ -1153,6 +1153,7 @@ class EarthbeamDAG:
                 new_match_rates = check_new_match_rates(earthmover_results["data_dir"], force=max_match_rate)
                 load_match_rates_to_snowflake = match_rates_to_snowflake(s3_conn_id, em_s3_filepath, skip=max_match_rate)
                 sending_tasks.append(new_match_rates)
+                new_match_rates >> load_match_rates_to_snowflake
 
             # (Check New Match Rates) -> (LIGHTBEAM VALIDATE) -> (Lightbeam Send OR Sideload-to-Stadium)
             # Validation must come before sending or sideloading and fails immediately if validation fails.
@@ -1187,7 +1188,7 @@ class EarthbeamDAG:
                 earthmover_results >> sending_tasks[0]
                 sending_tasks[-1] >> remove_files_operator
 
-            chain(*all_tasks)
+            chain(*main_tasks)
 
         return file_to_edfi_taskgroup
 
