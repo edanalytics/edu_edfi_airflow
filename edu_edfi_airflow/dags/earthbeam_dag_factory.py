@@ -575,7 +575,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         TODO: Why did this need to be declared explicitly to work?
         Otherwise: `KeyError: 'tenant_code' not found`
         """
-        return sharefile.sharefile_to_disk(sharefile_conn_id, sharefile_path, local_path, delete_remote=delete_remote)
+        return sharefile.sharefile_to_disk(sharefile_conn_id, sharefile_path, local_path, delete_remote=delete_remote, recursive=False)
 
     def build_taskgroup_kwargs(self, tenant_code: str, api_year: str, subtype: Optional[str], earthbeam_dag: 'DAG'):
         ### Format variables with tenant-year grain information
@@ -589,7 +589,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
             'sharefile_conn_id': self.sharefile_conn_id,
             'sharefile_path': self.render_jinja(self.remote_path, format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
-            'delete_remote': False,
+            'delete_remote': False,  # TODO: Make this dynamic after testing.
         }
 
         return {
