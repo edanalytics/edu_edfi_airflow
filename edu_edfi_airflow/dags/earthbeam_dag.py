@@ -1076,7 +1076,7 @@ class EarthbeamDAG:
                 python_postprocess = python_postprocess_callable(**python_postprocess_kwargs, em_data_dir=em_data_dir, em_s3_filepath=em_s3_filepath, **context)
                 return python_postprocess
 
-            @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
+            @task(trigger_rule="all_done" if self.fast_cleanup else "none_failed", pool=self.pool, dag=self.dag)
             def remove_files(filepaths):
                 unnested_filepaths = []
                 for filepath in filepaths:
