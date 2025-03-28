@@ -1,5 +1,6 @@
 import csv
 import logging
+import os
 from typing import Optional
 
 from airflow.decorators import task, task_group
@@ -17,8 +18,6 @@ class LightbeamDeleteDAG:
     """
     Full Earthmover-Lightbeam DAG, with optional Python callable pre-processing.
     """
-    emlb_state_directory  : str = '/efs/emlb/state'
-    emlb_results_directory: str = '/efs/emlb/results'
     lb_output_directory   : str = '/efs/tmp_storage/lightbeam'
 
     ENDPOINTS_LIST = [
@@ -44,7 +43,7 @@ class LightbeamDeleteDAG:
         *,
         lightbeam_path: Optional[str] = None,
         pool: str = 'default_pool',
-        fast_cleanup: bool = False,
+        fast_cleanup: bool = True,
 
         **kwargs
     ):
@@ -70,11 +69,8 @@ class LightbeamDeleteDAG:
         @task_group(prefix_group_id=True, group_id=f"{tenant_code}_{api_year}", dag=self.dag)
         def tenant_year_taskgroup():
 
-            @task(multiple_outputs=True, pool=self.pool, dag=self.dag)
+            @task(pool=self.pool, dag=self.dag)
             def run_lightbeam(command: str, **context):
-                if 'exampleKey' in context['params']['query_parameters']:
-                    raise AirflowFailException("No query parameters provided! At least one is required. This is a safety mechanism to prevent the deletion of entire resources.")
-
                 lightbeam_kwargs['query'] = context['params']['query_parameters']
                 lightbeam_kwargs['selector'] = context['params']['endpoints']
 
@@ -85,38 +81,34 @@ class LightbeamDeleteDAG:
                 )
                 lb_output_dir = context['task'].render_template(lb_output_dir, context)
 
-                lb_state_dir = edfi_api_client.url_join(
-                    self.emlb_state_directory,
-                    tenant_code, api_year,
-                    'lightbeam'
-                )
-
                 run_lightbeam = LightbeamOperator(
                     task_id=f"run_lightbeam",
                     lightbeam_path=self.lightbeam_path,
                     data_dir=lb_output_dir,
-                    state_dir=lb_state_dir,
                     edfi_conn_id=edfi_conn_id,
                     **(lightbeam_kwargs or {}),
                     command=command,
                     dag=self.dag
                 )
                 
-                return {
-                    "data_dir": run_lightbeam.execute(**context),
-                    "state_dir": lb_state_dir
-                }
+                return run_lightbeam.execute(**context)
 
             @task(pool=self.pool, dag=self.dag)
             def check_endpoint_total_counts(data_dir: str, **context):
+                """
+                Checks that no resource will have all records deleted. This is a fail-safe to prevent as unintended mass deletion
+                due to a typo in the key of a query parameter.
+                """
                 endpoints = context['params']['endpoints']
                 count_results_file = edfi_api_client.url_join(data_dir, 'endpoint_counts.txt')
                 
                 run_lightbeam = LightbeamOperator(
                     task_id=f"run_lightbeam",
                     lightbeam_path=self.lightbeam_path,
+                    data_dir=data_dir,
                     results_file=count_results_file,
                     edfi_conn_id=edfi_conn_id,
+                    **(lightbeam_kwargs or {}),
                     command='count',
                     dag=self.dag
                 )
@@ -127,34 +119,32 @@ class LightbeamDeleteDAG:
                     for row in rows:
                         if row[1] in endpoints:
                             endpoint_file = edfi_api_client.url_join(data_dir, f"{row[1]}.jsonl")
-                            num_records = sum(1 for _ in open(endpoint_file))
-                            if num_records == row[0]:
-                                raise AirflowFailException(
-                                    f"All records were returned for the {row[1]} resource. Please check your query parameters."
-                                )
+                            if not os.path.exists(endpoint_file):
+                                logging.info(f"No records found for the {row[1]} resource.")
                             else:
-                                logging.info(f"Check passed for {row[1]}: {num_records} records to be deleted out of {row[0]} total records.")
+                                num_records = sum(1 for _ in open(endpoint_file))
+                                if num_records == int(row[0]):
+                                    raise AirflowFailException(
+                                        f"All records were returned for the {row[1]} resource. Please check your query parameters."
+                                    )
+                                else:
+                                    logging.info(f"Check passed for {row[1]}: {num_records} records to be deleted out of {row[0]} total records.")
+
                 return 
 
-            @task(trigger_rule="all_done" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
-            def remove_files(filepaths):
-                unnested_filepaths = []
-                for filepath in filepaths:
-                    if isinstance(filepath, str):
-                        unnested_filepaths.append(filepath)
-                    else:
-                        unnested_filepaths.extend(filepath)
-                
-                return remove_filepaths(unnested_filepaths)
+            @task(trigger_rule="none_skipped" if self.fast_cleanup else "all_success", pool=self.pool, dag=self.dag)
+            def remove_files(filepath):
+                if filepath is not None:
+                    return remove_filepaths(filepath)
 
             lightbeam_fetch = run_lightbeam.override(task_id="run_lightbeam_fetch")(command="fetch")
             lightbeam_delete = run_lightbeam.override(task_id="run_lightbeam_delete")(command="delete")
 
             # Validate that endpoints will not be deleted entirely
-            check_counts = check_endpoint_total_counts(lightbeam_fetch["data_dir"])
+            check_counts = check_endpoint_total_counts(lightbeam_fetch)
 
             # Final cleanup (apply at very end of the taskgroup)
-            remove_files_operator = remove_files(lightbeam_fetch["data_dir"])
+            remove_files_operator = remove_files(lightbeam_delete)
 
             lightbeam_fetch >> check_counts >> lightbeam_delete >> remove_files_operator
 

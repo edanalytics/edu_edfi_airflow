@@ -202,11 +202,11 @@ class LightbeamOperator(BashOperator):
             self.arguments['--drop-keys'] = drop_keys
 
         ### Environment variables
-        # Pass required `data_dir`
-        env_vars = {
-            'DATA_DIR' : self.data_dir,
-            'STATE_DIR': self.state_dir,
-        }
+        # DATA_DIR is required in the standard config file
+        env_vars = {}
+        env_vars['DATA_DIR'] = self.data_dir
+        if self.state_dir:
+            env_vars['STATE_DIR'] = self.state_dir
 
         bash_command_prefix = f"{self.lightbeam_path} {command} "
         super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
@@ -244,8 +244,9 @@ class LightbeamOperator(BashOperator):
             self.arguments['--force'] = ""
 
         # Create state_dir and data_dir if not already defined in filespace
-        os.makedirs(self.state_dir, exist_ok=True)
         os.makedirs(self.data_dir, exist_ok=True)
+        if self.state_dir:
+            os.makedirs(self.state_dir, exist_ok=True)
 
         # Format values before adding to the bash command.
         cli_arguments = []
