@@ -607,7 +607,7 @@ class EarthbeamDAG:
                 full_refresh=full_refresh,
 
                 # Only defined in dynamic process.
-                map_index_template = "{{ ti.xcom_pull(task_ids='list_files_in_dir')[ti.map_index].split('/')[-1] }}",
+                map_index_template = "{{ ti.xcom_pull(task_ids='" + list_files_task.task_id + "')[ti.map_index].split('/')[-1] }}",
             
             ).partial(input_file_envs=input_file_var).expand(
                 input_filepaths=list_files_task.output
