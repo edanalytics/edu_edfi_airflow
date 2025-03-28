@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from typing import Iterable, Optional, Union
+import subprocess
 
 from airflow.models import Connection
 from airflow.operators.bash import BashOperator
@@ -31,6 +32,7 @@ class EarthmoverOperator(BashOperator):
         skip_hashing   : bool = False,
         show_graph     : bool = False,
         show_stacktrace: bool = False,
+        return_exit_code: bool = False,
 
         **kwargs
     ):
@@ -38,6 +40,7 @@ class EarthmoverOperator(BashOperator):
         self.output_dir = output_dir
         self.state_file = state_file
         self.snowflake_read_conn_id = snowflake_read_conn_id
+        self.return_exit_code = return_exit_code
 
         ### Building the Earthmover CLI command
         self.arguments = {}
@@ -77,7 +80,7 @@ class EarthmoverOperator(BashOperator):
         }
 
         bash_command_prefix = f"{self.earthmover_path} run "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
+        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, do_xcom_push=True, **kwargs)
 
     def execute(self, conf=None, **context) -> str:
         """
@@ -108,8 +111,14 @@ class EarthmoverOperator(BashOperator):
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
-        super().execute(context)
-        return self.output_dir
+        # If return_exit_code is enabled, the command always succeeds and the exit code is returned.
+        if self.return_exit_code:
+            self.bash_command += "; echo $?"
+            exit_code = super().execute(context)
+            return self.output_dir, int(exit_code)
+        else:
+            super().execute(context)
+            return self.output_dir
 
 
 
