@@ -765,6 +765,7 @@ class EarthbeamDAG:
         full_refresh: bool = False,
 
         # Internal variable for displaying filenames in dynamic taskgroups.
+        # Note that map_index_templates can only be passed to tasks, not groups. (https://github.com/apache/airflow/issues/40799)
         map_index_template: str = None,
 
         **kwargs
