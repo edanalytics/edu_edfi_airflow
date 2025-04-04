@@ -1,8 +1,8 @@
 import logging
 
-from typing import Dict, List, Tuple, Optional
+from typing import List, Tuple
 
-from airflow.exceptions import AirflowSkipException, AirflowFailException
+from airflow.exceptions import AirflowSkipException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
 from edu_edfi_airflow.callables.snowflake import insert_into_snowflake
@@ -14,8 +14,8 @@ def get_total_counts(
     endpoints: List[Tuple[str, str]],
 
     *,
-    edfi_conn_id: Optional[str],
-    max_change_version: Optional[int],
+    edfi_conn_id: str,
+    max_change_version: int,
 
     **context
 ) -> None:
@@ -89,7 +89,7 @@ def delete_total_counts(
     """
 
     ### Connect to Snowflake and execute the query.
-    logging.info("Full refresh: marking previous pulls inactive.")
+    logging.info("Full refresh: deleting data from previous pulls.")
     SnowflakeHook(snowflake_conn_id).run(qry_delete)
 
 
