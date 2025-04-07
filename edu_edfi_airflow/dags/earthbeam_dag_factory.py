@@ -426,7 +426,7 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
     def __init__(self, *args, ftp_conn_id: str, sharded_dirs: Optional[List[str]], python_preprocess_callable: 'Callable', **kwargs):
         self.ftp_conn_id: str = ftp_conn_id
         self.sharded_dirs: List[str] = sharded_dirs or []
-        self.python_preprocess_callable: 'Callable' = python_preprocess_callable
+        self.top_level_preprocess: 'Callable' = python_preprocess_callable
         super().__init__(*args, **kwargs)
 
         if self.sharded_dirs and len(self.input_vars) != len(self.sharded_dirs):
@@ -483,7 +483,7 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
         preprocess_raw_dir = earthbeam_dag.build_local_raw_dir("_preprocess", api_year, subtype)
 
         return earthbeam_dag.build_python_preprocessing_operator(
-            self.python_preprocess_callable,
+            self.top_level_preprocess,
             ftp_conn_id=self.ftp_conn_id,
             local_dir=preprocess_raw_dir,
             output_dirs=self.render_jinja(self.sharded_dirs, format_kwargs),
