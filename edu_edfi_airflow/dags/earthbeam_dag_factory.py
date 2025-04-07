@@ -440,11 +440,10 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
         }
 
         formatted_sharded_dirs = [
-            self.render_jinja(
-                os.path.join(sharded_dirs, "tenant_code={{tenant_code}}", "api_year={{api_year}}"),
-                format_kwargs
-            ) for sharded_dirs in self.sharded_dirs
+            os.path.join(sharded_dir, "tenant_code={{tenant_code}}", "api_year={{api_year}}")
+            for sharded_dir in self.sharded_dirs
         ]
+        formatted_sharded_dirs = self.render_jinja(formatted_sharded_dirs, format_kwargs)
         input_file_mapping = dict(zip(self.input_vars, formatted_sharded_dirs))
 
         python_kwargs={
@@ -481,13 +480,12 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
         }
 
         preprocess_raw_dir = earthbeam_dag.build_local_raw_dir("_preprocess", api_year, subtype)
-        formatted_sharded_dirs = [self.render_jinja(dir, format_kwargs) for dir in self.sharded_dirs]
 
         return earthbeam_dag.build_python_preprocessing_operator(
             self.python_preprocess_callable,
             ftp_conn_id=self.ftp_conn_id,
             local_dir=preprocess_raw_dir,
-            output_dirs=formatted_sharded_dirs,
+            output_dirs=self.render_jinja(self.sharded_dirs, format_kwargs),
             **format_kwargs
         )
 
