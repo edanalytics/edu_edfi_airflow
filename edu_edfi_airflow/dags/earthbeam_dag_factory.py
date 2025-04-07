@@ -428,7 +428,7 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
         self.python_preprocess_callable: 'Callable' = python_preprocess_callable
         super().__init__(*args, **kwargs)
 
-        if self.file_patterns and len(self.input_vars) != len(self.file_patterns):
+        if self.sharded_dirs and len(self.input_vars) != len(self.sharded_dirs):
             raise ValueError("EarthbeamDAGFactory variables `input_vars` and `sharded_dirs` must have same cardinality!")
 
     def build_taskgroup_kwargs(self, tenant_code: str, api_year: str, subtype: Optional[str], earthbeam_dag: 'DAG'):
