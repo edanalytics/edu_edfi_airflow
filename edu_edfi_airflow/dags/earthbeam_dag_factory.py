@@ -325,14 +325,15 @@ class EarthbeamDAGFactory:
     
 
     # Helper method to render Jinja in any kwargs passed to the factory
-    def render_jinja(self, obj: Any, context: dict) -> Any:
+    @classmethod
+    def render_jinja(cls, obj: Any, context: dict) -> Any:
             
         if isinstance(obj, dict):
-            return {key: self.render_jinja(value, context) for key, value in obj.items()}
+            return {key: cls.render_jinja(value, context) for key, value in obj.items()}
         elif isinstance(obj, str):
             return Template(obj).render(context)
         elif isinstance(obj, Iterable):
-            return [self.render_jinja(item, context) for item in obj]
+            return [cls.render_jinja(item, context) for item in obj]
         else:
             return obj
 
