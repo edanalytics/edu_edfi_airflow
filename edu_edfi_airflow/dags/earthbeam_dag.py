@@ -157,12 +157,12 @@ class EarthbeamDAG:
         import dask.dataframe as dd
         import pandas as pd
 
+        csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
+        dataframes = dataframes if isinstance(dataframes, list) else [dataframes]
+
         # Check existence of mutually-exclusive input arguments and force to a list.
         if bool(csv_paths) == bool(dataframes):
             raise ValueError("Arguments `csv_paths` and `dataframes` are mutually-exclusive!")
-
-        csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
-        dataframes = dataframes if isinstance(dataframes, list) else [dataframes]
 
         for csv_path in csv_paths:
             # Ignore wildcard filepaths in check.
