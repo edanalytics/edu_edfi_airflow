@@ -186,7 +186,7 @@ class EarthbeamDAG:
         else:
             output_dirs = output_dirs if isinstance(output_dirs, list) else [output_dirs]
         
-        if not len(csv_paths) == len(output_dirs) or len(dataframes) == len(output_dirs):
+        if not (len(csv_paths) == len(output_dirs) or len(dataframes) == len(output_dirs)):
             raise ValueError("List arguments `csv_paths`/`dataframes` and `output_dirs` must be the same length!")
         
         for dir in output_dirs:
