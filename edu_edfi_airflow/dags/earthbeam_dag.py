@@ -124,9 +124,12 @@ class EarthbeamDAG:
 
     @classmethod
     def partition_on_tenant_and_year(cls,
-        csv_paths: Union[PathLike, List[PathLike]],
+        csv_paths: Union[PathLike, List[PathLike]] = [],
+        dataframes: Union['DataFrame', List['DataFrame']] = [],
+
         output_dir: Optional[PathLike] = None,
         output_dirs: Optional[Union[PathLike, List[PathLike]]] = None,
+
         tenant_col: str = "tenant_code",
         tenant_map: Optional[Union[dict, Unary]] = None,
         year_col: str = "api_year",
@@ -139,6 +142,7 @@ class EarthbeamDAG:
         Note that the CSV filepath can be referenced using `__path__` column during sharding.
 
         :param csv_paths: one or more complete file paths pointing to input data
+        :param dataframes: one or more input dataframes
         :param output_dir: root directory of the parquet (subdirectories built dynamically)
         :param output_dirs: list of root directories of the parquet (one per csv_path)
         :param tenant_col: (optional) name of the column to use as tenant code
@@ -153,8 +157,13 @@ class EarthbeamDAG:
         import dask.dataframe as dd
         import pandas as pd
 
-        # Check existence of inputs and force to a list.
         csv_paths = csv_paths if isinstance(csv_paths, list) else [csv_paths]
+        dataframes = dataframes if isinstance(dataframes, list) else [dataframes]
+
+        # Check existence of mutually-exclusive input arguments and force to a list.
+        if bool(csv_paths) == bool(dataframes):
+            raise ValueError("Arguments `csv_paths` and `dataframes` are mutually-exclusive!")
+
         for csv_path in csv_paths:
             # Ignore wildcard filepaths in check.
             if '*' in csv_path:
@@ -163,19 +172,22 @@ class EarthbeamDAG:
             if not Path(csv_path).is_file() or not Path(csv_path).suffix == '.csv':
                 raise ValueError(f"Input path '{csv_path}' is not a path to a file whose name ends with '.csv'")
 
-        # Prepare outputs and enforce cardinality with inputs.
+        # Prepare output directories and enforce cardinality with inputs.
         if bool(output_dir) == bool(output_dirs):
             raise ValueError("Arguments `output_dir` and `output_dirs` are mutually-exclusive!")
 
-        if output_dir:
+        if output_dir and csv_paths:
             output_dirs = [  # use the input file basenames as the parquet directory names
                 PurePath(output_dir, PurePath(csv_path).name).with_suffix('')
                 for csv_path in csv_paths
             ]
+        elif output_dir and dataframes:
+            output_dirs = [os.path.join(output_dir, str(idx)) for idx in range(len(dataframes))]
         else:
             output_dirs = output_dirs if isinstance(output_dirs, list) else [output_dirs]
-            if not len(csv_paths) == len(output_dirs):
-                raise ValueError("List arguments `csv_paths` and `output_dirs` must be the same length!")
+        
+        if not (len(csv_paths) == len(output_dirs) or len(dataframes) == len(output_dirs)):
+            raise ValueError("List arguments `csv_paths`/`dataframes` and `output_dirs` must be the same length!")
         
         for dir in output_dirs:
             Path(dir).mkdir(parents=True, exist_ok=True)
@@ -186,9 +198,15 @@ class EarthbeamDAG:
             "dataframe.convert-string": True,
         }), pd.option_context("mode.string_storage", "pyarrow"):
 
-            for csv_path, parquet_path in zip(csv_paths, output_dirs):
-                df = dd.read_csv(csv_path, dtype=str, na_filter=False, include_path_column="__path__")
+            for idx, parquet_path in enumerate(output_dirs):
+
+                # Set the dataframe, depending on the type of input passed.
+                if csv_paths:
+                    df = dd.read_csv(csv_paths[idx], dtype=str, na_filter=False, include_path_column="__path__")
+                else:
+                    df = dataframes[idx]
                 
+                # Verify sharding columns are defined.
                 if tenant_col not in df:
                     raise KeyError(f"provided tenant_code column '{tenant_col}' not present in data")
                 if year_col not in df:
@@ -217,7 +235,10 @@ class EarthbeamDAG:
                 else:
                     df["api_year"] = df[year_col]
 
-                del df['__path__']  # Delete new column created by `include_path_column` on read.
+                # Delete new column created by `include_path_column` on read.
+                if '__path__' in df.columns:
+                    del df['__path__']
+
                 df.to_parquet(parquet_path, write_index=False, overwrite=True, partition_on=['tenant_code', 'api_year'])
 
         return output_dirs

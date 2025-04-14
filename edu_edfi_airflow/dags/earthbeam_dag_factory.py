@@ -325,14 +325,15 @@ class EarthbeamDAGFactory:
     
 
     # Helper method to render Jinja in any kwargs passed to the factory
-    def render_jinja(self, obj: Any, context: dict) -> Any:
+    @classmethod
+    def render_jinja(cls, obj: Any, context: dict) -> Any:
             
         if isinstance(obj, dict):
-            return {key: self.render_jinja(value, context) for key, value in obj.items()}
+            return {key: cls.render_jinja(value, context) for key, value in obj.items()}
         elif isinstance(obj, str):
             return Template(obj).render(context)
         elif isinstance(obj, Iterable):
-            return [self.render_jinja(item, context) for item in obj]
+            return [cls.render_jinja(item, context) for item in obj]
         else:
             return obj
 
@@ -422,25 +423,32 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
     """
     Access data on an SFTP to be unzipped and sharded before processing
     """
-    def __init__(self, *args, ftp_conn_id: str, remote_path: str, file_patterns: Optional[List[str]] = None, **kwargs):
+    def __init__(self, *args, ftp_conn_id: str, sharded_dirs: Optional[List[str]], python_preprocess_callable: 'Callable', **kwargs):
         self.ftp_conn_id: str = ftp_conn_id
-        self.remote_path: str = remote_path
-        self.file_patterns: List[str] = file_patterns or []
+        self.sharded_dirs: List[str] = sharded_dirs or []
+        self.top_level_preprocess: 'Callable' = python_preprocess_callable
         super().__init__(*args, **kwargs)
 
-        if self.file_patterns and len(self.input_vars) != len(self.file_patterns):
-            raise ValueError("EarthbeamDAGFactory variables `input_vars` and `file_patterns` must have same cardinality!")
+        if self.sharded_dirs and len(self.input_vars) != len(self.sharded_dirs):
+            raise ValueError("EarthbeamDAGFactory variables `input_vars` and `sharded_dirs` must have same cardinality!")
 
     def build_taskgroup_kwargs(self, tenant_code: str, api_year: str, subtype: Optional[str], earthbeam_dag: 'DAG'):
         ### Format variables with tenant-year grain information
-        formatted_local_dirs = [
-            os.path.join(local_dir, f"tenant_code={tenant_code}", f"api_year={api_year}")
-            for local_dir in self.sharded_dirs  # Defined in `build_custom_preprocess()`
+        format_kwargs = {
+            'tenant_code': tenant_code,
+            'api_year': str(api_year),
+            'subtype': subtype,
+        }
+
+        formatted_sharded_dirs = [
+            os.path.join(sharded_dir, "tenant_code={{tenant_code}}", "api_year={{api_year}}")
+            for sharded_dir in self.sharded_dirs
         ]
-        input_file_mapping = dict(zip(self.input_vars, formatted_local_dirs))
+        formatted_sharded_dirs = self.render_jinja(formatted_sharded_dirs, format_kwargs)
+        input_file_mapping = dict(zip(self.input_vars, formatted_sharded_dirs))
 
         python_kwargs={
-            'path': formatted_local_dirs[0]  # Only check the first directory (presumed mandatory with optional secondaries)
+            'path': formatted_sharded_dirs[0]  # Only check the first directory (presumed mandatory with optional secondaries)
         }
 
         return {
@@ -472,89 +480,15 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
             'subtype': subtype,
         }
 
-        # Preprocess ZIP and shard by district IDs.
         preprocess_raw_dir = earthbeam_dag.build_local_raw_dir("_preprocess", api_year, subtype)
-        downloaded_dir = os.path.join(preprocess_raw_dir, '_downloaded')
-        extracted_dirs = [
-            os.path.join(preprocess_raw_dir, '_extracted', env_var)
-            for env_var in self.input_vars
-        ]
-        self.sharded_dirs = [
-            os.path.join(preprocess_raw_dir, '_sharded', env_var)
-            for env_var in self.input_vars
-        ]
 
-        download_sftp_to_disk = earthbeam_dag.build_python_preprocessing_operator(
-            ftp.download_all,
+        return earthbeam_dag.build_python_preprocessing_operator(
+            self.top_level_preprocess,
             ftp_conn_id=self.ftp_conn_id,
-            remote_dir=self.render_jinja(self.remote_path, format_kwargs),
-            local_dir=downloaded_dir,
+            local_dir=preprocess_raw_dir,
+            output_dirs=self.render_jinja(self.sharded_dirs, format_kwargs),
+            **format_kwargs
         )
-
-        extract_zips_to_disk = earthbeam_dag.build_python_preprocessing_operator(
-            self.extract_match_zips,
-            zip_dir=downloaded_dir,
-            local_dirs=extracted_dirs,
-            file_patterns=self.render_jinja(self.file_patterns, format_kwargs)
-        )
-
-        shard_extracted_to_parquet = earthbeam_dag.build_python_preprocessing_operator(
-            EarthbeamDAG.partition_on_tenant_and_year,
-            csv_paths=[os.path.join(dir, "*.csv") for dir in extracted_dirs],  # Force to glob wildcard pathing
-            output_dirs=self.sharded_dirs,
-
-            tenant_col=self.tenant_col,
-            tenant_map=self.tenant_map,
-            year_col=self.year_col or self.tenant_col,  # Default to any column if none defined.
-            year_map=self.year_map or (lambda _: str(api_year))  # Default to API year if a mapping not defined.
-        )
-
-        download_sftp_to_disk >> extract_zips_to_disk >> shard_extracted_to_parquet
-
-        return shard_extracted_to_parquet
-    
-    @classmethod
-    def extract_match_zips(cls,
-        zip_dir: str,
-        local_dirs: str,
-        file_patterns: List[str],
-        **context
-    ):
-        """
-        `zip_dir` is the top-level folder under which one or more ZIPs are placed.
-        """
-        if len(local_dirs) != len(file_patterns):
-            raise ValueError("List arguments `local_dirs` and `file_patterns` must be the same length!")
-
-        # Isolate the root directory to create a temporary directory during extraction.
-        for local_dir in local_dirs:
-            os.makedirs(local_dir, exist_ok=True)
-
-        # Use context manager to delete directory when finished.
-        root_dir = os.path.dirname(local_dirs[0])
-        with tempfile.TemporaryDirectory(dir=root_dir) as tmp_dir:
-            logging.info(f"Extracting files to temporary directory: {tmp_dir}")
-
-            extract_zips(zip_dir, tmp_dir, remove_zips=False)
-
-            # Filter on file patterns, copying the files to their correct directory.
-            for base_path, _, files in os.walk(tmp_dir):
-                for file in files:
-                    for local_dir, file_pattern in zip(local_dirs, file_patterns):
-                        if not re.match(file_pattern, file):
-                            logging.info(f"! File does not match pattern: {file_pattern} >> {file}")
-                            continue
-
-                        logging.info(f"File matches pattern: {file_pattern} >> {file}")
-                        unique_filename = f"{os.path.basename(base_path).replace('/', '_')}__{file}"  # Include zip folder name in case of collisions.
-
-                        if not os.path.getsize(os.path.join(base_path, file)):
-                            logging.warning("    File is empty. Skipping extraction...")
-                            continue
-
-                        os.rename(os.path.join(base_path, file), os.path.join(local_dir, unique_filename))
-
-        return local_dirs
 
 
 
