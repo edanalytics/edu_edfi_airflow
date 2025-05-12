@@ -78,8 +78,8 @@ def capture_logs_to_snowflake(
     logging_table: str,
     tenant_code: str,
     api_year: int,
-    grain_update: Optional[str] = None,
-    run_type: str
+    run_type: str,
+    grain_update: Optional[str] = None
 ):
     with structured_log_capture() as log_records:
         result = run_callable()
