@@ -21,7 +21,7 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
-from log_util import capture_log_stream
+from edu_edfi_airflow.callables.log_util import capture_log_stream
 
 class EarthbeamDAG:
     """
