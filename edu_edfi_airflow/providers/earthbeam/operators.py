@@ -122,8 +122,7 @@ class EarthmoverOperator(BashOperator):
                 api_year=self.env.get("API_YEAR", "unknown"),
                 run_type=self.env.get("RUN_TYPE", "earthmover"),
                 grain_update=self.env.get("GRAIN_UPDATE", None),
-                run_date=context["ds"],
-                run_timestamp=context["ts"]
+                **kwargs
             )
 
         return self.output_dir

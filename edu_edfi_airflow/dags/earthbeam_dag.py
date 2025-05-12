@@ -1148,9 +1148,7 @@ class EarthbeamDAG:
                 tenant_code=tenant_code,
                 api_year=api_year,
                 grain_update=grain_update,
-                run_type=self.run_type,
-                run_date=kwargs['ds'],
-                run_timestamp=kwargs['ts']
+                **kwargs
             )
             return result
         return wrapper
