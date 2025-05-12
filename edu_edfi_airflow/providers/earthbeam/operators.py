@@ -7,7 +7,7 @@ from airflow.models import Connection
 from airflow.operators.bash import BashOperator
 
 from edu_edfi_airflow.callables import airflow_util
-from edu_edfi_airflow.callables.log_util import capture_logs
+from edu_edfi_airflow.callables.log_util import capture_logs_to_snowflake
 
 
 class EarthmoverOperator(BashOperator):
@@ -27,6 +27,7 @@ class EarthmoverOperator(BashOperator):
         parameters : Optional[Union[str, dict]] = None,
         results_file: Optional[str] = None,
         snowflake_read_conn_id: Optional[str] = None,
+        snowflake_log_conn_id: Optional[str] = None,
 
         force          : bool = False,
         skip_hashing   : bool = False,
@@ -39,6 +40,7 @@ class EarthmoverOperator(BashOperator):
         self.output_dir = output_dir
         self.state_file = state_file
         self.snowflake_read_conn_id = snowflake_read_conn_id
+        self.snowflake_log_conn_id = snowflake_log_conn_id
 
         ### Building the Earthmover CLI command
         self.arguments = {}
@@ -109,23 +111,17 @@ class EarthmoverOperator(BashOperator):
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
-        with capture_logs() as log_records:
-            result = super().execute(context)
-
-        if self.results_file and self.snowflake_read_conn_id and log_records:
-            structured_logs = "[{}]".format(",".join(log_records))
-            log_to_snowflake(
-                snowflake_conn_id=self.snowflake_read_conn_id,
-                logging_table="earthmover_logs",
-                log_data=structured_logs,
-                tenant_code=self.env.get("TENANT_CODE", "unknown"),
-                api_year=self.env.get("API_YEAR", "unknown"),
-                run_type=self.env.get("RUN_TYPE", "earthmover"),
-                grain_update=self.env.get("GRAIN_UPDATE", None),
-                **kwargs
-            )
-
-        return self.output_dir
+        return capture_logs_to_snowflake(
+            run_callable=lambda: super().execute(context),
+            snowflake_conn_id=self.snowflake_log_conn_id,
+            logging_table=env.get("LOGGING_TABLE"),
+            log_data=structured_logs,
+            tenant_code=self.env.get("TENANT_CODE"),
+            api_year=self.env.get("API_YEAR"),
+            run_type=self.env.get("RUN_TYPE"),
+            grain_update=self.env.get("GRAIN_UPDATE", None),
+            **kwargs
+        )
 
 
 

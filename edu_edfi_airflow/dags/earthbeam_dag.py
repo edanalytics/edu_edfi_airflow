@@ -21,7 +21,7 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
-from edu_edfi_airflow.callables.log_util import capture_log_stream
+from edu_edfi_airflow.callables.log_util import capture_logs_to_snowflake
 
 class EarthbeamDAG:
     """
@@ -355,13 +355,14 @@ class EarthbeamDAG:
 
                 if logging_table:
                     # Wrap the callable with log capturing
-                    wrapped_callable = self.capture_logs(
+                    wrapped_callable = capture_logs_to_snowflake(
                         python_callable,
                         snowflake_conn_id=snowflake_conn_id,
                         logging_table=logging_table,
                         tenant_code=tenant_code,
                         api_year=api_year,
-                        grain_update=grain_update
+                        grain_update=grain_update,
+                        run_type=self.run_type
                     )
                 else:
                     wrapped_callable = python_callable
@@ -496,13 +497,14 @@ class EarthbeamDAG:
 
                 if logging_table:
                     # Wrap the callable with log capturing
-                    wrapped_callable = self.capture_logs(
+                    wrapped_callable = capture_logs_to_snowflake(
                         python_callable,
                         snowflake_conn_id=snowflake_conn_id,
                         logging_table=logging_table,
                         tenant_code=tenant_code,
                         api_year=api_year,
-                        grain_update=grain_update
+                        grain_update=grain_update,
+                        run_type=self.run_type
                     )
                 else:
                     wrapped_callable = python_callable
@@ -865,6 +867,7 @@ class EarthbeamDAG:
                     output_dir=em_output_dir,
                     state_file=em_state_file,
                     snowflake_read_conn_id=snowflake_read_conn_id,
+                    snowflake_log_conn_id=snowflake_conn_id,
                     results_file=em_results_file,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     dag=self.dag
@@ -1102,29 +1105,3 @@ class EarthbeamDAG:
 
         return file_to_edfi_taskgroup
 
-
-    def capture_logs(self,
-        python_callable: Callable,
-        snowflake_conn_id: str,
-        logging_table: Optional[str],
-
-        tenant_code: str,
-        api_year: int,
-        grain_update: Optional[str] = None,
-    ):
-        def wrapper(*args, **kwargs):
-            with capture_log_stream() as log_stream:
-                result = python_callable(*args, **kwargs)
-            logs = log_stream.getvalue()
-
-            self.log_to_snowflake(
-                snowflake_conn_id=snowflake_conn_id,
-                logging_table=logging_table,
-                log_data=logs,
-                tenant_code=tenant_code,
-                api_year=api_year,
-                grain_update=grain_update,
-                **kwargs
-            )
-            return result
-        return wrapper
