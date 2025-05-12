@@ -108,7 +108,24 @@ class EarthmoverOperator(BashOperator):
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
-        super().execute(context)
+        with capture_log_stream(logger_name="airflow.task") as log_stream:
+            result = super().execute(context)
+
+        logs = log_stream.getvalue()
+
+        if self.results_file and self.snowflake_read_conn_id:
+            log_to_snowflake(
+                snowflake_conn_id=self.snowflake_read_conn_id,
+                logging_table="earthmover_logs",
+                log_data=logs,
+                tenant_code=self.env.get("TENANT_CODE", "unknown"),
+                api_year=self.env.get("API_YEAR", "unknown"),
+                run_type=self.env.get("RUN_TYPE", "earthmover"),
+                grain_update=self.env.get("GRAIN_UPDATE", None),
+                run_date=context["ds"],
+                run_timestamp=context["ts"]
+            )
+
         return self.output_dir
 
 

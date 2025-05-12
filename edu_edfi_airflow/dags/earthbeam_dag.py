@@ -21,6 +21,7 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
+from log_util import capture_log_stream
 
 class EarthbeamDAG:
     """
@@ -1136,59 +1137,20 @@ class EarthbeamDAG:
         grain_update: Optional[str] = None,
     ):
         def wrapper(*args, **kwargs):
-
-            import logging
-            import json
-            import io
-
-            # Create a logger
-            logger = logging.getLogger(python_callable.__name__)
-            logger.setLevel(logging.DEBUG)
-
-            # Create StringIO stream to capture logs
-            log_capture_string = io.StringIO()
-            ch = logging.StreamHandler(log_capture_string)
-            ch.setLevel(logging.DEBUG)
-            logger.addHandler(ch)
-
-            try:
+            with capture_log_stream() as log_stream:
                 result = python_callable(*args, **kwargs)
+            logs = log_stream.getvalue()
 
-            except Exception as err:
-                logger.error(f"Error in {python_callable.__name__}: {err}")
-                raise
-
-            finally:
-                # Ensure all log entries are flushed before closing the stream
-                ch.flush()
-                log_contents = log_capture_string.getvalue()
-
-                # Remove the handler and close the StringIO stream
-                logger.removeHandler(ch)
-                log_capture_string.close()
-
-                # Send logs to Snowflake
-                log_entries = log_contents.splitlines()
-                for entry in log_entries:
-                    record = logging.LogRecord(
-                        name=python_callable.__name__,
-                        level=logging.DEBUG,
-                        pathname='',
-                        lineno=0,
-                        msg=entry,
-                        args=None,
-                        exc_info=None
-                    )
-                    log_data = json.loads(self.format_log_record(record, args, kwargs))
-                    self.log_to_snowflake(
-                        snowflake_conn_id=snowflake_conn_id,
-                        logging_table=logging_table,
-                        log_data=log_data,
-                        tenant_code=tenant_code,
-                        api_year=api_year,
-                        grain_update=grain_update,
-                        **kwargs
-                    )
-
+            self.log_to_snowflake(
+                snowflake_conn_id=snowflake_conn_id,
+                logging_table=logging_table,
+                log_data=logs,
+                tenant_code=tenant_code,
+                api_year=api_year,
+                grain_update=grain_update,
+                run_type=self.run_type,
+                run_date=kwargs['ds'],
+                run_timestamp=kwargs['ts']
+            )
             return result
         return wrapper
