@@ -1,23 +1,38 @@
 import logging
-import io
+import json
+from datetime import datetime, timezone
 from contextlib import contextmanager
-from typing import Generator, Optional
+from typing import List, Generator
+
+
+def format_log_record(record: logging.LogRecord) -> str:
+    return json.dumps({
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'name': record.name,
+        'level': record.levelname,
+        'message': record.getMessage(),
+        'pathname': record.pathname,
+        'lineno': record.lineno
+    })
+
 
 @contextmanager
-def capture_log_stream(level=logging.INFO, logger_name: Optional[str] = None) -> Generator[str, None, None]:
+def capture_logs(logger_name: str = "airflow.task") -> Generator[List[str], None, None]:
     """
-    Context manager that captures logs emitted during a block.
-    Returns the log contents as a string.
+    Context manager that captures structured log records and yields them as a list of JSON strings.
     """
-    log_capture_string = io.StringIO()
-    handler = logging.StreamHandler(log_capture_string)
-    handler.setLevel(level)
+    log_records = []
 
-    logger = logging.getLogger(logger_name) if logger_name else logging.getLogger()
+    class StructuredLogHandler(logging.Handler):
+        def emit(self, record):
+            log_records.append(format_log_record(record))
+
+    handler = StructuredLogHandler()
+    logger = logging.getLogger(logger_name)
     logger.addHandler(handler)
 
     try:
-        yield log_capture_string
+        yield log_records
     finally:
         logger.removeHandler(handler)
         handler.close()

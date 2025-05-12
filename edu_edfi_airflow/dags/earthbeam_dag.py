@@ -1102,30 +1102,6 @@ class EarthbeamDAG:
 
         return file_to_edfi_taskgroup
 
-    @staticmethod
-    def format_log_record(record, args, kwargs):
-
-        from datetime import datetime, timezone
-        import json
-
-        def serialize_argument(arg):
-            try:
-                return json.dumps(arg)
-            except TypeError:
-                return str(arg)
-
-        log_record = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'name': record.name,
-            'level': record.levelname,
-            'message': record.getMessage(),
-            'pathname': record.pathname,
-            'lineno': record.lineno,
-            'args': {k: serialize_argument(v) for k, v in enumerate(args)},
-            'kwargs': {k: serialize_argument(v) for k, v in kwargs.items()},
-        }
-        return json.dumps(log_record)
-
 
     def capture_logs(self,
         python_callable: Callable,
