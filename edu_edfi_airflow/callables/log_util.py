@@ -36,7 +36,9 @@ def structured_log_capture(args, kwargs, logger_name: str = "airflow.task"):
 
     class StructuredLogHandler(logging.Handler):
         def emit(self, record):
-            if record.levelno >= logging.ERROR:  # only log warnings/errors
+            # Log exception traceback if present
+            if record.exc_info:
+                record.msg = f"{record.msg}\n{logging.Formatter().formatException(record.exc_info)}"
                 log_records.append(format_log_record(record, args, kwargs))
 
     handler = StructuredLogHandler()
@@ -92,13 +94,11 @@ def capture_logs_to_snowflake(
     grain_update: Optional[str] = None,
 ):
     def wrapper(*args, **kwargs):
-        from airflow.utils.context import Context
         context = kwargs.get("context", kwargs)
 
         def flush_logs(log_records):
             if snowflake_conn_id and log_records:
                 structured_logs = "[{}]".format(",".join(log_records))
-                from airflow_util import log_to_snowflake
                 log_to_snowflake(
                     snowflake_conn_id=snowflake_conn_id,
                     logging_table=logging_table,
