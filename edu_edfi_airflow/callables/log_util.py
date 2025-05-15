@@ -36,7 +36,8 @@ def structured_log_capture(args, kwargs, logger_name: str = "airflow.task"):
 
     class StructuredLogHandler(logging.Handler):
         def emit(self, record):
-            log_records.append(format_log_record(record, args, kwargs))
+            if record.levelno >= logging.ERROR:  # only log warnings/errors
+                log_records.append(format_log_record(record, args, kwargs))
 
     handler = StructuredLogHandler()
     logger = logging.getLogger(logger_name)
