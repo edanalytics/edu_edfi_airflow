@@ -93,7 +93,7 @@ def capture_logs_to_snowflake(
     def wrapper(*args, **kwargs):
         context = kwargs.get("context", kwargs)
 
-        def flush_logs(log_records):
+        def flush_logs(log_records, context):
             logging.getLogger("airflow.task").info(f"[DEBUG] flushing {len(log_records)} log records to Snowflake: {snowflake_conn_id}")
             if snowflake_conn_id and log_records:
                 for r in log_records:
@@ -118,6 +118,6 @@ def capture_logs_to_snowflake(
                 logging.getLogger("airflow.task").exception("Earthmover failed during execution")  # <- key line
                 raise
             finally:
-                flush_logs(log_records)
+                flush_logs(log_records, context)
 
     return wrapper
