@@ -10,24 +10,33 @@ from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from edu_edfi_airflow.callables import airflow_util
 
 
-def format_log_record(record: logging.LogRecord) -> str:
-    return json.dumps({
+def format_log_record(record, args, kwargs):
+    def serialize_argument(arg):
+        try:
+            return json.dumps(arg)
+        except TypeError:
+            return str(arg)
+
+    log_record = {
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'name': record.name,
         'level': record.levelname,
         'message': record.getMessage(),
         'pathname': record.pathname,
-        'lineno': record.lineno
-    })
+        'lineno': record.lineno,
+        'args': {k: serialize_argument(v) for k, v in enumerate(args)},
+        'kwargs': {k: serialize_argument(v) for k, v in kwargs.items()},
+    }
+    return json.dumps(log_record)
 
 
 @contextmanager
-def structured_log_capture(logger_name: str = "airflow.task"):
+def structured_log_capture(args, kwargs, logger_name: str = "airflow.task"):
     log_records = []
 
     class StructuredLogHandler(logging.Handler):
         def emit(self, record):
-            log_records.append(format_log_record(record))
+            log_records.append(format_log_record(record, args, kwargs))
 
     handler = StructuredLogHandler()
     logger = logging.getLogger(logger_name)
@@ -95,7 +104,7 @@ def capture_logs_to_snowflake(
         from airflow.utils.context import Context
         context = inner_kwargs.get('context', inner_kwargs)
 
-        with structured_log_capture() as log_records:
+        with structured_log_capture(inner_args, inner_kwargs) as log_records:
             result = run_callable(*inner_args, **inner_kwargs)
 
         if snowflake_conn_id and log_records:
