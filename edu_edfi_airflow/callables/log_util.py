@@ -94,7 +94,7 @@ def capture_logs_to_snowflake(
         context = kwargs.get("context", kwargs)
 
         def flush_logs(log_records):
-            logging.getLogger("airflow.task").info(f"[DEBUG] flushing {len(log_records)} log records to Snowflake")
+            logging.getLogger("airflow.task").info(f"[DEBUG] flushing {len(log_records)} log records to Snowflake: {snowflake_conn_id}")
             if snowflake_conn_id and log_records:
                 for r in log_records:
                     print(json.loads(r).get("level"))
