@@ -89,29 +89,32 @@ def capture_logs_to_snowflake(
     tenant_code: str,
     api_year: int,
     run_type: str,
-    grain_update: Optional[str] = None
+    grain_update: Optional[str] = None,
 ):
     def wrapper(*args, **kwargs):
         from airflow.utils.context import Context
         context = kwargs.get("context", kwargs)
 
-        with structured_log_capture(args, kwargs) as log_records:
-            result = run_callable(*args, **kwargs)
+        def flush_logs(log_records):
+            if snowflake_conn_id and log_records:
+                structured_logs = "[{}]".format(",".join(log_records))
+                from airflow_util import log_to_snowflake
+                log_to_snowflake(
+                    snowflake_conn_id=snowflake_conn_id,
+                    logging_table=logging_table,
+                    log_data=structured_logs,
+                    tenant_code=tenant_code,
+                    api_year=api_year,
+                    run_type=run_type,
+                    grain_update=grain_update,
+                    run_date=context.get("ds"),
+                    run_timestamp=context.get("ts"),
+                )
 
-        if snowflake_conn_id and log_records:
-            structured_logs = "[{}]".format(",".join(log_records))
-            from airflow_util import log_to_snowflake
-            log_to_snowflake(
-                snowflake_conn_id=snowflake_conn_id,
-                logging_table=logging_table,
-                log_data=structured_logs,
-                tenant_code=tenant_code,
-                api_year=api_year,
-                run_type=run_type,
-                grain_update=grain_update,
-                run_date=context.get("ds"),
-                run_timestamp=context.get("ts"),
-            )
-        return result
+        with structured_log_capture(args, kwargs) as log_records:
+            try:
+                return run_callable(*args, **kwargs)
+            finally:
+                flush_logs(log_records)
 
     return wrapper
