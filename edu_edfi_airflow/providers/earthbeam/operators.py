@@ -111,16 +111,17 @@ class EarthmoverOperator(BashOperator):
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
-        return capture_logs_to_snowflake(
-            run_callable=lambda: super().execute(context),
-            snowflake_conn_id=self.snowflake_log_conn_id,
-            logging_table=self.env.get("LOGGING_TABLE"),
-            tenant_code=self.env.get("TENANT_CODE"),
-            api_year=self.env.get("API_YEAR"),
-            run_type=self.env.get("RUN_TYPE"),
-            grain_update=self.env.get("GRAIN_UPDATE", None),
-            **kwargs
+        wrapped_execute = capture_logs_to_snowflake(
+            super().execute,
+            snowflake_conn_id=self.snowflake_read_conn_id,
+            logging_table=self.env.get("logging_table"),
+            tenant_code=self.env.get("tenant_code"),
+            api_year=self.env.get("api_year"),
+            grain_update=self.env.get("grain_update"),
+            run_type=self.env.get("run_type"),
         )
+
+        return wrapped_execute(context)
 
 
 

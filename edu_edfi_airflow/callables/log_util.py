@@ -89,28 +89,18 @@ def capture_logs_to_snowflake(
     tenant_code: str,
     api_year: int,
     run_type: str,
-    grain_update: Optional[str] = None,
-    *args, **kwargs
+    grain_update: Optional[str] = None
 ):
-    """
-    Acts as either:
-    1. A wrapper that returns a callable (for PythonOperator-style usage)
-    2. A direct executor that logs immediately (for Operator .execute() usage)
-
-    Usage:
-        - As wrapper: wrapped = capture_logs_to_snowflake(fn, ...)
-        - As executor: capture_logs_to_snowflake(fn, ..., arg1, arg2, kwarg1=...)
-    """
-    def _wrapped(*inner_args, **inner_kwargs):
+    def wrapper(*args, **kwargs):
         from airflow.utils.context import Context
-        context = inner_kwargs.get('context', inner_kwargs)
+        context = kwargs.get("context", kwargs)
 
-        with structured_log_capture(inner_args, inner_kwargs) as log_records:
-            result = run_callable(*inner_args, **inner_kwargs)
+        with structured_log_capture(args, kwargs) as log_records:
+            result = run_callable(*args, **kwargs)
 
         if snowflake_conn_id and log_records:
             structured_logs = "[{}]".format(",".join(log_records))
-
+            from airflow_util import log_to_snowflake
             log_to_snowflake(
                 snowflake_conn_id=snowflake_conn_id,
                 logging_table=logging_table,
@@ -122,11 +112,6 @@ def capture_logs_to_snowflake(
                 run_date=context.get("ds"),
                 run_timestamp=context.get("ts"),
             )
-
         return result
 
-    # If arguments were passed, run immediately (Operator use-case)
-    if args or kwargs:
-        return _wrapped(*args, **kwargs)
-    else:
-        return _wrapped  # return wrapped function for deferred use
+    return wrapper
