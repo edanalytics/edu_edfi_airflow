@@ -114,8 +114,7 @@ class EarthmoverOperator(BashOperator):
         return capture_logs_to_snowflake(
             run_callable=lambda: super().execute(context),
             snowflake_conn_id=self.snowflake_log_conn_id,
-            logging_table=env.get("LOGGING_TABLE"),
-            log_data=structured_logs,
+            logging_table=self.env.get("LOGGING_TABLE"),
             tenant_code=self.env.get("TENANT_CODE"),
             api_year=self.env.get("API_YEAR"),
             run_type=self.env.get("RUN_TYPE"),
