@@ -114,6 +114,9 @@ def capture_logs_to_snowflake(
         with structured_log_capture(args, kwargs) as log_records:
             try:
                 return run_callable(*args, **kwargs)
+            except Exception as err:
+                logging.getLogger("airflow.task").exception("Earthmover failed during execution")  # <- key line
+                raise
             finally:
                 flush_logs(log_records)
 
