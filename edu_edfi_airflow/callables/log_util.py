@@ -79,23 +79,44 @@ def capture_logs_to_snowflake(
     tenant_code: str,
     api_year: int,
     run_type: str,
-    grain_update: Optional[str] = None
+    grain_update: Optional[str] = None,
+    *args, **kwargs
 ):
-    with structured_log_capture() as log_records:
-        result = run_callable()
+    """
+    Acts as either:
+    1. A wrapper that returns a callable (for PythonOperator-style usage)
+    2. A direct executor that logs immediately (for Operator .execute() usage)
 
-    if operator.snowflake_read_conn_id and log_records:
-        structured_logs = "[{}]".format(",".join(log_records))
+    Usage:
+        - As wrapper: wrapped = capture_logs_to_snowflake(fn, ...)
+        - As executor: capture_logs_to_snowflake(fn, ..., arg1, arg2, kwarg1=...)
+    """
+    def _wrapped(*inner_args, **inner_kwargs):
+        from airflow.utils.context import Context
+        context = inner_kwargs.get('context', inner_kwargs)
 
-        log_to_snowflake(
-            snowflake_conn_id=snowflake_conn_id,
-            logging_table=logging_table,
-            log_data=structured_logs,
-            tenant_code=tenant_code,
-            api_year=api_year,
-            run_type=run_type,
-            grain_update=grain_update,
-            **kwargs
-        )
+        with structured_log_capture() as log_records:
+            result = run_callable(*inner_args, **inner_kwargs)
 
-    return result
+        if snowflake_conn_id and log_records:
+            structured_logs = "[{}]".format(",".join(log_records))
+
+            log_to_snowflake(
+                snowflake_conn_id=snowflake_conn_id,
+                logging_table=logging_table,
+                log_data=structured_logs,
+                tenant_code=tenant_code,
+                api_year=api_year,
+                run_type=run_type,
+                grain_update=grain_update,
+                run_date=context.get("ds"),
+                run_timestamp=context.get("ts"),
+            )
+
+        return result
+
+    # If arguments were passed, run immediately (Operator use-case)
+    if args or kwargs:
+        return _wrapped(*args, **kwargs)
+    else:
+        return _wrapped  # return wrapped function for deferred use

@@ -356,7 +356,7 @@ class EarthbeamDAG:
                 if logging_table:
                     # Wrap the callable with log capturing
                     wrapped_callable = capture_logs_to_snowflake(
-                        python_callable,
+                        run_callable=python_callable,
                         snowflake_conn_id=snowflake_conn_id,
                         logging_table=logging_table,
                         tenant_code=tenant_code,
@@ -498,7 +498,7 @@ class EarthbeamDAG:
                 if logging_table:
                     # Wrap the callable with log capturing
                     wrapped_callable = capture_logs_to_snowflake(
-                        python_callable,
+                        run_callable=python_callable,
                         snowflake_conn_id=snowflake_conn_id,
                         logging_table=logging_table,
                         tenant_code=tenant_code,
