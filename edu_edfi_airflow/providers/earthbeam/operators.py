@@ -27,7 +27,14 @@ class EarthmoverOperator(BashOperator):
         parameters : Optional[Union[str, dict]] = None,
         results_file: Optional[str] = None,
         snowflake_read_conn_id: Optional[str] = None,
+
+        # Logging args
         snowflake_log_conn_id: Optional[str] = None,
+        logging_table: Optional[str] = None,
+        tenant_code: Optional[str] = None,
+        api_year: Optional[str] = None,
+        grain_update: Optional[str] = None,
+        run_type: Optional[str] = None,
 
         force          : bool = False,
         skip_hashing   : bool = False,
@@ -40,7 +47,13 @@ class EarthmoverOperator(BashOperator):
         self.output_dir = output_dir
         self.state_file = state_file
         self.snowflake_read_conn_id = snowflake_read_conn_id
+
         self.snowflake_log_conn_id = snowflake_log_conn_id
+        self.logging_table = logging_table
+        self.tenant_code = tenant_code
+        self.api_year = api_year
+        self.grain_update = grain_update
+        self.run_type = run_type
 
         ### Building the Earthmover CLI command
         self.arguments = {}
@@ -107,18 +120,20 @@ class EarthmoverOperator(BashOperator):
         
         self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
+        logging.info(f"Snowflake Log Conn ID: {self.snowflake_log_conn_id}")
+        logging.info(f"Snowflake Logging Table: {self.logging_table}")
 
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
 
         wrapped_execute = capture_logs_to_snowflake(
             super().execute,
-            snowflake_conn_id=self.snowflake_read_conn_id,
-            logging_table=self.env.get("logging_table"),
-            tenant_code=self.env.get("tenant_code"),
-            api_year=self.env.get("api_year"),
-            grain_update=self.env.get("grain_update"),
-            run_type=self.env.get("run_type"),
+            snowflake_conn_id=self.snowflake_log_conn_id,
+            logging_table=self.logging_table,
+            tenant_code=self.tenant_code,
+            api_year=self.api_year,
+            grain_update=self.grain_update,
+            run_type=self.run_type,
         )
 
         return wrapped_execute(context)
