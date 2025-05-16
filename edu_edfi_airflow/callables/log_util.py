@@ -132,7 +132,7 @@ def capture_logs_to_snowflake(
                 run_timestamp=context.get("ts"),
             )
 
-        with structured_log_capture(args, kwargs) as log_records:
+        with structured_log_capture(args, kwargs=context) as log_records:
             try:
                 return run_callable(*args, **kwargs)
             except Exception as err:
