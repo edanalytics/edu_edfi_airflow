@@ -93,10 +93,7 @@ def capture_logs_to_snowflake(
     def wrapper(*args, **kwargs):
         
         # Robustly extract the Airflow context
-        context = (
-            kwargs if kwargs and isinstance(kwargs, dict) and "ds" in kwargs and "ts" in kwargs else
-            (args[0] if args and isinstance(args[0], dict) and "ds" in args[0] and "ts" in args[0] else None)
-        )
+        context = kwargs.get("context") or (kwargs if {"ds", "ts"} <= kwargs.keys() else None)
         if not context:
             raise ValueError("Airflow context not found. Cannot extract ds/ts.")
         

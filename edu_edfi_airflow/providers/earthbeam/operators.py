@@ -136,7 +136,7 @@ class EarthmoverOperator(BashOperator):
             run_type=self.run_type,
         )
 
-        return wrapped_execute(context)
+        return wrapped_execute(context=context)
 
 
 
