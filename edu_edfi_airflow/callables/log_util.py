@@ -101,25 +101,26 @@ def capture_logs_to_snowflake(
             raise ValueError("Airflow context not found. Cannot extract ds/ts.")
         
         def flush_logs(log_records, context):
-            # Only keep real error records or lines containing 'ERROR' (from subprocess etc.)
-            filtered_logs = [
-                record for record in log_records
-                if '"level": "ERROR"' in record or 'ERROR' in json.loads(record)["message"]
-            ]
-            logging.getLogger("airflow.task").info(f"[DEBUG] flushing {len(filtered_logs)} log records to Snowflake: {snowflake_conn_id}")
-            if snowflake_conn_id and filtered_logs:
-                structured_logs = "[{}]".format(",".join(filtered_logs))
-                log_to_snowflake(
-                    snowflake_conn_id=snowflake_conn_id,
-                    logging_table=logging_table,
-                    log_data=structured_logs,
-                    tenant_code=tenant_code,
-                    api_year=api_year,
-                    run_type=run_type,
-                    grain_update=grain_update,
-                    run_date=context.get("ds"),
-                    run_timestamp=context.get("ts"),
-                )
+            structured = [json.loads(r) for r in log_records]
+            errors = [r for r in structured if r.get("level") == "ERROR" or "ERROR" in r.get("message", "")]
+            if not errors:
+                return
+
+            merged = {**errors[0], "messages": [r["message"] for r in errors]}
+            merged.pop("message", None)  # optional: remove individual message if redundant
+            logging.getLogger("airflow.task").info(f"[DEBUG] flushing error log record to Snowflake")
+
+            log_to_snowflake(
+                snowflake_conn_id=snowflake_conn_id,
+                logging_table=logging_table,
+                log_data=json.dumps(merged),
+                tenant_code=tenant_code,
+                api_year=api_year,
+                run_type=run_type,
+                grain_update=grain_update,
+                run_date=context.get("ds"),
+                run_timestamp=context.get("ts"),
+            )
 
         with structured_log_capture(args, kwargs) as log_records:
             try:
