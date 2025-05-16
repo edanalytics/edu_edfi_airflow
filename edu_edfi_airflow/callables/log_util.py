@@ -94,7 +94,7 @@ def capture_logs_to_snowflake(
         
         # Robustly extract the Airflow context
         context = (
-            kwargs.get("context") or
+            kwargs if kwargs and isinstance(kwargs, dict) and "ds" in kwargs and "ts" in kwargs else
             (args[0] if args and isinstance(args[0], dict) and "ds" in args[0] and "ts" in args[0] else None)
         )
         if not context:
@@ -126,7 +126,7 @@ def capture_logs_to_snowflake(
             try:
                 return run_callable(*args, **kwargs)
             except Exception as err:
-                logging.getLogger("airflow.task").exception("Earthmover failed during execution")  # <- key line
+                logging.getLogger("airflow.task").exception(f"{type(err).__name__} raised during task execution: {err}")
                 raise
             finally:
                 flush_logs(log_records, context)
