@@ -102,9 +102,22 @@ def capture_logs_to_snowflake(
             errors = [r for r in structured if r.get("level") == "ERROR" or "ERROR" in r.get("message", "")]
             if not errors:
                 return
+            last_error = errors[-1]
 
-            merged = {**errors[0], "messages": [r["message"] for r in errors]}
-            merged.pop("message", None)  # optional: remove individual message if redundant
+            # Strip args and kwargs from each record (want to display them only once)
+            cleaned_errors = [
+                {k: v for k, v in record.items() if k not in ("args", "kwargs")}
+                for record in errors
+            ]
+
+            # Combine: args/kwargs/timestamp from last error, all other context in nested errors{} object
+            # (this is to avoid duplicating args/kwargs/timestamp in each error log, while preserving error-specific context)
+            merged = {
+                "args": last_error.get("args", {}),
+                "kwargs": last_error.get("kwargs", {}),
+                "last_error_timestamp": last_error.get("timestamp"),
+                "errors": cleaned_errors,
+            }
             logging.getLogger("airflow.task").info(f"[DEBUG] flushing error log record to Snowflake")
 
             log_to_snowflake(
