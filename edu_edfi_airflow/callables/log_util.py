@@ -91,13 +91,18 @@ def capture_logs_to_snowflake(
     grain_update: Optional[str] = None,
 ):
     def wrapper(*args, **kwargs):
-        context = kwargs.get("context", kwargs)
-
+        
+        # Robustly extract the Airflow context
+        context = (
+            kwargs.get("context") or
+            (args[0] if args and isinstance(args[0], dict) and "ds" in args[0] and "ts" in args[0] else None)
+        )
+        if not context:
+            raise ValueError("Airflow context not found. Cannot extract ds/ts.")
+        
         def flush_logs(log_records, context):
             logging.getLogger("airflow.task").info(f"[DEBUG] flushing {len(log_records)} log records to Snowflake: {snowflake_conn_id}")
             if snowflake_conn_id and log_records:
-                for r in log_records:
-                    print(json.loads(r).get("level"))
                 structured_logs = "[{}]".format(",".join(log_records))
                 log_to_snowflake(
                     snowflake_conn_id=snowflake_conn_id,
