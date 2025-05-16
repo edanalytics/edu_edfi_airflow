@@ -101,9 +101,14 @@ def capture_logs_to_snowflake(
             raise ValueError("Airflow context not found. Cannot extract ds/ts.")
         
         def flush_logs(log_records, context):
-            logging.getLogger("airflow.task").info(f"[DEBUG] flushing {len(log_records)} log records to Snowflake: {snowflake_conn_id}")
-            if snowflake_conn_id and log_records:
-                structured_logs = "[{}]".format(",".join(log_records))
+            # Only keep real error records or lines containing 'ERROR' (from subprocess etc.)
+            filtered_logs = [
+                record for record in log_records
+                if '"level": "ERROR"' in record or 'ERROR' in json.loads(record)["message"]
+            ]
+            logging.getLogger("airflow.task").info(f"[DEBUG] flushing {len(filtered_logs)} log records to Snowflake: {snowflake_conn_id}")
+            if snowflake_conn_id and filtered_logs:
+                structured_logs = "[{}]".format(",".join(filtered_logs))
                 log_to_snowflake(
                     snowflake_conn_id=snowflake_conn_id,
                     logging_table=logging_table,
