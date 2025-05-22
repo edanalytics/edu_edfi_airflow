@@ -508,7 +508,8 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         sharefile_path: str,
         local_path: str,
         sharefile_processed_dir: Optional[str] = None,
-        delete_remote: bool = False
+        delete_remote: bool = False,
+        delete_source: bool = False,
     ):
         """
         TODO: Why did this need to be declared explicitly to work?
@@ -520,7 +521,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         # After moving the SF file locally, delete it and reupload to the "processed" folder if defined.
         # TODO: Instead of deleting and re-uploading files, just move files via API.
         if sharefile_processed_dir:
-            sharefile.sharefile_copy_file(sharefile_conn_id, sharefile_path, sharefile_processed_dir)
+            sharefile.sharefile_copy_file(sharefile_conn_id, sharefile_path, sharefile_processed_dir, delete_source=delete_source)
             logging.info(f"Moved preprocessed file to directory `{sharefile_processed_dir}`.")
 
         return local_path
@@ -538,7 +539,10 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
             'sharefile_path': self.render_jinja(self.remote_path, format_kwargs),
             'sharefile_processed_dir': self.render_jinja(self.remote_processed_path, format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
-            'delete_remote': False  # TODO: Only delete files in ShareFile in production.
+            
+            # Mutually-exclusive (`delete_source` is used only when `sharefile_processed_dir` is defined)
+            'delete_remote': False,  # TODO: Only delete files in ShareFile in production.
+            'delete_source': not self.RUN_IN_DEV,  # Only delete files in ShareFile in production.
         }
 
         return {
