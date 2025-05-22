@@ -536,7 +536,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         python_kwargs={
             'sharefile_conn_id': self.sharefile_conn_id,
             'sharefile_path': self.render_jinja(self.remote_path, format_kwargs),
-            'sharefile_processed_path': self.render_jinja(self.remote_processed_path, format_kwargs),
+            'sharefile_processed_dir': self.render_jinja(self.remote_processed_path, format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
             'delete_remote': False  # TODO: Only delete files in ShareFile in production.
         }
