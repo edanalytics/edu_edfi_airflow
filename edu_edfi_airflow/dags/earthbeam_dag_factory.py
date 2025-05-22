@@ -507,7 +507,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         sharefile_conn_id: str,
         sharefile_path: str,
         local_path: str,
-        sharefile_processed_path: Optional[str] = None,
+        sharefile_processed_dir: Optional[str] = None,
         delete_remote: bool = False
     ):
         """
@@ -519,9 +519,9 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
 
         # After moving the SF file locally, delete it and reupload to the "processed" folder if defined.
         # TODO: Instead of deleting and re-uploading files, just move files via API.
-        if sharefile_processed_path:
-            sharefile.disk_to_sharefile(sharefile_conn_id, sharefile_processed_path, local_path)
-            logging.info(f"Moved file(s) to processed subdirectory in Sharefile `{sharefile_processed_path}`.")
+        if sharefile_processed_dir:
+            sharefile.sharefile_copy_file(sharefile_conn_id, sharefile_path, sharefile_processed_dir)
+            logging.info(f"Moved preprocessed file to directory `{sharefile_processed_dir}`.")
 
         return local_path
 
@@ -538,7 +538,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
             'sharefile_path': self.render_jinja(self.remote_path, format_kwargs),
             'sharefile_processed_path': self.render_jinja(self.remote_processed_path, format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
-            'delete_remote': False  # True if sharefile_processed_path else False,  # TODO: Only delete files in ShareFile in production.
+            'delete_remote': False  # TODO: Only delete files in ShareFile in production.
         }
 
         return {
