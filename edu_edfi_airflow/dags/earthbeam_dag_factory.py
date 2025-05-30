@@ -518,8 +518,8 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         sharefile.sharefile_to_disk(sharefile_conn_id, sharefile_path, local_path, delete_remote=delete_remote, recursive=False)
         logging.info(f"Copied file(s) from Sharefile `{sharefile_path}` to local `{local_path}`.")
 
-        # After moving the SF file locally, delete it and reupload to the "processed" folder if defined.
-        # TODO: Instead of deleting and re-uploading files, just move files via API.
+        # Copy the original file to the processed subdirectory if specified.
+        # Note: this option is mutually-exclusive to deleting the file.
         if sharefile_processed_dir:
             sharefile.sharefile_copy_file(sharefile_conn_id, sharefile_path, sharefile_processed_dir, delete_source=delete_source)
             logging.info(f"Moved preprocessed file to directory `{sharefile_processed_dir}`.")
