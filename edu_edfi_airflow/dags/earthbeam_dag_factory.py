@@ -1,9 +1,7 @@
 import itertools
 import logging
 import os
-import re
 import subprocess
-import tempfile
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from collections.abc import Iterable
@@ -20,8 +18,7 @@ from airflow.exceptions import AirflowSkipException
 from airflow.models import Param
 from airflow.models.baseoperator import chain
 
-from ea_airflow_util.callables import ftp, sharefile
-from ea_airflow_util.callables.zip import extract_zips
+from ea_airflow_util.callables import sharefile
 from edu_edfi_airflow import EarthbeamDAG
 
 
@@ -495,21 +492,39 @@ class SFTPEarthbeamDAGFactory(EarthbeamDAGFactory):
 class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
     """
     Access data on ShareFile pre-sharded by tenant and year in separate subdirectories.
+    Optionally move the file to a "processed" path after copying to the server to prevent re-ingestion.
     """
     RUN_DYNAMIC: bool = True  # Multiple files per assessment can be uploaded to a single folder in ShareFile.
 
-    def __init__(self, *args, sharefile_conn_id: str, remote_path: str, **kwargs):
+    def __init__(self, *args, sharefile_conn_id: str, remote_path: str, remote_processed_path: Optional[str] = None, **kwargs):
         self.sharefile_conn_id = sharefile_conn_id
         self.remote_path = remote_path
+        self.remote_processed_path = remote_processed_path
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def python_preprocess_callable(cls, sharefile_conn_id: str, sharefile_path: str, local_path: str, delete_remote: bool = False):
+    def python_preprocess_callable(cls,
+        sharefile_conn_id: str,
+        sharefile_path: str,
+        local_path: str,
+        sharefile_processed_dir: Optional[str] = None,
+        delete_remote: bool = False,
+        delete_source: bool = False,
+    ):
         """
         TODO: Why did this need to be declared explicitly to work?
         Otherwise: `KeyError: 'tenant_code' not found`
         """
-        return sharefile.sharefile_to_disk(sharefile_conn_id, sharefile_path, local_path, delete_remote=delete_remote, recursive=False)
+        sharefile.sharefile_to_disk(sharefile_conn_id, sharefile_path, local_path, delete_remote=delete_remote, recursive=False)
+        logging.info(f"Copied file(s) from Sharefile `{sharefile_path}` to local `{local_path}`.")
+
+        # Copy the original file to the processed subdirectory if specified.
+        # Note: this option is mutually-exclusive to deleting the file.
+        if sharefile_processed_dir:
+            sharefile.sharefile_copy_file(sharefile_conn_id, sharefile_path, sharefile_processed_dir, delete_source=delete_source)
+            logging.info(f"Moved preprocessed file to directory `{sharefile_processed_dir}`.")
+
+        return local_path
 
     def build_taskgroup_kwargs(self, tenant_code: str, api_year: str, subtype: Optional[str], earthbeam_dag: 'DAG'):
         ### Format variables with tenant-year grain information
@@ -522,8 +537,12 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         python_kwargs={
             'sharefile_conn_id': self.sharefile_conn_id,
             'sharefile_path': self.render_jinja(self.remote_path, format_kwargs),
+            'sharefile_processed_dir': self.render_jinja(self.remote_processed_path, format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
-            'delete_remote': False,  # TODO: Make dynamic when finished testing. # not self.RUN_IN_DEV,  # Only delete files in ShareFile in production.
+            
+            # Mutually-exclusive (`delete_source` is used only when `sharefile_processed_dir` is defined)
+            'delete_remote': False,  # TODO: Only delete files in ShareFile in production.
+            'delete_source': not self.RUN_IN_DEV,  # Only delete files in ShareFile in production.
         }
 
         return {
