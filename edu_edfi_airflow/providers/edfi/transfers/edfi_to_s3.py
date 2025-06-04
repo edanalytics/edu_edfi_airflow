@@ -331,30 +331,29 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
 
             # If doing a resource-specific run, confirm resource is in the list.
-            if config_endpoints and resource not in config_endpoints:
-                logging.info(f"    Endpoint {resource} not specified in DAG config endpoints. Skipping...")
+            # Also confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
+            if not self.is_endpoint_specified(resource, config_endpoints, self.enabled_endpoints):
                 continue
 
-            # Confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
-            if self.enabled_endpoints and resource not in self.enabled_endpoints:
-                logging.info(f"    Endpoint {resource} not specified in run endpoints. Skipping...")
-                continue
+            # Check the validity of min and max change-versions.
+            self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
+            # Complete the pull and write to S3
+            object_storage = self.get_object_storage(
+                conn_id=self.s3_conn_id, destination_key=self.s3_destination_key,
+                destination_dir=self.s3_destination_dir, destination_filename=self.s3_destination_filename
+            )
+
+            # Wrap in a try-except to still attempt other endpoints in a skip or failure.
             try:
-                # Retrieve the min_change_version for this resource specifically.
-                self.check_change_version_window_validity(min_change_version, self.max_change_version)
-
-                # Complete the pull and write to S3
-                s3_destination_key = os.path.join(self.s3_destination_dir, s3_destination_filename)
-
                 self.pull_edfi_to_s3(
                     edfi_conn=edfi_conn,
                     resource=resource, namespace=namespace, page_size=page_size,
                     num_retries=num_retries, change_version_step_size=change_version_step_size,
                     min_change_version=min_change_version, max_change_version=self.max_change_version,
-                    query_parameters=query_parameters, s3_destination_key=s3_destination_key
+                    query_parameters=query_parameters, object_storage=object_storage
                 )
-                return_tuples.append((resource, s3_destination_key))
+                return_tuples.append((resource, object_storage.key))
 
             except AirflowSkipException:
                 continue
