@@ -1,13 +1,14 @@
 import json
 import logging
 import os
+import tempfile
 
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional
 
+from airflow.hooks.base import BaseHook
+from airflow.io.path import ObjectStoragePath
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-from airflow.utils.decorators import apply_defaults
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
@@ -97,12 +98,16 @@ class EdFiToS3Operator(BaseOperator):
         # Also confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
         config_endpoints = airflow_util.get_config_endpoints(context)
         if not self.is_endpoint_specified(self.resource, config_endpoints, self.enabled_endpoints):
-            raise AirflowSkipException(f"Endpoint {self.resource} not enabled or not specified in this run.")
+            raise AirflowSkipException
 
         # Check the validity of min and max change-versions.
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         # Complete the pull and write to S3
+        object_storage = self.get_object_storage(
+            conn_id=self.s3_conn_id, destination_key=self.s3_destination_key,
+            destination_dir=self.s3_destination_dir, destination_filename=self.s3_destination_filename
+        )
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         self.pull_edfi_to_s3(
@@ -110,10 +115,11 @@ class EdFiToS3Operator(BaseOperator):
             resource=self.resource, namespace=self.namespace, page_size=self.page_size,
             num_retries=self.num_retries, change_version_step_size=self.change_version_step_size,
             min_change_version=self.min_change_version, max_change_version=self.max_change_version,
-            query_parameters=self.query_parameters, s3_destination_key=self.s3_destination_key
+            query_parameters=self.query_parameters, object_storage=object_storage
         )
 
-        return (self.resource, self.s3_destination_key)
+        return (self.resource, object_storage.key)
+
 
     @staticmethod
     def is_endpoint_specified(endpoint: str, config_endpoints: List[str], enabled_endpoints: List[str]) -> bool:
@@ -150,6 +156,38 @@ class EdFiToS3Operator(BaseOperator):
                 "    Apparent out-of-sequence run: current change version is smaller than previous! Run a full-refresh of this resource to resolve!"
             )
 
+
+    @staticmethod
+    def get_object_storage(
+        conn_id: str,
+        destination_key: Optional[str] = None,
+        *,
+        destination_dir: Optional[str] = None,
+        destination_filename: Optional[str] = None,
+        bucket_name: Optional[str] = None,
+    ) -> ObjectStoragePath:
+        """
+        Infer cloud storage destination path by passed arguments.
+        Build destination key from directory and filename if undefined.
+        Retrieve bucket name from connection schema if undefined.
+        """
+        # Optionally set destination key by concatting separate args for dir and filename
+        if not destination_key and not (destination_dir and destination_filename):
+            raise ValueError(
+                f"Argument `destination_key` has not been specified, and `destination_dir` or `destination_filename` is missing."
+            )
+        
+        if not destination_key:
+            destination_key = os.path.join(destination_dir, destination_filename)
+
+        # Infer bucket name from schema if not specified (internal standard that must be maintained during connection setup)
+        if not bucket_name:
+            bucket_name = BaseHook.get_connection(conn_id).schema
+        
+        full_destination_key = f"s3://{bucket_name}/{destination_key}"
+        return ObjectStoragePath(full_destination_key, conn_id=conn_id)
+
+
     def pull_edfi_to_s3(self,
         *,
         edfi_conn: 'Connection',
@@ -161,54 +199,54 @@ class EdFiToS3Operator(BaseOperator):
         min_change_version: Optional[int],
         max_change_version: Optional[int],
         query_parameters: dict,
-        s3_destination_key: str
+        object_storage: ObjectStoragePath
     ):
         """
         Break out EdFi-to-S3 logic to allow code-duplication in bulk version of operator.
         """
-        ### Connect to EdFi and write resource data to a temp file.
-        # Prepare the EdFiEndpoint for the resource.
         logging.info(
             "    Pulling records for `{}/{}` for change versions `{}` to `{}`. (page_size: {}; CV step size: {})"\
             .format(namespace, resource, min_change_version, max_change_version, page_size, change_version_step_size)
         )
 
+        ### Connect to EdFi and write resource data to a temp file, then copy to S3.
+        # Prepare the EdFiEndpoint for the resource.
         resource_endpoint = edfi_conn.resource(
             resource, namespace=namespace, params=query_parameters,
             get_deletes=self.get_deletes, get_key_changes=self.get_key_changes,
             min_change_version=min_change_version, max_change_version=max_change_version
         )
 
+        # Turn off change version stepping if min and max change versions have not been defined.
+        step_change_version = (min_change_version is not None and max_change_version is not None)
+
+        paged_iter = resource_endpoint.get_pages(
+            page_size=page_size,
+            step_change_version=step_change_version, change_version_step_size=change_version_step_size,
+            reverse_paging=self.reverse_paging,
+            retry_on_failure=True, max_retries=num_retries
+        )
+
         # Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
-        tmp_file = os.path.join(self.tmp_dir, s3_destination_key)
         total_rows = 0
-
-        try:
-            # Turn off change version stepping if min and max change versions have not been defined.
-            step_change_version = (min_change_version is not None and max_change_version is not None)
-
-            paged_iter = resource_endpoint.get_pages(
-                page_size=page_size,
-                step_change_version=step_change_version, change_version_step_size=change_version_step_size,
-                reverse_paging=(self.reverse_paging),
-                retry_on_failure=True, max_retries=num_retries
-            )
+        
+        os.makedirs(os.path.dirname(self.tmp_dir), exist_ok=True)  # Create its parent-directory in not extant.
+        
+        with tempfile.TemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
 
             # Output each page of results as JSONL strings to the output file.
-            os.makedirs(os.path.dirname(tmp_file), exist_ok=True)  # Create its parent-directory in not extant.
+            for page_result in paged_iter:
+                tmp_file.write(self.to_jsonl_string(page_result))
+                total_rows += len(page_result)
 
-            with open(tmp_file, 'wb') as fp:
-                for page_result in paged_iter:
-                    fp.write(self.to_jsonl_string(page_result))
-                    total_rows += len(page_result)
+            ### Connect to cloud storage and copy file
+            tmp_file.seek(0)  # Go back to the start of the file before copying to cloud storage.
+            object_storage.upload_from(tmp_file, force_overwrite_to_cloud=True)
+                
+        ### Check whether the number of rows returned matched the number expected.
+        logging.info(f"    {total_rows} rows were returned for `{resource}`.")
 
-        # In the case of any failures, we need to delete the temporary files written, then reraise the error.
-        except Exception as err:
-            self.delete_path(tmp_file)
-            raise err
-
-        # Check whether the number of rows returned matched the number expected.
         try:
             expected_rows = resource_endpoint.total_count()
             if total_rows != expected_rows:
@@ -219,37 +257,11 @@ class EdFiToS3Operator(BaseOperator):
         except Exception:
             logging.warning(f"    Unable to access expected number of rows for `{resource}`.")
 
-        finally:
-            logging.info(f"    {total_rows} rows were returned for `{resource}`.")
-
         # Raise a Skip if no data was collected.
         if total_rows == 0:
-            logging.info(f"    No results returned for `{resource}`")
-            self.delete_path(tmp_file)
+            logging.info(f"Skipping downstream copy to database...")
             raise AirflowSkipException
-
-        ### Connect to S3 and push
-        try:
-            s3_hook = S3Hook(aws_conn_id=self.s3_conn_id)
-            s3_bucket = s3_hook.get_connection(self.s3_conn_id).schema
-
-            s3_hook.load_file(
-                filename=tmp_file,
-                bucket_name=s3_bucket,
-                key=s3_destination_key,
-                encrypt=True,
-                replace=True
-            )
-        finally:
-            self.delete_path(tmp_file)
-
-    @staticmethod
-    def delete_path(path: str):
-        logging.info(f"    Removing temporary files written to `{path}`")
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
+                
 
     @staticmethod
     def to_jsonl_string(rows: Iterator[dict]) -> bytes:
