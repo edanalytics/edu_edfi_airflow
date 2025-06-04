@@ -94,20 +94,10 @@ class EdFiToS3Operator(BaseOperator):
         :return:
         """
         # If doing a resource-specific run, confirm resource is in the list.
+        # Also confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
         config_endpoints = airflow_util.get_config_endpoints(context)
-        if config_endpoints and self.resource not in config_endpoints:
-            raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
-        
-        # Confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
-        if self.enabled_endpoints and self.resource not in self.enabled_endpoints:
-            raise AirflowSkipException("Endpoint not specified in run endpoints.")
-        # Optionally set destination key by concatting separate args for dir and filename
-        if not self.s3_destination_key:
-            if not (self.s3_destination_dir and self.s3_destination_filename):
-                raise ValueError(
-                    f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
-                )
-            self.s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename)
+        if not self.is_endpoint_specified(self.resource, config_endpoints, self.enabled_endpoints):
+            raise AirflowSkipException(f"Endpoint {self.resource} not enabled or not specified in this run.")
 
         # Check the validity of min and max change-versions.
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
@@ -124,6 +114,17 @@ class EdFiToS3Operator(BaseOperator):
         )
 
         return (self.resource, self.s3_destination_key)
+
+    @staticmethod
+    def is_endpoint_specified(endpoint: str, **endpoint_lists) -> bool:
+        """
+        Verify endpoint is enabled in the endpoints YAML and specified to run in the DAG configs.
+        (Both enabled listings are represented as lists.)
+        """
+        for endpoint_list in endpoint_lists:
+            if endpoint_list and endpoint not in endpoint_list:
+                return False
+        return True
 
 
     @staticmethod
