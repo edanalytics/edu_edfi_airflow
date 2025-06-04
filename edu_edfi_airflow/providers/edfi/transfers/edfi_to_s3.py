@@ -116,14 +116,19 @@ class EdFiToS3Operator(BaseOperator):
         return (self.resource, self.s3_destination_key)
 
     @staticmethod
-    def is_endpoint_specified(endpoint: str, **endpoint_lists) -> bool:
+    def is_endpoint_specified(endpoint: str, config_endpoints: List[str], enabled_endpoints: List[str]) -> bool:
         """
         Verify endpoint is enabled in the endpoints YAML and specified to run in the DAG configs.
         (Both enabled listings are represented as lists.)
         """
-        for endpoint_list in endpoint_lists:
-            if endpoint_list and endpoint not in endpoint_list:
-                return False
+        if config_endpoints and endpoint not in config_endpoints:
+            logging.info(f"    Endpoint {endpoint} not specified in DAG config endpoints. Skipping...")
+            return False
+        
+        if enabled_endpoints and endpoint not in enabled_endpoints:
+            logging.info(f"    Endpoint {endpoint} not specified in run endpoints. Skipping...")
+            return False
+
         return True
 
 
