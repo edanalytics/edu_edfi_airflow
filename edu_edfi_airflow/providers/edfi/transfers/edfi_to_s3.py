@@ -34,6 +34,25 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
         'min_change_version', 'max_change_version', 'enabled_endpoints',
     )
 
+    def __new__(cls, **kwargs):
+        """
+        Use presence of backend-specific arguments to initialize child class.
+        # TODO: Initialize bulk operators automatically depending on datatype of `resource` argument.
+        
+        Supported storage backends:
+        - local: (default)  # TODO
+        - AWS S3: `s3_conn_id`
+        - Azure ADLs: `adls_conn_id`  # TODO
+        """
+
+        if 's3_conn_id' in kwargs:
+            return object.__new__(EdFiToS3Operator)
+        # elif 'adls_conn_id' in kwargs:
+        #     return object.__new__(EdFiToADLSOperator)
+        # else:
+        #     return EdFiToLocalStorageOperator
+        
+
     def __init__(self,
         edfi_conn_id: str,
         resource: str,
