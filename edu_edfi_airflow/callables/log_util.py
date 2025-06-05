@@ -1,4 +1,4 @@
-# log_utils.py
+# log_util.py
 
 import logging
 import json
@@ -10,13 +10,13 @@ from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from edu_edfi_airflow.callables import airflow_util
 
 
-def format_log_record(record, args, kwargs):
-    def serialize_argument(arg):
-        try:
-            return json.dumps(arg)
-        except TypeError:
-            return str(arg)
+def serialize_argument(arg):
+    try:
+        return json.dumps(arg)
+    except TypeError:
+        return str(arg)
 
+def format_log_record(record, args, kwargs):
     log_record = {
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'name': record.name,
