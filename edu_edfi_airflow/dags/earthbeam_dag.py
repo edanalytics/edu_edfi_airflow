@@ -867,22 +867,27 @@ class EarthbeamDAG:
                     output_dir=em_output_dir,
                     state_file=em_state_file,
                     snowflake_read_conn_id=snowflake_read_conn_id,
-
-                    # vars added just for the logging to snowflake... TODO must be a better way
-                    snowflake_log_conn_id=snowflake_conn_id,
-                    logging_table=logging_table,
-                    tenant_code=tenant_code,
-                    api_year=api_year,
-                    grain_update=grain_update,
-                    run_type=self.run_type,
-
                     results_file=em_results_file,
                     **self.inject_parameters_into_kwargs(env_mapping, earthmover_kwargs),
                     dag=self.dag
                 )
+
+                if logging_table:
+                    # Wrap the callable with log capturing
+                    wrapped_callable = capture_logs_to_snowflake(
+                        run_callable=earthmover_operator.execute,
+                        snowflake_conn_id=snowflake_conn_id,
+                        logging_table=logging_table,
+                        tenant_code=tenant_code,
+                        api_year=api_year,
+                        grain_update=grain_update,
+                        run_type=self.run_type,
+                    )
+                else:
+                    wrapped_callable = earthmover_operator.execute
                 
                 return {
-                    "data_dir": earthmover_operator.execute(**context),
+                    "data_dir": wrapped_callable(**context),
                     "state_file": em_state_file,
                     "results_file": em_results_file,
                 }
