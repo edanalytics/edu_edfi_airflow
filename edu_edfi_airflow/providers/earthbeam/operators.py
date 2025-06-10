@@ -118,7 +118,7 @@ class LightbeamOperator(BashOperator):
 
     """
     template_fields = ('data_dir', 'state_dir', 'arguments', 'bash_command', 'env',)
-    valid_commands = ('validate', 'send', 'validate+send')
+    valid_commands = ('validate', 'send', 'validate+send', 'fetch', 'delete', 'count')
 
     def __init__(self,
         *,
@@ -140,6 +140,9 @@ class LightbeamOperator(BashOperator):
 
         older_than: Optional[str] = None,
         newer_than: Optional[str] = None,
+        query: Optional[str] = None,
+        keep_keys: Optional[str] = None,
+        drop_keys: Optional[str] = None,
         resend_status_codes: Optional[Union[str, Iterable[str]]] = None,
 
         **kwargs
@@ -191,13 +194,19 @@ class LightbeamOperator(BashOperator):
             self.arguments['--older-than'] = older_than
         if newer_than:
             self.arguments['--newer-than'] = newer_than
+        if query:
+            self.arguments['--query'] = query
+        if keep_keys:
+            self.arguments['--keep-keys'] = keep_keys
+        if drop_keys:
+            self.arguments['--drop-keys'] = drop_keys
 
         ### Environment variables
-        # Pass required `data_dir`
-        env_vars = {
-            'DATA_DIR' : self.data_dir,
-            'STATE_DIR': self.state_dir,
-        }
+        # DATA_DIR is required in the standard config file
+        env_vars = {}
+        env_vars['DATA_DIR'] = self.data_dir
+        if self.state_dir:
+            env_vars['STATE_DIR'] = self.state_dir
 
         bash_command_prefix = f"{self.lightbeam_path} {command} "
         super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
@@ -234,8 +243,10 @@ class LightbeamOperator(BashOperator):
             logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
             self.arguments['--force'] = ""
 
-        # Create state_dir if not already defined in filespace
-        os.makedirs(self.state_dir, exist_ok=True)
+        # Create state_dir and data_dir if not already defined in filespace
+        os.makedirs(self.data_dir, exist_ok=True)
+        if self.state_dir:
+            os.makedirs(self.state_dir, exist_ok=True)
 
         # Format values before adding to the bash command.
         cli_arguments = []
