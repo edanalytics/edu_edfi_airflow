@@ -1,3 +1,7 @@
+# edu_edfi_airflow v0.4.6
+## Under the hood
+- Revert default of `pull_all_deletes` to false in preparation for deprecation. (Behavior resolved in dbt)
+
 # edu_edfi_airflow v0.4.5
 ## New features
 - Update Resources DAG UI for compatibility with Airflow 2.9.x (backwards compatibility with prior versions is retained)
