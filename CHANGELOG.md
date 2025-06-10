@@ -1,6 +1,12 @@
-# edu_edfi_airflow v0.4.6
+# edu_edfi_airflow v0.4.7
 ## Under the hood
 - Revert default of `pull_all_deletes` to false in preparation for deprecation. (Behavior resolved in dbt)
+
+# edu_edfi_airflow v0.4.6
+## New features
+- Add functionality to store total counts from the ODS, for data quality checks
+## Under the hood
+- Consistency fix in earthbeam dag
 
 # edu_edfi_airflow v0.4.5
 ## New features
