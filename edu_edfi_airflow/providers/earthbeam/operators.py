@@ -59,9 +59,6 @@ class EarthmoverOperator(BashOperator):
         if results_file:
             self.arguments['--results-file'] = results_file
 
-        if state_file:
-            self.arguments['--state-file'] = state_file
-
         # Boolean arguments
         if force:
             self.arguments['--force'] = ""
