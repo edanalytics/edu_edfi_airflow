@@ -1017,9 +1017,13 @@ class EarthbeamDAG:
                 unnested_filepaths = []
                 for filepath in filepaths:
                     if isinstance(filepath, str):
-                        unnested_filepaths.append(filepath)
+                        if not str(filepath).endswith('earthmover.csv'):
+                            unnested_filepaths.append(filepath)
                     else:
-                        unnested_filepaths.extend(filepath)
+                        unnested_filepaths.extend([
+                            path for path in filepath
+                            if not str(path).endswith('earthmover.csv')
+                        ])
                 
                 return remove_filepaths(unnested_filepaths)
 
