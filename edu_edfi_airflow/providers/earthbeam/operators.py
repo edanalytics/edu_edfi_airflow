@@ -62,6 +62,9 @@ class EarthmoverOperator(BashOperator):
         # Boolean arguments
         if force:
             self.arguments['--force'] = ""
+        else:
+            self.arguments['--set config.state_file'] = self.state_file
+        
         if skip_hashing:
             self.arguments['--skip-hashing'] = ""
         if show_graph:

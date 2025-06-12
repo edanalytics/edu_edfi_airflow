@@ -857,11 +857,6 @@ class EarthbeamDAG:
                     file_basename, 'earthmover_results.json'
                 ) if logging_table else None
                 em_results_file = context['task'].render_template(em_results_file, context)
-                
-                if em_state_file is not None:
-                    env_mapping.update({
-                        'STATE_FILE': em_state_file
-                    })
 
                 earthmover_operator = EarthmoverOperator(
                     task_id=f"run_earthmover",
