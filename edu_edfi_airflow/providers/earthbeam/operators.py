@@ -107,6 +107,11 @@ class EarthmoverOperator(BashOperator):
 
         # Create state_dir if not already defined in filespace
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
+        
+        # Create empty state file if it doesn't exist
+        if not os.path.exists(self.state_file):
+            with open(self.state_file, 'w') as f:
+                pass  # Create empty file
 
         super().execute(context)
         return self.output_dir
