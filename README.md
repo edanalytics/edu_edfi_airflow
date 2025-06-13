@@ -55,7 +55,8 @@ Alternatively, use argument `schedule_interval_full_refresh` to set an automatic
 | use_change_version             | Boolean flag for using change versions to complete delta ingests (default `True`; turned off for Ed-Fi2)                                           |
 | get_key_changes                | Boolean flag for whether to build a /keyChanges task-group (only applicable in newer ODSes; default `False`)                                       |
 | get_deletes_cv_with_deltas     | Boolean flag for whether to use Total-Count for reverse paging deletes (default `True`; change only if API version does not have Total-Count)      |
-| pull_all_deletes               | Boolean flag for whether to always pull all deletes to ensure suppressed deletes are captured (default `True`; recommended for accuracy)           |
+| pull_all_deletes               | Boolean flag for whether to always pull all deletes to ensure suppressed deletes are captured (default `False`; deprecated functionality)
+| pull_total_counts              | Boolean flag for whether to pull total record counts from each resource (default `False`; used for detecting sync drift)                           |
 | run_type                       | Specifies the run-type for the Ed-Fi task groups in the DAG (default `'default'`)                                                                  |
 | resource_configs               | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_resource()` and `add_resource_deletes()` methods; default `None`) |
 | descriptor_configs             | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_descriptor()` method; default `None`)                             |
@@ -63,6 +64,7 @@ Alternatively, use argument `schedule_interval_full_refresh` to set an automatic
 | deletes_table                  | Name of the table to record resource deletes on Snowflake (defaults to `'_deletes'`)                                                               |
 | key_changes_table              | Name of the table to record resource keyChanges on Snowflake (defaults to `'_key_changes'`)                                                        |
 | descriptors_table              | Name of the table to record descriptors on Snowflake (defaults to `'_descriptors'`)                                                                |
+| total_counts_table             | Name of the table to record resource total counts on Snowflake (defaults to `'_meta_total_counts'`; only needed if `pull_total_counts` = `True`)   |
 | dbt_incrementer_var            | Optional Airflow variable to increment upon a finished run                                                                                         |
 
 Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
