@@ -209,9 +209,8 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         if isinstance(self.table_name, str):
             logging.info("Running bulk statements on a single table.")
             self.run_bulk_sql_queries(
-                names=self.resource, table=self.table_name,
-                s3_dir=self.s3_destination_dir or os.path.dirname(self.s3_destination_key[0]),  # Infer directory if not specified.
-                full_refresh=airflow_util.is_full_refresh(context)
+                table=self.table_name,
+                s3_dir=self.s3_destination_dir or os.path.dirname(self.s3_destination_key[0])  # Infer directory if not specified.
             )
         
         # Otherwise, loop over each S3 destination and copy in sequence.
@@ -230,7 +229,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         else:
             return xcom_returns
 
-    def run_bulk_sql_queries(self, names: List[str], table: str, s3_dir: str, full_refresh: bool = False):
+    def run_bulk_sql_queries(self, table: str, s3_dir: str = '', delete_all: bool = False):
         """
         Alternative delete and copy queries to be run when all data is sent to the same table in Snowflake.
         
@@ -244,44 +243,41 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
         database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
 
-        ### Build the SQL queries to be passed into `Hook.run()`.
-        # Brackets in regex conflict with string formatting.
-        date_regex = "\\\\d{8}"
-        ts_regex = "\\\\d{8}T\\\\d{6}"
-
-        qry_copy_into = f"""
-            COPY INTO {database}.{schema}.{table}
-                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
-            FROM (
-                SELECT
-                    '{self.tenant_code}' AS tenant_code,
-                    '{self.api_year}' AS api_year,
-                    TO_DATE(REGEXP_SUBSTR(metadata$filename, '{date_regex}'), 'YYYYMMDD') AS pull_date,
-                    TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '{ts_regex}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
-                    metadata$file_row_number AS file_row_number,
-                    metadata$filename AS filename,
-                    REGEXP_SUBSTR(filename, '.+/(\\\\w+).jsonl?', 1, 1, 'c', 1) AS name,
-                    '{self.ods_version}' AS ods_version,
-                    '{self.data_model_version}' AS data_model_version,
-                    t.$1 AS v
-                FROM '@{database}.util.airflow_stage/{s3_dir}'
-                (file_format => 'json_default') t
-            )
-            force = true;
-        """
-
-        ### Commit the update queries to Snowflake.
-        # Incremental runs are only available in EdFi 3+.
-        if self.full_refresh or full_refresh:
-            names_string = "', '".join(names)
-
+        ### If delete_all is True, delete all records for the tenant and api_year.
+        # This is used to clear deletes and keyChanges during a full refresh.
+        if delete_all:
             qry_delete = f"""
                 DELETE FROM {database}.{schema}.{table}
                 WHERE tenant_code = '{self.tenant_code}'
                 AND api_year = '{self.api_year}'
-                AND name in ('{names_string}')
             """
-            snowflake_hook.run(sql=[qry_delete, qry_copy_into], autocommit=False)
-        
+            snowflake_hook.run(sql=qry_delete)
+
         else:
+            ### Build the SQL query to be passed into `Hook.run()`.
+            # Brackets in regex conflict with string formatting.
+            date_regex = "\\\\d{8}"
+            ts_regex = "\\\\d{8}T\\\\d{6}"
+
+            qry_copy_into = f"""
+                COPY INTO {database}.{schema}.{table}
+                    (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+                FROM (
+                    SELECT
+                        '{self.tenant_code}' AS tenant_code,
+                        '{self.api_year}' AS api_year,
+                        TO_DATE(REGEXP_SUBSTR(metadata$filename, '{date_regex}'), 'YYYYMMDD') AS pull_date,
+                        TO_TIMESTAMP(REGEXP_SUBSTR(metadata$filename, '{ts_regex}'), 'YYYYMMDDTHH24MISS') AS pull_timestamp,
+                        metadata$file_row_number AS file_row_number,
+                        metadata$filename AS filename,
+                        REGEXP_SUBSTR(filename, '.+/(\\\\w+).jsonl?', 1, 1, 'c', 1) AS name,
+                        '{self.ods_version}' AS ods_version,
+                        '{self.data_model_version}' AS data_model_version,
+                        t.$1 AS v
+                    FROM '@{database}.util.airflow_stage/{s3_dir}'
+                    (file_format => 'json_default') t
+                )
+                force = true;
+            """
+            # Commit the update query to Snowflake.
             snowflake_hook.run(sql=qry_copy_into)
