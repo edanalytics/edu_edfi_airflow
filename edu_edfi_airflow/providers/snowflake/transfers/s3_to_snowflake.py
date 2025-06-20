@@ -167,7 +167,12 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         :return:
         """
         if not self.resource:
-            raise AirflowSkipException("There are no endpoints to copy to Snowflake. Skipping task...")
+            # For deletes and keyChanges, delete all records during a full refresh.
+            if airflow_util.is_full_refresh(context) and isinstance(self.table_name, str):
+                logging.info("Deleting existing records due to full refresh...")
+                self.run_bulk_sql_queries(table=self.table_name, delete_all=True)
+            else:
+                raise AirflowSkipException("There are no endpoints to copy to Snowflake. Skipping task...")
 
         # Force potential string columns into lists for zipping in execute.
         if isinstance(self.resource, str):
