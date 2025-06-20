@@ -331,7 +331,7 @@ class EdFiResourceDAG:
         )
 
         # Chain tasks and taskgroups into the DAG; chain sentinel after all task groups.
-        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, total_counts_taskgroup, dbt_var_increment_operator)
+        airflow_util.chain_tasks(cv_task_group, total_counts_taskgroup, edfi_task_groups, dbt_var_increment_operator)
         airflow_util.chain_tasks(edfi_task_groups, dag_state_sentinel)
 
 
