@@ -448,6 +448,7 @@ class EdFiResourceDAG:
                 'endpoints': endpoints,
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
+                'has_key_changes': self.get_key_changes # Indicates whether to add keyChanges records on full refresh, since this column is not yet required
             },
             provide_context=True,
             dag=self.dag,
