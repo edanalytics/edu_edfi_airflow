@@ -171,6 +171,11 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
             if airflow_util.is_full_refresh(context) and isinstance(self.table_name, str):
                 logging.info("Deleting existing records due to full refresh...")
                 self.run_bulk_sql_queries(table=self.table_name, delete_all=True)
+                
+                if self.xcom_return:  # Maintain backwards-compatibility with original S3ToSnowflakeOperator
+                    return self.xcom_return
+                else:
+                    return []
             else:
                 raise AirflowSkipException("There are no endpoints to copy to Snowflake. Skipping task...")
 
