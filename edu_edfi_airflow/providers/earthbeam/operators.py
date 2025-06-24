@@ -34,7 +34,7 @@ class EarthmoverOperator(BashOperator):
         show_stacktrace: bool = False,
         return_exit_code: bool = False,
 
-        arguments_string: Optional[str],
+        arguments_string: Optional[str] = None,
 
         **kwargs
     ):
@@ -161,7 +161,7 @@ class LightbeamOperator(BashOperator):
         newer_than: Optional[str] = None,
         resend_status_codes: Optional[Union[str, Iterable[str]]] = None,
 
-        arguments_string: Optional[str],
+        arguments_string: Optional[str] = None,
 
         **kwargs
     ):
