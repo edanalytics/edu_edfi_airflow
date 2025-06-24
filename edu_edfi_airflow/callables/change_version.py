@@ -238,8 +238,9 @@ def update_change_versions(
     endpoints: List[str],
     get_deletes: bool,
     get_key_changes: bool,
+    has_key_changes: bool,
 
-    **kwargs
+    **context
 ):
     """
 
@@ -271,18 +272,28 @@ def update_change_versions(
     # Build and insert row tuples for each endpoint.
     rows_to_insert = []
 
-    for endpoint in endpoints:
-        row = [
-            tenant_code, api_year, endpoint,
-            kwargs["ds"], kwargs["ts"],
-            edfi_change_version, True,
-            get_deletes,
-        ]
+    row_sets = [{"get_deletes": get_deletes, "get_key_changes": get_key_changes}]
 
-        if get_key_changes:
-            row.append(get_key_changes)
+    # If a full-refresh is being run, also insert records for deletes and key changes (if enabled).
+    # This prevents all deletes and key changes from being pulled in the next run.
+    if airflow_util.is_full_refresh(context):
+        row_sets.append({"get_deletes": True, "get_key_changes": False})
+        if has_key_changes:
+            row_sets.append({"get_deletes": False, "get_key_changes": True})
 
-        rows_to_insert.append(row)
+    for row_set in row_sets:
+        for endpoint in endpoints:
+            row = [
+                tenant_code, api_year, endpoint,
+                context["ds"], context["ts"],
+                edfi_change_version, True,
+                row_set["get_deletes"],
+            ]
+
+            if get_key_changes:
+                row.append(row_set["get_key_changes"])
+
+            rows_to_insert.append(row)
 
     insert_into_snowflake(
         snowflake_conn_id=snowflake_conn_id,
