@@ -576,6 +576,7 @@ class EdFiResourceDAG:
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
+                enabled_endpoints=enabled_endpoints,
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -703,6 +704,7 @@ class EdFiResourceDAG:
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
+                enabled_endpoints=enabled_endpoints,
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -831,6 +833,7 @@ class EdFiResourceDAG:
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
+                enabled_endpoints=enabled_endpoints,
 
                 trigger_rule='none_skipped',  # Different trigger rule than default.
                 dag=self.dag

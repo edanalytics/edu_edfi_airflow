@@ -37,6 +37,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         data_model_version: Optional[str] = None,
 
         full_refresh: bool = False,
+        enabled_endpoints: Optional[List[str]] = None,
         xcom_return: Optional[Any] = None,
         **kwargs
     ) -> None:
@@ -58,6 +59,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.data_model_version = data_model_version
 
         self.full_refresh = full_refresh
+        self.enabled_endpoints = enabled_endpoints
         self.xcom_return = xcom_return
 
 
@@ -170,7 +172,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
             # For deletes and keyChanges, delete all records during a full refresh.
             if airflow_util.is_full_refresh(context) and isinstance(self.table_name, str):
                 logging.info("Deleting existing records due to full refresh...")
-                self.run_bulk_sql_queries(table=self.table_name, delete_all=True)
+                self.run_bulk_sql_queries(table=self.table_name, names=self.enabled_endpoints, delete_all=True)
                 
                 if self.xcom_return:  # Maintain backwards-compatibility with original S3ToSnowflakeOperator
                     return self.xcom_return
@@ -239,7 +241,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         else:
             return xcom_returns
 
-    def run_bulk_sql_queries(self, table: str, s3_dir: str = '', delete_all: bool = False):
+    def run_bulk_sql_queries(self, table: str, s3_dir: str = '', names: list[str] = [], delete_all: bool = False):
         """
         Alternative delete and copy queries to be run when all data is sent to the same table in Snowflake.
         
@@ -256,10 +258,13 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         ### If delete_all is True, delete all records for the tenant and api_year.
         # This is used to clear deletes and keyChanges during a full refresh.
         if delete_all:
+            names_string = "', '".join(names)
+
             qry_delete = f"""
                 DELETE FROM {database}.{schema}.{table}
                 WHERE tenant_code = '{self.tenant_code}'
                 AND api_year = '{self.api_year}'
+                AND name in ('{names_string}')
             """
             snowflake_hook.run(sql=qry_delete)
 
