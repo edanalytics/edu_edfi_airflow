@@ -34,6 +34,8 @@ class EarthmoverOperator(BashOperator):
         show_stacktrace: bool = False,
         return_exit_code: bool = False,
 
+        arguments_string: Optional[str],
+
         **kwargs
     ):
         self.earthmover_path = earthmover_path
@@ -44,6 +46,7 @@ class EarthmoverOperator(BashOperator):
 
         ### Building the Earthmover CLI command
         self.arguments = {}
+        self.arguments_string = arguments_string or ""
 
         # Dynamic arguments
         if config_file:
@@ -98,6 +101,13 @@ class EarthmoverOperator(BashOperator):
         # Format values before adding to the bash command.
         cli_arguments = []
         for key, val in self.arguments.items():
+            
+            # Warn if the arguments string override contains this argument.
+            if key in self.arguments_string:
+                logging.warning(f"EarthmoverOperator CLI argument `{key}` overridden by value in `arguments_string`.")
+                continue
+            
+            # Otherwise build out arguments string piece-by-piece.
             if not val:
                 cli_arguments.append(key)
             elif isinstance(val, dict):
@@ -105,7 +115,7 @@ class EarthmoverOperator(BashOperator):
             else:
                 cli_arguments.append(f"{key} '{val}'")
         
-        self.bash_command += " ".join(cli_arguments)
+        self.bash_command += " ".join(cli_arguments) + " " + self.arguments_string
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
 
         # Create state_dir if not already defined in filespace
@@ -151,6 +161,8 @@ class LightbeamOperator(BashOperator):
         newer_than: Optional[str] = None,
         resend_status_codes: Optional[Union[str, Iterable[str]]] = None,
 
+        arguments_string: Optional[str],
+
         **kwargs
     ):
         self.lightbeam_path = lightbeam_path
@@ -166,6 +178,7 @@ class LightbeamOperator(BashOperator):
 
         ### Building the Lightbeam CLI command
         self.arguments = {}
+        self.arguments_string = arguments_string or ""
 
         # Dynamic arguments
         if config_file:
@@ -248,7 +261,14 @@ class LightbeamOperator(BashOperator):
 
         # Format values before adding to the bash command.
         cli_arguments = []
-        for key, val in self.arguments.items():
+        for key, val in self.arguments.items():    
+            
+            # Warn if the arguments string override contains this argument.
+            if key in self.arguments_string:
+                logging.warning(f"LightbeamOperator CLI argument `{key}` overridden by value in `arguments_string`.")
+                continue
+            
+            # Otherwise build out arguments string piece-by-piece.
             if not val:
                 cli_arguments.append(key)
             elif isinstance(val, dict):
@@ -256,7 +276,7 @@ class LightbeamOperator(BashOperator):
             else:
                 cli_arguments.append(f"{key} '{val}'")
         
-        self.bash_command += " ".join(cli_arguments)
+        self.bash_command += " ".join(cli_arguments) + " " + self.arguments_string
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 
         super().execute(context)
