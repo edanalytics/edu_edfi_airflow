@@ -70,7 +70,7 @@ class EdFiResourceDAG:
         use_change_version: bool = True,
         get_key_changes: bool = False,
         get_deletes_cv_with_deltas: bool = True,
-        pull_all_deletes: bool = True,
+        pull_all_deletes: bool = False,
         pull_total_counts: bool = False,
         run_type: str = "default",
         resource_configs: Optional[List[dict]] = None,
@@ -331,7 +331,7 @@ class EdFiResourceDAG:
         )
 
         # Chain tasks and taskgroups into the DAG; chain sentinel after all task groups.
-        airflow_util.chain_tasks(cv_task_group, edfi_task_groups, total_counts_taskgroup, dbt_var_increment_operator)
+        airflow_util.chain_tasks(cv_task_group, total_counts_taskgroup, edfi_task_groups, dbt_var_increment_operator)
         airflow_util.chain_tasks(edfi_task_groups, dag_state_sentinel)
 
 
@@ -448,6 +448,7 @@ class EdFiResourceDAG:
                 'endpoints': endpoints,
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
+                'has_key_changes': self.get_key_changes # Indicates whether to add keyChanges records on full refresh, since this column is not yet required
             },
             provide_context=True,
             dag=self.dag,
