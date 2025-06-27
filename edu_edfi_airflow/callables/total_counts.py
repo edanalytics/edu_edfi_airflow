@@ -80,7 +80,7 @@ def delete_total_counts(
 
     ### Prepare the SQL query.
     # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+    database, schema = airflow_util.get_database_params_from_conn(snowflake_conn_id, 'extra__snowflake__database')
 
     qry_delete = f"""
         DELETE FROM {database}.{schema}.{total_counts_table}

@@ -46,7 +46,7 @@ def reset_change_versions(
 
     ### Prepare the SQL query.
     # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+    database, schema = airflow_util.get_database_params_from_conn(snowflake_conn_id, 'extra__snowflake__database')
 
     # Reset all resources in this tenant-year.
     qry_mark_inactive = f"""
@@ -102,7 +102,7 @@ def get_previous_change_versions(
 
     ### Prepare the SQL query.
     # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
+    database, schema = airflow_util.get_database_params_from_conn(snowflake_conn_id, 'extra__snowflake__database')
 
     # Retrieve the previous max change versions for this tenant-year.
     if get_deletes:

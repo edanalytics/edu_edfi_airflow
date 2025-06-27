@@ -111,27 +111,25 @@ def xcom_pull_template(
     return '{{ ' + xcom_string + ' }}'
 
 
-def get_snowflake_params_from_conn(
-    snowflake_conn_id: str
-) -> Tuple[str, str]:
+def get_database_params_from_conn(conn_id: str, extra_params: str) -> Tuple[str, str]:
 
-    undefined_snowflake_error = ValueError(
-        f"Snowflake `extra__snowflake__database` and `schema` must be defined within `{snowflake_conn_id}`."
+    undefined_connection_error = ValueError(
+        f"Unable to parse database connection: `{extra_params}` and `schema` must be defined within `{conn_id}`."
     )
 
     try:
-        snowflake_conn = Connection.get_connection_from_secrets(snowflake_conn_id)
+        conn = Connection.get_connection_from_secrets(conn_id)
 
-        database = snowflake_conn.extra_dejson['extra__snowflake__database']
-        schema   = snowflake_conn.schema
+        database = conn.extra_dejson[extra_params]
+        schema   = conn.schema
 
         if database is None or schema is None:
-            raise undefined_snowflake_error
+            raise undefined_connection_error
 
         return database, schema
 
     except KeyError:
-        raise undefined_snowflake_error
+        raise undefined_connection_error
 
 
 def fail_if_any_task_failed(**context):
