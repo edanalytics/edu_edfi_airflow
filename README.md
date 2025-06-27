@@ -327,7 +327,6 @@ First completes a `DELETE FROM` statement if `full_refresh` is set to True in th
 | ods_version        | Optional Ed-Fi ODS version to save as metadata if `edfi_conn_id` is undefined         |
 | data_model_version | Optional Ed-Fi data model version to save as metadata if `edfi_conn_id` is undefined  |
 | full_refresh       | Boolean flag to run a full truncate-replace of the warehouse data for the given grain |
-| xcom_return        | Helper variable to specific return type on success (used for downstream XComs)        |
 
 -----
 
