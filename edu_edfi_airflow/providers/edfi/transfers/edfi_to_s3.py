@@ -1,10 +1,9 @@
-import abc
 import json
 import logging
 import os
 import tempfile
 
-from typing import Iterator, List, Optional
+from typing import Iterator, List, Optional, Union
 
 from airflow.hooks.base import BaseHook
 from airflow.io.path import ObjectStoragePath
@@ -15,42 +14,52 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
-class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
+class EdFiToObjectStorageOperator(BaseOperator):
     """
     Establish a connection to the EdFi ODS using an Airflow Connection.
     Default to pulling the EdFi API configs from the connection if not explicitly provided.
 
     Use a paged-get to retrieve a particular EdFi resource from the ODS.
     Save the results as JSON lines to `tmp_dir` on the server.
-    Once pagination is complete, write the full results to cloud storage, as defined in a child subclass.
+    Once pagination is complete, write the full results to object storage, as defined in a child subclass.
 
     Deletes and keyChanges are only used in the bulk operator.
     """
-    STORAGE_PREFIX: str = ""
-
     template_fields = (
         'resource', 'namespace', 'page_size', 'num_retries', 'change_version_step_size', 'query_parameters',
-        'cloud_destination_key', 'cloud_destination_dir', 'cloud_destination_filename',
+        'destination_key', 'destination_dir', 'destination_filename',
         'min_change_version', 'max_change_version', 'enabled_endpoints',
     )
 
-    def __new__(cls, **kwargs):
+    def __new__(cls, *args, resource: Union[str, List[str]], **kwargs):
         """
         Use presence of backend-specific arguments to initialize child class.
-        # TODO: Initialize bulk operators automatically depending on datatype of `resource` argument.
         
         Supported storage backends:
-        - local: (default)  # TODO
+        - local: (default)
         - AWS S3: `s3_conn_id`
-        - Azure ADLs: `adls_conn_id`  # TODO
+        - Azure ADLs: `adls_conn_id`
         """
 
+        # AWS S3
         if 's3_conn_id' in kwargs:
-            return object.__new__(EdFiToS3Operator)
-        # elif 'adls_conn_id' in kwargs:
-        #     return object.__new__(EdFiToADLSOperator)
-        # else:
-        #     return EdFiToLocalStorageOperator
+            if isinstance(resource, str):
+                return object.__new__(EdFiToS3Operator)
+            else:
+                return object.__new__(BulkEdFiToS3Operator)
+        
+        # Azure ADLS
+        if 'adls_conn_id' in kwargs:
+            if isinstance(resource, str):
+                return object.__new__(EdFiToADLSOperator)
+            else:
+                return object.__new__(BulkEdFiToADLSOperator)
+
+        # Local Storage
+        if isinstance(resource, str):
+            return object.__new__(EdFiToObjectStorageOperator)
+        else:
+            return object.__new__(BulkEdFiToObjectStorageOperator)
         
 
     def __init__(self,
@@ -59,10 +68,10 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
 
         *,
         tmp_dir: str,
-        cloud_conn_id: str,
-        cloud_destination_key: Optional[str] = None,
-        cloud_destination_dir: Optional[str] = None,
-        cloud_destination_filename: Optional[str] = None,
+        object_storage_conn_id: str,
+        destination_key: Optional[str] = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
+        destination_dir: Optional[str] = None,
+        destination_filename: Optional[str] = None,
 
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -80,7 +89,7 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
 
         **kwargs
     ) -> None:
-        super(EdFiToCloudStorageOperator, self).__init__(**kwargs)
+        super(EdFiToObjectStorageOperator, self).__init__(**kwargs)
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id
@@ -93,10 +102,10 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
 
         # Storage variables
         self.tmp_dir = tmp_dir
-        self.cloud_conn_id = cloud_conn_id
-        self.cloud_destination_key = cloud_destination_key
-        self.cloud_destination_dir = cloud_destination_dir
-        self.cloud_destination_filename = cloud_destination_filename
+        self.object_storage_conn_id = object_storage_conn_id
+        self.destination_key = destination_key
+        self.destination_dir = destination_dir
+        self.destination_filename = destination_filename
 
         # Endpoint-pagination variables
         self.namespace = namespace
@@ -108,6 +117,9 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
 
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
         self.enabled_endpoints = enabled_endpoints
+
+        # Save kwargs to pass into get_object_storage()
+        self.kwargs = kwargs
 
 
     def execute(self, context) -> str:
@@ -125,14 +137,16 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
         # Check the validity of min and max change-versions.
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
-        # Complete the pull and write to cloud storage
+        # Build the object storage based on passed arguments.
+        # Note: this logic is overridden in each of the child classes.
         object_storage = self.get_object_storage(
-            conn_id=self.cloud_conn_id, destination_key=self.cloud_destination_key,
-            destination_dir=self.cloud_destination_dir, destination_filename=self.cloud_destination_filename
+            conn_id=self.object_storage_conn_id, destination_key=self.destination_key,
+            destination_dir=self.destination_dir, destination_filename=self.destination_filename,
+            **self.kwargs
         )
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
-        self.pull_edfi_to_cloud_storage(
+        self.pull_edfi_to_object_storage(
             edfi_conn=edfi_conn,
             resource=self.resource, namespace=self.namespace, page_size=self.page_size,
             num_retries=self.num_retries, change_version_step_size=self.change_version_step_size,
@@ -140,14 +154,13 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
             query_parameters=self.query_parameters, object_storage=object_storage
         )
 
-        return (self.resource, object_storage.key)
+        return (self.resource, object_storage)
 
 
     @staticmethod
     def is_endpoint_specified(endpoint: str, config_endpoints: List[str], enabled_endpoints: List[str]) -> bool:
         """
         Verify endpoint is enabled in the endpoints YAML and specified to run in the DAG configs.
-        (Both enabled listings are represented as lists.)
         """
         if config_endpoints and endpoint not in config_endpoints:
             logging.info(f"    Endpoint {endpoint} not specified in DAG config endpoints. Skipping...")
@@ -181,15 +194,14 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
 
     @classmethod
     def get_object_storage(cls,
-        conn_id: str,
         destination_key: Optional[str] = None,
         *,
         destination_dir: Optional[str] = None,
         destination_filename: Optional[str] = None,
-        bucket_name: Optional[str] = None,
+        **kwargs
     ) -> ObjectStoragePath:
         """
-        Infer cloud storage destination path by passed arguments.
+        Infer object storage destination path by passed arguments.
         Build destination key from directory and filename if undefined.
         Retrieve bucket name from connection schema if undefined.
         """
@@ -202,15 +214,10 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
         if not destination_key:
             destination_key = os.path.join(destination_dir, destination_filename)
 
-        # Infer bucket name from schema if not specified (internal standard that must be maintained during connection setup)
-        if not bucket_name:
-            bucket_name = BaseHook.get_connection(conn_id).schema
-        
-        full_destination_key = f"{cls.STORAGE_PREFIX}{bucket_name}/{destination_key}"
-        return ObjectStoragePath(full_destination_key, conn_id=conn_id)
+        return ObjectStoragePath(destination_key)
 
 
-    def pull_edfi_to_cloud_storage(self,
+    def pull_edfi_to_object_storage(self,
         *,
         edfi_conn: 'Connection',
         resource: str,
@@ -224,14 +231,14 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
         object_storage: ObjectStoragePath
     ):
         """
-        Break out EdFi-to-Cloud-Storage logic to allow code-duplication in bulk version of operator.
+        Break out load logic to allow code-duplication in bulk version of operator.
         """
         logging.info(
             "    Pulling records for `{}/{}` for change versions `{}` to `{}`. (page_size: {}; CV step size: {})"\
             .format(namespace, resource, min_change_version, max_change_version, page_size, change_version_step_size)
         )
 
-        ### Connect to EdFi and write resource data to a temp file, then copy to cloud storage.
+        ### Connect to EdFi and write resource data to a temp file, then copy to object storage.
         # Prepare the EdFiEndpoint for the resource.
         resource_endpoint = edfi_conn.resource(
             resource, namespace=namespace, params=query_parameters,
@@ -249,11 +256,11 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
             retry_on_failure=True, max_retries=num_retries
         )
 
-        # Iterate the ODS, paginating across offset and change version steps.
+        ### Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
         total_rows = 0
         
-        os.makedirs(os.path.dirname(self.tmp_dir), exist_ok=True)  # Create its parent-directory in not extant.
+        os.makedirs(os.path.dirname(self.tmp_dir), exist_ok=True)  # Create its parent-directory if not extant.
         
         with tempfile.TemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
 
@@ -262,8 +269,8 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
                 tmp_file.write(self.to_jsonl_string(page_result))
                 total_rows += len(page_result)
 
-            ### Connect to cloud storage and copy file
-            tmp_file.seek(0)  # Go back to the start of the file before copying to cloud storage.
+            # Connect to object storage and copy file
+            tmp_file.seek(0)  # Go back to the start of the file before copying to object storage.
             object_storage.upload_from(tmp_file, force_overwrite_to_cloud=True)
                 
         ### Check whether the number of rows returned matched the number expected.
@@ -296,9 +303,9 @@ class EdFiToCloudStorageOperator(BaseOperator, abc.ABC):
         )
 
 
-class BulkEdFiToCloudStorageOperator(EdFiToCloudStorageOperator):
+class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
     """
-    Inherits from EdFiToCloudStorageOperator to reduce code-duplication.
+    Inherits from EdFiToObjectStorageOperator to reduce code-duplication.
 
     The following arguments MUST be lists instead of singletons:
     - resource
@@ -308,7 +315,7 @@ class BulkEdFiToCloudStorageOperator(EdFiToCloudStorageOperator):
     - change_version_step_size
     - query_parameters
     - min_change_version
-    - cloud_destination_filename
+    - destination_filename
 
     If all endpoints skip, raise an AirflowSkipException.
     If at least one endpoint fails, push the XCom and raise an AirflowFailException.
@@ -321,9 +328,9 @@ class BulkEdFiToCloudStorageOperator(EdFiToCloudStorageOperator):
         :return:
         """
         # Force destination_dir and destination_filename arguments to be used.
-        if self.cloud_destination_key or not (self.cloud_destination_dir and self.cloud_destination_filename):
+        if self.destination_key or not (self.destination_dir and self.destination_filename):
             raise ValueError(
-                "Bulk operators require arguments `cloud_destination_dir` and `cloud_destination_filename` to be passed."
+                "Bulk operators require arguments `destination_dir` and `destination_filename` to be passed."
             )
 
         # Make connection outside of loop to not re-authenticate at every resource.
@@ -344,10 +351,10 @@ class BulkEdFiToCloudStorageOperator(EdFiToCloudStorageOperator):
             self.num_retries,
             self.change_version_step_size,
             self.query_parameters,
-            self.cloud_destination_filename,
+            self.destination_filename,
         ]
 
-        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, cloud_destination_filename) \
+        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, destination_filename) \
             in enumerate(zip(*zip_arguments), start=1):
 
             logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
@@ -360,22 +367,24 @@ class BulkEdFiToCloudStorageOperator(EdFiToCloudStorageOperator):
             # Check the validity of min and max change-versions.
             self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
-            # Complete the pull and write to cloud storage
+            # Build the object storage based on passed arguments.
+            # Note: this logic is overridden in each of the child classes.
             object_storage = self.get_object_storage(
-                conn_id=self.cloud_conn_id, destination_key=self.cloud_destination_key,
-                destination_dir=self.cloud_destination_dir, destination_filename=cloud_destination_filename
+                conn_id=self.object_storage_conn_id,
+                destination_dir=self.destination_dir, destination_filename=destination_filename,
+                **self.kwargs
             )
 
             # Wrap in a try-except to still attempt other endpoints in a skip or failure.
             try:
-                self.pull_edfi_to_cloud_storage(
+                self.pull_edfi_to_object_storage(
                     edfi_conn=edfi_conn,
                     resource=resource, namespace=namespace, page_size=page_size,
                     num_retries=num_retries, change_version_step_size=change_version_step_size,
                     min_change_version=min_change_version, max_change_version=self.max_change_version,
                     query_parameters=query_parameters, object_storage=object_storage
                 )
-                return_tuples.append((resource, object_storage.key))
+                return_tuples.append((resource, object_storage))
 
             except AirflowSkipException:
                 continue
@@ -402,25 +411,62 @@ class BulkEdFiToCloudStorageOperator(EdFiToCloudStorageOperator):
 
 
 class S3Mixin:
-    STORAGE_PREFIX: str = "s3://"
+    def __init__(self, *args, s3_conn_id: str, **kwargs) -> None:
+        super(S3Mixin, self).__init__(*args, object_storage_conn_id=s3_conn_id, **kwargs)
 
-    def __init__(self,
-        s3_conn_id: str,
-        s3_destination_key: Optional[str] = None,
-        s3_destination_dir: Optional[str] = None,
-        s3_destination_filename: Optional[str] = None,
+    @classmethod
+    def get_object_storage(cls,
+        conn_id: Optional[str],
+        *args,
+        bucket_name: Optional[str] = None,
         **kwargs
-    ) -> None:
-        super(S3Mixin, self).__init__(
-            cloud_conn_id=s3_conn_id,
-            cloud_destination_key=s3_destination_key,
-            cloud_destination_dir=s3_destination_dir,
-            cloud_destination_filename=s3_destination_filename,
-            **kwargs
-        )
+    ) -> ObjectStoragePath:
+        """
+        Retrieve bucket name from connection schema if undefined.
+        """
+        destination_key = super().get_object_storage(*args, **kwargs).key
 
-class EdFiToS3Operator(EdFiToCloudStorageOperator, S3Mixin):
+        # Infer bucket name from schema if not specified (internal standard that must be maintained during connection setup)
+        if not bucket_name:
+            bucket_name = BaseHook.get_connection(conn_id).schema
+        
+        full_destination_key = f"s3://{bucket_name}/{destination_key}"
+        return ObjectStoragePath(full_destination_key, conn_id=conn_id)
+
+class EdFiToS3Operator(EdFiToObjectStorageOperator, S3Mixin):
     pass
 
-class BulkEdFiToS3Operator(BulkEdFiToCloudStorageOperator, S3Mixin):
+class BulkEdFiToS3Operator(BulkEdFiToObjectStorageOperator, S3Mixin):
+    pass
+
+
+class ADLSMixin:
+    def __init__(self, *args, adls_conn_id: str, **kwargs) -> None:
+        super(ADLSMixin, self).__init__(*args, object_storage_conn_id=adls_conn_id, **kwargs)
+
+    @classmethod
+    def get_object_storage(cls,
+        conn_id: Optional[str],
+        *args,
+        adls_container: Optional[str] = None,
+        adls_storage_account: Optional[str] = None,
+        **kwargs
+    ) -> ObjectStoragePath:
+        """
+        Retrieve bucket name from connection schema if undefined.
+        TODO: Correct this logic.
+        """
+        destination_key = super().get_object_storage(*args, **kwargs).key
+
+        # Infer container name from schema if not specified (internal standard that must be maintained during connection setup)
+        if not adls_container:
+            adls_container = BaseHook.get_connection(conn_id).schema
+        
+        full_destination_key = f"abfss://{adls_container}@{adls_storage_account}.dfs.core.windows.net/{destination_key}"
+        return ObjectStoragePath(full_destination_key, conn_id=conn_id)
+
+class EdFiToADLSOperator(EdFiToObjectStorageOperator, ADLSMixin):
+    pass
+
+class BulkEdFiToADLSOperator(BulkEdFiToObjectStorageOperator, ADLSMixin):
     pass

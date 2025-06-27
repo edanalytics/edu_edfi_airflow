@@ -13,7 +13,7 @@ from ea_airflow_util import update_variable
 from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.callables import airflow_util, change_version, total_counts
-from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToCloudStorageOperator, BulkEdFiToCloudStorageOperator
+from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToObjectStorageOperator, BulkEdFiToObjectStorageOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkS3ToSnowflakeOperator
 
 
@@ -246,7 +246,7 @@ class EdFiResourceDAG:
             raise ValueError(f"Run type {self.run_type} is not one of the expected values: [default, dynamic, bulk].")
 
         # Set parent directory and create subfolders for each task group.
-        cloud_parent_directory = os.path.join(
+        parent_directory = os.path.join(
             self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
         )
 
@@ -254,7 +254,7 @@ class EdFiResourceDAG:
         resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi_Resources",
             endpoints=sorted(list(self.resources)),
-            cloud_destination_dir=os.path.join(cloud_parent_directory, 'resources')
+            destination_dir=os.path.join(parent_directory, 'resources')
             # Tables are built dynamically from the names of the endpoints.
         )
 
@@ -263,7 +263,7 @@ class EdFiResourceDAG:
             group_id="Ed-Fi_Descriptors",
             endpoints=sorted(list(self.descriptors)),
             table=self.descriptors_table,
-            cloud_destination_dir=os.path.join(cloud_parent_directory, 'descriptors')
+            destination_dir=os.path.join(parent_directory, 'descriptors')
         )
 
         # Resource Deletes
@@ -271,7 +271,7 @@ class EdFiResourceDAG:
             group_id="Ed-Fi_Resource_Deletes",
             endpoints=sorted(list(self.deletes_to_ingest)),
             table=self.deletes_table,
-            cloud_destination_dir=os.path.join(cloud_parent_directory, 'resource_deletes'),
+            destination_dir=os.path.join(parent_directory, 'resource_deletes'),
             get_deletes=True,
             get_with_deltas=self.get_deletes_cv_with_deltas
         )
@@ -282,7 +282,7 @@ class EdFiResourceDAG:
                 group_id="Ed-Fi Resource Key Changes",
                 endpoints=sorted(list(self.key_changes_to_ingest)),
                 table=self.key_changes_table,
-                cloud_destination_dir=os.path.join(cloud_parent_directory, 'resource_key_changes'),
+                destination_dir=os.path.join(parent_directory, 'resource_key_changes'),
                 get_key_changes=True
             )
         else:
@@ -479,7 +479,7 @@ class EdFiResourceDAG:
         group_id: str,
 
         *,
-        cloud_destination_dir: str,
+        destination_dir: str,
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -487,12 +487,12 @@ class EdFiResourceDAG:
         **kwargs
     ) -> TaskGroup:
         """
-        Build one EdFiToCloudStorage task per endpoint
+        Build one EdFiToObjectStorage task per endpoint
         Bulk copy the data to its respective table in Snowflake.
 
         :param endpoints:
         :param group_id:
-        :param cloud_destination_dir:
+        :param destination_dir:
         :param table:
         :param get_deletes:
         :param get_key_changes:
@@ -523,7 +523,7 @@ class EdFiResourceDAG:
                 get_cv_operator = None
                 enabled_endpoints = endpoints
 
-            ### EDFI TO Cloud Storage: Output Tuple[endpoint, filename] per successful task
+            ### EDFI TO Object Storage: Output Tuple[endpoint, filename] per successful task
             pull_operators_list = []
 
             for endpoint in endpoints:
@@ -534,15 +534,15 @@ class EdFiResourceDAG:
                 else:
                     min_change_version = None
 
-                pull_edfi_to_cloud_storage = EdFiToCloudStorageOperator(
+                pull_edfi_to_object_storage = BulkEdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
                     resource=endpoint,
 
                     tmp_dir=self.tmp_dir,
                     s3_conn_id=self.s3_conn_id,
-                    cloud_destination_dir=cloud_destination_dir,
-                    cloud_destination_filename=f"{endpoint}.jsonl",
+                    destination_dir=destination_dir,
+                    destination_filename=f"{endpoint}.jsonl",
                     
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -561,9 +561,9 @@ class EdFiResourceDAG:
                     dag=self.dag
                 )
 
-                pull_operators_list.append(pull_edfi_to_cloud_storage)
+                pull_operators_list.append(pull_edfi_to_object_storage)
 
-            ### COPY FROM CLOUD STORAGE TO SNOWFLAKE
+            ### COPY FROM OBJECT STORAGE TO SNOWFLAKE
             copy_stage_to_snowflake = BulkS3ToSnowflakeOperator(
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
@@ -573,7 +573,7 @@ class EdFiResourceDAG:
                 table_name=table or self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
-                cloud_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
+                destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
 
                 trigger_rule='all_done',
@@ -603,7 +603,7 @@ class EdFiResourceDAG:
         group_id: str,
 
         *,
-        cloud_destination_dir: str,
+        destination_dir: str,
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -611,12 +611,12 @@ class EdFiResourceDAG:
         **kwargs
     ):
         """
-        Build one EdFiToCloudStorage task per endpoint
+        Build one EdFiToObjectStorage task per endpoint
         Bulk copy the data to its respective table in Snowflake.
 
         :param endpoints:
         :param group_id:
-        :param cloud_destination_dir:
+        :param destination_dir:
         :param table:
         :param get_deletes:
         :param get_key_changes:                    
@@ -647,7 +647,7 @@ class EdFiResourceDAG:
                 kwargs_dicts = get_cv_operator.output.map(lambda endpoint__cv: {
                     'resource': endpoint__cv[0],
                     'min_change_version': endpoint__cv[1] if not (get_deletes and self.pull_all_deletes) else 0,
-                    'cloud_destination_filename': f"{endpoint__cv[0]}.jsonl",
+                    'destination_filename': f"{endpoint__cv[0]}.jsonl",
                     **self.endpoint_configs[endpoint__cv[0]],
                 })
             
@@ -658,13 +658,13 @@ class EdFiResourceDAG:
                 kwargs_dicts = list(map(lambda endpoint: {
                     'resource': endpoint,
                     'min_change_version': None,
-                    'cloud_destination_filename': f"{endpoint}.jsonl",
+                    'destination_filename': f"{endpoint}.jsonl",
                     **self.endpoint_configs[endpoint],
                 }, endpoints))
 
 
-            ### EDFI TO CLOUD STORAGE: Output Tuple[endpoint, filename] per successful task
-            pull_edfi_to_cloud_storage = (EdFiToCloudStorageOperator
+            ### EDFI TO OBJECT STORAGE: Output Tuple[endpoint, filename] per successful task
+            pull_edfi_to_object_storage = (EdFiToObjectStorageOperator
                 .partial(
                     task_id=f"pull_dynamic_endpoints_to_data_lake",
                     map_index_template="""{{ task.resource }}""",
@@ -672,7 +672,7 @@ class EdFiResourceDAG:
 
                     tmp_dir= self.tmp_dir,
                     s3_conn_id= self.s3_conn_id,
-                    cloud_destination_dir=cloud_destination_dir,
+                    destination_dir=destination_dir,
 
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -690,17 +690,17 @@ class EdFiResourceDAG:
                 .expand_kwargs(kwargs_dicts)
             )
 
-            ### COPY FROM CLOUD STORAGE TO SNOWFLAKE
+            ### COPY FROM OBJECT STORAGE TO SNOWFLAKE
             copy_stage_to_snowflake = BulkS3ToSnowflakeOperator(
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
                 
-                resource=self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 0),
-                table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 0),
+                resource=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
+                table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
-                cloud_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 1),
+                destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
 
                 trigger_rule='all_done',
@@ -711,7 +711,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
                     task_id=f"update_change_versions_in_snowflake",
-                    endpoints=self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 0),
+                    endpoints=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     trigger_rule='all_success'
@@ -720,7 +720,7 @@ class EdFiResourceDAG:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_cloud_storage, copy_stage_to_snowflake, update_cv_operator)
+            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_object_storage, copy_stage_to_snowflake, update_cv_operator)
 
         return dynamic_task_group
     
@@ -730,7 +730,7 @@ class EdFiResourceDAG:
         group_id: str,
 
         *,
-        cloud_destination_dir: str,
+        destination_dir: str,
         table: Optional[str] = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
@@ -738,12 +738,12 @@ class EdFiResourceDAG:
         **kwargs
     ):
         """
-        Build one EdFiToCloudStorage task (with inner for-loop across endpoints).
+        Build one EdFiToObjectStorage task (with inner for-loop across endpoints).
         Bulk copy the data to its respective table in Snowflake.
 
         :param endpoints:
         :param group_id:
-        :param cloud_destination_dir:
+        :param destination_dir:
         :param table:
         :param get_deletes:
         :param get_key_changes:
@@ -782,20 +782,20 @@ class EdFiResourceDAG:
                 min_change_versions = [None] * len(endpoints)
                 enabled_endpoints = endpoints
 
-            ### EDFI TO CLOUD STORAGE: Output Dict[endpoint, filename] with all successful tasks
+            ### EDFI TO OBJECT STORAGE: Output Dict[endpoint, filename] with all successful tasks
             # Build a dictionary of lists to pass into bulk operator.
             endpoint_config_lists = {
                 key: [self.endpoint_configs[endpoint][key] for endpoint in endpoints]
                 for key in self.DEFAULT_CONFIGS.keys()  # Create lists for all keys in config.
             }
 
-            pull_edfi_to_cloud_storage = BulkEdFiToCloudStorageOperator(
+            pull_edfi_to_object_storage = EdFiToObjectStorageOperator(
                 task_id=f"pull_all_endpoints_to_data_lake",
                 edfi_conn_id=self.edfi_conn_id,
 
                 tmp_dir=self.tmp_dir,
                 s3_conn_id=self.s3_conn_id,
-                cloud_destination_dir=cloud_destination_dir,
+                destination_dir=destination_dir,
                 
                 get_deletes=get_deletes,
                 get_key_changes=get_key_changes,
@@ -803,9 +803,9 @@ class EdFiResourceDAG:
                 reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
 
                 # Arguments that are required to be lists in Ed-Fi bulk-operator.
-                resource=endpoints,
+                resource=endpoints,  # List datatype initializes bulk child class
                 min_change_version=min_change_versions,
-                cloud_destination_filename=[f"{endpoint}.jsonl" for endpoint in endpoints],
+                destination_filename=[f"{endpoint}.jsonl" for endpoint in endpoints],
 
                 # Optional config-specified run-attributes (overridden by those in configs)
                 **endpoint_config_lists,
@@ -818,17 +818,17 @@ class EdFiResourceDAG:
                 dag=self.dag
             )
 
-            ### COPY FROM CLOUD STORAGE TO SNOWFLAKE
+            ### COPY FROM OBJECT STORAGE TO SNOWFLAKE
             copy_stage_to_snowflake = BulkS3ToSnowflakeOperator(
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
 
-                resource=self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 0),
-                table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 0),
+                resource=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
+                table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 edfi_conn_id=self.edfi_conn_id,
                 snowflake_conn_id=self.snowflake_conn_id,
-                cloud_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 1),
+                destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
 
                 trigger_rule='none_skipped',  # Different trigger rule than default.
@@ -839,7 +839,7 @@ class EdFiResourceDAG:
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
                     task_id=f"update_change_versions_in_snowflake",
-                    endpoints=self.xcom_pull_template_map_idx(pull_edfi_to_cloud_storage, 0),
+                    endpoints=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     trigger_rule='all_success'
@@ -848,7 +848,7 @@ class EdFiResourceDAG:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_cloud_storage, copy_stage_to_snowflake, update_cv_operator)
+            airflow_util.chain_tasks(get_cv_operator, pull_edfi_to_object_storage, copy_stage_to_snowflake, update_cv_operator)
 
         return bulk_task_group
 
