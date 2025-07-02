@@ -1,3 +1,6 @@
+# Unreleased
+- Deprecate the `pull_all_deletes` functionality (behaviour resolved in dbt)
+
 # edu_edfi_airflow v0.4.7
 ## Under the hood
 - Revert default of `pull_all_deletes` to false in preparation for deprecation. (Behavior resolved in dbt)
