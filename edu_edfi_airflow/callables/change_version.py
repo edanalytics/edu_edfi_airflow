@@ -10,13 +10,13 @@ from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
-def get_newest_edfi_change_version(edfi_conn_id: str, **kwargs) -> int:
+def get_newest_edfi_change_version(edfi_conn_id: str, edfi_token_airflow_variable: Optional[str] = None, **kwargs) -> int:
     """
 
     :return:
     """
     ### Connect to EdFi ODS and verify EdFi3.
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
+    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, token_airflow_variable=edfi_token_airflow_variable).get_conn()
 
     # Break off prematurely if change versions not supported.
     if edfi_conn.is_edfi2():
@@ -150,6 +150,7 @@ def get_previous_change_versions_with_deltas(
 
     edfi_conn_id: Optional[str],
     max_change_version: Optional[int],
+    edfi_token_airflow_variable: Optional[str] = None,
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
@@ -166,7 +167,7 @@ def get_previous_change_versions_with_deltas(
         **context
     )
 
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
+    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, token_airflow_variable=edfi_token_airflow_variable).get_conn()
 
     # Only ping the API if the endpoint is specified in the run.
     config_endpoints = airflow_util.get_config_endpoints(context)

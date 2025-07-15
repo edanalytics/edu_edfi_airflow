@@ -35,6 +35,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         edfi_conn_id: Optional[str] = None,
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
+        edfi_token_airflow_variable: Optional[str] = None,
 
         full_refresh: bool = False,
         xcom_return: Optional[Any] = None,
@@ -49,6 +50,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.api_year = api_year
         self.resource = resource
         self.table_name = table_name
+        self.edfi_token_airflow_variable = edfi_token_airflow_variable
 
         self.s3_destination_key = s3_destination_key
         self.s3_destination_dir = s3_destination_dir
@@ -92,7 +94,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         This needs to occur in execute to not call the API at every Airflow synchronize.
         """
         if self.edfi_conn_id:
-            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id).get_conn()
+            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, token_airflow_variable=self.edfi_token_airflow_variable).get_conn()
             if is_edfi2 := edfi_conn.is_edfi2():
                 self.full_refresh = True
 
