@@ -283,6 +283,8 @@ class EdFiResourceDAG:
         else:
             token_provider = None
             initial_token_sensor = None
+            # some of the shared callables (e.g. CV) don't try to get a token that doesn't exist
+            self.edfi_token_airflow_variable = None
 
         # Set parent directory and create subfolders for each task group.
         s3_parent_directory = os.path.join(
