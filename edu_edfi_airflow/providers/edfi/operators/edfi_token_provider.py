@@ -1,5 +1,6 @@
 from datetime import timedelta
 from typing import Any
+import logging
 
 from airflow.models import BaseOperator, Variable
 from airflow.triggers.temporal import TimeDeltaTrigger
@@ -29,14 +30,16 @@ class EdFiTokenProviderOperator(BaseOperator):
     # since we defer to this method, must take event as an optional kwarg
     def execute(self, context: Context, event: dict[str, Any] | None = None):
         # check if target tasks are still running via a sentinel
-        sentinel_ti = context.dag_run.get_task_instance(task_id=self.sentinel_task_id)
+        sentinel_ti = context['dag_run'].get_task_instance(task_id=self.sentinel_task_id)
 
         if sentinel_ti.state not in State.finished:
             # instantiate an EdFi client and grab token, expiry time
             conn = EdFiHook(self.edfi_conn_id).get_conn()
             conn.session.authenticate()
-            token = conn.session.auth_token
-            defer_seconds = conn.session.refresh_at - conn.session.authenticated_at
+            token = conn.session.access_token
+            defer_seconds = conn.session.refresh_at - conn.session.authenticated_at - 600
+
+            logging.info(f'Refreshed token in {self.airflow_variable_name}. Next refresh scheduled in {defer_seconds}s')
             
             # store the token in an Airflow variable
             Variable.set(self.airflow_variable_name, token)

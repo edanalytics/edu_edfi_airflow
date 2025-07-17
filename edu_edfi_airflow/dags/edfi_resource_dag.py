@@ -261,16 +261,23 @@ class EdFiResourceDAG:
             edfi_conn_id=self.edfi_conn_id,
             airflow_variable_name=self.edfi_token_airflow_variable,
             sentinel_task_id='dag_state_sentinel',
-            dag=self.dag
+            dag=self.dag,
+            pool=self.pool,
+            priority_weight=20
         )
 
         # Set up sensor to wait for first auth before proceeding
         initial_token_sensor = ExternalTaskSensor(
             task_id='initial_edfi_token_sensor',
-            external_dag_id='{{ dag.id }}',
+            external_dag_id='{{ dag.dag_id }}',
             external_task_id='edfi_token_provider',
             allowed_states=[TaskInstanceState.DEFERRED],
-            dag=self.dag
+            # not default ExternalTaskSensor behavior, but we
+            # do want to fail the rest of the DAG fast if we
+            # were not able to acquire a first token
+            failed_states=[TaskInstanceState.FAILED],
+            dag=self.dag,
+            pool=self.pool,
         )
 
         # Set parent directory and create subfolders for each task group.
@@ -629,10 +636,6 @@ class EdFiResourceDAG:
 
             ### Chain tasks into final task-group
             airflow_util.chain_tasks(initial_token_provider, get_cv_operator, pull_operators_list, copy_s3_to_snowflake, update_cv_operator)
-
-        # Set up deferrable token getter outside of task group to avoid
-        # chaining into sentinel
-        initial_sensor = DateTimeSensorAsync(task_id='initial_token_timer')
 
         return default_task_group
 
