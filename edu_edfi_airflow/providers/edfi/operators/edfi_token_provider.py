@@ -37,7 +37,7 @@ class EdFiTokenProviderOperator(BaseOperator):
             conn = EdFiHook(self.edfi_conn_id).get_conn()
             conn.session.authenticate()
             token = conn.session.access_token
-            defer_seconds = conn.session.refresh_at - conn.session.authenticated_at - 600
+            defer_seconds = conn.session.refresh_at - conn.session.authenticated_at 
 
             logging.info(f'Refreshed token in {self.airflow_variable_name}. Next refresh scheduled in {defer_seconds}s')
             
