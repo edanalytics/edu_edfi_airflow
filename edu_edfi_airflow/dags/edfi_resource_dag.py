@@ -255,30 +255,34 @@ class EdFiResourceDAG:
             raise ValueError(f"Run type {self.run_type} is not one of the expected values: [default, dynamic, bulk].")
 
         # Set up DAG-wide bearer token manager
-        # do we skip this for bulk dags and allow them to handle their own auth?
-        token_provider = EdFiTokenProviderOperator(
-            task_id='edfi_token_provider',
-            edfi_conn_id=self.edfi_conn_id,
-            airflow_variable_name=self.edfi_token_airflow_variable,
-            sentinel_task_id='dag_state_sentinel',
-            dag=self.dag,
-            pool=self.pool,
-            priority_weight=20
-        )
+        # for default/dynamic dags only
 
-        # Set up sensor to wait for first auth before proceeding
-        initial_token_sensor = ExternalTaskSensor(
-            task_id='initial_edfi_token_sensor',
-            external_dag_id='{{ dag.dag_id }}',
-            external_task_id='edfi_token_provider',
-            allowed_states=[TaskInstanceState.DEFERRED],
-            # not default ExternalTaskSensor behavior, but we
-            # do want to fail the rest of the DAG fast if we
-            # were not able to acquire a first token
-            failed_states=[TaskInstanceState.FAILED],
-            dag=self.dag,
-            pool=self.pool,
-        )
+        if self.run_type in ['default', 'dynamic']:
+            token_provider = EdFiTokenProviderOperator(
+                task_id='edfi_token_provider',
+                edfi_conn_id=self.edfi_conn_id,
+                airflow_variable_name=self.edfi_token_airflow_variable,
+                sentinel_task_id='dag_state_sentinel',
+                dag=self.dag,
+                pool=self.pool,
+            )
+
+            # Set up sensor to wait for first auth before proceeding
+            initial_token_sensor = ExternalTaskSensor(
+                task_id='initial_edfi_token_sensor',
+                external_dag_id='{{ dag.dag_id }}',
+                external_task_id='edfi_token_provider',
+                allowed_states=[TaskInstanceState.DEFERRED],
+                # not default ExternalTaskSensor behavior, but we
+                # do want to fail the rest of the DAG fast if we
+                # were not able to acquire a first token
+                failed_states=[TaskInstanceState.FAILED],
+                dag=self.dag,
+                pool=self.pool,
+            )
+        else:
+            token_provider = None
+            initial_token_sensor = None
 
         # Set parent directory and create subfolders for each task group.
         s3_parent_directory = os.path.join(
