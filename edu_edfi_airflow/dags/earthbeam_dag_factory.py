@@ -52,6 +52,9 @@ class EarthbeamDAGFactory:
             "performanceLevelDescriptors",
         ],
 
+        # Optional preprocess callable (applied within `python_preprocess_callable()`)
+        custom_preprocess_callable: Optional['Callable'] = None,
+
         # Optional postprocess callable (e.g., uploading failed students to ShareFile)
         python_postprocess_callable: Optional['Callable'] = None,
         python_postprocess_kwargs: Optional[dict] = None,
@@ -117,6 +120,7 @@ class EarthbeamDAGFactory:
         self.edfi_conn_id_lambda: Callable[[str, str], str] = edfi_conn_id_lambda
         self.snowflake_tenant_code_override: Optional[Callable[[str, str], str]] = snowflake_tenant_code_override
 
+        self.custom_preprocess_callable: Optional['Callable'] = custom_preprocess_callable
         self.python_postprocess_callable: Optional['Callable'] = python_postprocess_callable
         self.python_postprocess_kwargs: dict = python_postprocess_kwargs or {}
 
@@ -510,6 +514,8 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         sharefile_processed_dir: Optional[str] = None,
         delete_remote: bool = False,
         delete_source: bool = False,
+
+        custom_preprocess_callable: Optional['Callable'] = None,
     ):
         """
         TODO: Why did this need to be declared explicitly to work?
@@ -523,6 +529,23 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
         if sharefile_processed_dir:
             sharefile.sharefile_copy_file(sharefile_conn_id, sharefile_path, sharefile_processed_dir, delete_source=delete_source)
             logging.info(f"Moved preprocessed file to directory `{sharefile_processed_dir}`.")
+
+        # Run additional preprocess callable if defined, process each file.
+        # Presume two arguments: input path and output path
+        if custom_preprocess_callable:
+            output_dir = os.path.join(os.path.join(local_path, 'processed'))
+            os.makedirs(output_dir, exist_ok=True)
+
+            for file in os.listdir(local_path):
+                input_path = os.path.join(local_path, file)
+                if not os.path.isfile(input_path):
+                    continue
+
+                output_path = os.path.join(output_dir, file)
+                logging.info(f"Applying custom preprocess to input file `{file}`...")    
+                custom_preprocess_callable(input_path, output_path)
+            
+            return output_dir
 
         return local_path
 
@@ -539,6 +562,7 @@ class SharefileEarthbeamDAGFactory(EarthbeamDAGFactory):
             'sharefile_path': self.render_jinja(self.remote_path, format_kwargs),
             'sharefile_processed_dir': self.render_jinja(self.remote_processed_path, format_kwargs),
             'local_path': earthbeam_dag.build_local_raw_dir(tenant_code, api_year, subtype),
+            'custom_preprocess_callable': self.custom_preprocess_callable,
             
             # Mutually-exclusive (`delete_source` is used only when `sharefile_processed_dir` is defined)
             'delete_remote': False,  # TODO: Only delete files in ShareFile in production.
