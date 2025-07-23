@@ -17,14 +17,14 @@ class EdFiTokenProviderOperator(BaseOperator):
         self,
         *,
         edfi_conn_id: str,
-        airflow_variable_name: str,
+        xcom_key: str = 'edfi_access_token',
         sentinel_task_id: str = 'dag_state_sentinel',
         **kwargs
     ):
         super().__init__(**kwargs) 
 
         self.edfi_conn_id = edfi_conn_id
-        self.airflow_variable_name = airflow_variable_name
+        self.xcom_key = xcom_key
         self.sentinel_task_id = sentinel_task_id
 
     # since we defer to this method, must take event as an optional kwarg
@@ -39,23 +39,13 @@ class EdFiTokenProviderOperator(BaseOperator):
             token = conn.session.access_token
             defer_seconds = conn.session.refresh_at - conn.session.authenticated_at 
 
-            logging.info(f'Refreshed token in {self.airflow_variable_name}. Next refresh scheduled in {defer_seconds}s')
+            logging.info(f'Refreshed token to XCOM {self.xcom_key}. Next refresh scheduled in {defer_seconds}s')
             
-            # store the token in an Airflow variable
-            Variable.set(self.airflow_variable_name, token)
+            # store the token in an XCOM
+            context['ti'].xcom_push(key=self.xcom_key, value=token)
             
             # defer til later
             self.defer(
                 trigger=TimeDeltaTrigger(timedelta(seconds=defer_seconds)),
                 method_name='execute'
             )
-
-        else:
-            # otherwise, clear out variable and do not defer again
-            if Variable.get(self.airflow_variable_name, None):
-                Variable.delete(self.airflow_variable_name)
-
-        
-        
-            
-        

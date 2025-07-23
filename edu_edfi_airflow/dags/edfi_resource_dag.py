@@ -86,7 +86,6 @@ class EdFiResourceDAG:
         total_counts_table: str = '_meta_total_counts',
 
         dbt_incrementer_var: Optional[str] = None,
-        edfi_token_airflow_variable: Optional[str] = None,
 
         **kwargs
     ) -> None:
@@ -100,6 +99,15 @@ class EdFiResourceDAG:
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
         self.snowflake_conn_id = snowflake_conn_id
+        
+        # Set up instance variables for shared EdFi tokens
+        if self.run_type in ['default', 'dynamic']:
+            self.use_shared_edfi_token_provider = True
+            self.shared_edfi_token_xcom_key = 'edfi_token'
+        else:
+            self.use_shared_edfi_token_provider = False
+            self.shared_edfi_token_xcom_key = None
+
 
         self.pool = pool
         self.tmp_dir = tmp_dir
@@ -117,11 +125,6 @@ class EdFiResourceDAG:
 
         self.dbt_incrementer_var = dbt_incrementer_var
 
-        if edfi_token_airflow_variable is None:
-            self.edfi_token_airflow_variable = f"{self.edfi_conn_id}_token"
-        else:
-            self.edfi_token_airflow_variable = edfi_token_airflow_variable
-        
         ### Parse optional config objects (improved performance over adding resources manually).
         resource_configs, resource_deletes, resource_key_changes = self.parse_endpoint_configs(resource_configs)
         descriptor_configs, descriptor_deletes, descriptor_key_changes = self.parse_endpoint_configs(descriptor_configs)
@@ -257,14 +260,14 @@ class EdFiResourceDAG:
         # Set up DAG-wide bearer token manager
         # for default/dynamic dags only
 
-        if self.run_type in ['default', 'dynamic']:
+        if self.use_shared_edfi_token_provider:
             token_provider = EdFiTokenProviderOperator(
                 task_id='edfi_token_provider',
                 edfi_conn_id=self.edfi_conn_id,
-                airflow_variable_name=self.edfi_token_airflow_variable,
+                xcom_key=self.shared_edfi_token_xcom_key,
                 sentinel_task_id='dag_state_sentinel',
                 dag=self.dag,
-                pool=self.pool,
+                pool=None,
             )
 
             # Set up sensor to wait for first auth before proceeding
@@ -283,8 +286,6 @@ class EdFiResourceDAG:
         else:
             token_provider = None
             initial_token_sensor = None
-            # some of the shared callables (e.g. CV) don't try to get a token that doesn't exist
-            self.edfi_token_airflow_variable = None
 
         # Set parent directory and create subfolders for each task group.
         s3_parent_directory = os.path.join(
@@ -395,7 +396,7 @@ class EdFiResourceDAG:
                 python_callable=change_version.get_newest_edfi_change_version,
                 op_kwargs={
                     'edfi_conn_id': self.edfi_conn_id,
-                    'edfi_token_airflow_variable': self.edfi_token_airflow_variable
+                    'edfi_token_factory': self.build_edfi_token_factory()
                 },
                 dag=self.dag
             )
@@ -441,7 +442,7 @@ class EdFiResourceDAG:
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
                 'edfi_conn_id': self.edfi_conn_id,
-                'edfi_token_airflow_variable': self.edfi_token_airflow_variable,
+                'edfi_token_factory': self.build_edfi_token_factory(),
                 'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
             },
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
@@ -600,8 +601,8 @@ class EdFiResourceDAG:
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
 
-                    # Pass AF variable name
-                    edfi_token_airflow_variable=self.edfi_token_airflow_variable,
+                    # Pass token
+                    edfi_token_factory=self.build_edfi_token_factory(),
 
                     pool=self.pool,
                     trigger_rule='none_skipped',
@@ -619,7 +620,7 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 edfi_conn_id=self.edfi_conn_id,
-                edfi_token_airflow_variable=self.edfi_token_airflow_variable,
+                edfi_token_factory=self.build_edfi_token_factory(),
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -717,7 +718,7 @@ class EdFiResourceDAG:
                     task_id=f"pull_dynamic_endpoints_to_s3",
                     map_index_template="""{{ task.resource }}""",
                     edfi_conn_id=self.edfi_conn_id,
-                    edfi_token_airflow_variable=self.edfi_token_airflow_variable,
+                    edfi_token_factory=self.build_edfi_token_factory(),
 
                     tmp_dir= self.tmp_dir,
                     s3_conn_id= self.s3_conn_id,
@@ -748,7 +749,7 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
-                edfi_token_airflow_variable=self.edfi_token_airflow_variable,
+                edfi_token_factory=self.build_edfi_token_factory(),
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -933,7 +934,7 @@ class EdFiResourceDAG:
                 op_kwargs={
                     'endpoints': [(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     'edfi_conn_id': self.edfi_conn_id,
-                    'edfi_token_airflow_variable': self.edfi_token_airflow_variable,
+                    'edfi_token_factory': self.build_edfi_token_factory(),
                     'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 },
                 trigger_rule='none_failed',
@@ -972,3 +973,28 @@ class EdFiResourceDAG:
             get_total_counts >> delete_total_counts >> load_total_counts
 
         return total_counts_task_group
+    
+    def build_edfi_token_factory(self):
+        '''Creates function for passing into operators that may use a shared EdFi token provider
+
+        Shared tokens are passed in XComs, which can only be accessed from TaskInstances. If this class instance is using a shared provider, returns a function that takes the context dictionary and returns the token getter function passsed to the underlying EdFiClient.
+
+        If this class instance is not using a shared token provider, returns None so that EdFiHook uses the client key and secret attached to the Airflow connection for authentication instead.
+
+        TODO: type annotation
+        '''
+        
+        
+        def edfi_token_factory(context):
+            if self.use_shared_edfi_token_provider:
+                access_token = lambda: context['ti'].xcom_pull(
+                    task_ids='edfi_token_provider',
+                    key=self.shared_edfi_token_xcom_key
+                )
+            else:
+                access_token = None
+
+            return access_token
+        
+        return edfi_token_factory
+

@@ -2,7 +2,7 @@ import json
 import logging
 import os
 
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Union, Callable
 
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
@@ -55,7 +55,7 @@ class EdFiToS3Operator(BaseOperator):
 
         enabled_endpoints: Optional[List[str]] = None,
 
-        edfi_token_airflow_variable: Optional[str] = None,
+        edfi_token_factory: Callable[[dict], Optional[Callable[[], str]]],
 
         **kwargs
     ) -> None:
@@ -76,7 +76,7 @@ class EdFiToS3Operator(BaseOperator):
         self.s3_destination_key = s3_destination_key
         self.s3_destination_dir = s3_destination_dir
         self.s3_destination_filename = s3_destination_filename
-        self.edfi_token_airflow_variable = edfi_token_airflow_variable
+        self.edfi_token_factory = edfi_token_factory
 
         # Endpoint-pagination variables
         self.namespace = namespace
@@ -116,7 +116,8 @@ class EdFiToS3Operator(BaseOperator):
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         # Complete the pull and write to S3
-        edfi_conn = EdFiHook(self.edfi_conn_id, token_airflow_variable=self.edfi_token_airflow_variable).get_conn()
+        access_token = self.edfi_token_factory(context)
+        edfi_conn = EdFiHook(self.edfi_conn_id, access_token=access_token).get_conn()
 
         self.pull_edfi_to_s3(
             edfi_conn=edfi_conn,
@@ -290,6 +291,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             )
 
         # Make connection outside of loop to not re-authenticate at every resource.
+        # ignore token factory; get own tokens
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         # Gather DAG-level endpoints outside of loop.

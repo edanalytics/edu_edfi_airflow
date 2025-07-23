@@ -1,7 +1,7 @@
 import logging
 import os
 
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Callable
 
 from airflow.exceptions import AirflowSkipException
 from airflow.models import BaseOperator
@@ -35,7 +35,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         edfi_conn_id: Optional[str] = None,
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
-        edfi_token_airflow_variable: Optional[str] = None,
+        edfi_token_factory: Callable[[dict], Optional[Callable[[], str]]],
 
         full_refresh: bool = False,
         xcom_return: Optional[Any] = None,
@@ -50,7 +50,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.api_year = api_year
         self.resource = resource
         self.table_name = table_name
-        self.edfi_token_airflow_variable = edfi_token_airflow_variable
+        self.edfi_token_factory = edfi_token_factory
 
         self.s3_destination_key = s3_destination_key
         self.s3_destination_dir = s3_destination_dir
@@ -78,7 +78,7 @@ class S3ToSnowflakeOperator(BaseOperator):
             self.s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename)
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
-        self.set_edfi_attributes()
+        self.set_edfi_attributes(context)
 
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         self.run_sql_queries(
@@ -88,13 +88,14 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         return self.xcom_return
 
-    def set_edfi_attributes(self):
+    def set_edfi_attributes(self, context):
         """
         Retrieve the Ed-Fi, ODS, and data model versions if not provided.
         This needs to occur in execute to not call the API at every Airflow synchronize.
         """
         if self.edfi_conn_id:
-            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, token_airflow_variable=self.edfi_token_airflow_variable).get_conn()
+            access_token = self.edfi_token_factory(context)
+            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, access_token=access_token).get_conn()
             if is_edfi2 := edfi_conn.is_edfi2():
                 self.full_refresh = True
 
@@ -212,7 +213,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                 )
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
-        self.set_edfi_attributes()
+        self.set_edfi_attributes(context)
 
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         xcom_returns = []

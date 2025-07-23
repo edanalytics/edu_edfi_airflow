@@ -1,6 +1,6 @@
 import logging
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable
 
 from airflow.exceptions import AirflowSkipException
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
@@ -16,12 +16,12 @@ def get_total_counts(
     *,
     edfi_conn_id: str,
     max_change_version: int,
-    edfi_token_airflow_variable: Optional[str] = None,
-
+    edfi_token_factory: Callable[[dict], Optional[Callable[[], str]]],
     **context
 ) -> None:
 
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, token_airflow_variable=edfi_token_airflow_variable).get_conn()
+    access_token = edfi_token_factory(context)
+    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, access_token=access_token).get_conn()
 
     # Only ping the API if the endpoint is specified in the run.
     config_endpoints = airflow_util.get_config_endpoints(context)
