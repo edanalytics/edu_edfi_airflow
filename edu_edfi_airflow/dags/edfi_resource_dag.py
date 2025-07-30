@@ -88,8 +88,8 @@ class EdFiResourceDAG:
         dbt_incrementer_var: Optional[str] = None,
         
         use_shared_edfi_token_provider: bool = True,
-        shared_edfi_token_xcom_key = 'edfi_token',
-        shared_edfi_token_pool = 'default',
+        shared_edfi_token_xcom_key: str = 'edfi_token',
+        shared_edfi_token_pool: Optional[str] = None, # use default_pool by default
 
         **kwargs
     ) -> None:
