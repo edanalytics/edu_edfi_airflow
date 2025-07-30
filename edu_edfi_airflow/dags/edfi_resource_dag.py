@@ -87,7 +87,7 @@ class EdFiResourceDAG:
 
         dbt_incrementer_var: Optional[str] = None,
         
-        use_shared_edfi_token_provider: bool = False,
+        use_shared_edfi_token_provider: bool = True,
         shared_edfi_token_xcom_key = 'edfi_token',
         shared_edfi_token_pool = 'default',
 
