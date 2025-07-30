@@ -292,7 +292,8 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
 
         # Make connection outside of loop to not re-authenticate at every resource.
         # ignore token factory; get own tokens
-        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+        access_token = self.edfi_token_factory(context)
+        edfi_conn = EdFiHook(self.edfi_conn_id, access_token=access_token).get_conn()
 
         # Gather DAG-level endpoints outside of loop.
         config_endpoints = airflow_util.get_config_endpoints(context)

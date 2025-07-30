@@ -86,6 +86,10 @@ class EdFiResourceDAG:
         total_counts_table: str = '_meta_total_counts',
 
         dbt_incrementer_var: Optional[str] = None,
+        
+        use_shared_edfi_token_provider: bool = False,
+        shared_edfi_token_xcom_key = 'edfi_token',
+        shared_edfi_token_pool = 'default',
 
         **kwargs
     ) -> None:
@@ -100,15 +104,11 @@ class EdFiResourceDAG:
         self.s3_conn_id = s3_conn_id
         self.snowflake_conn_id = snowflake_conn_id
         
-        # Set up instance variables for shared EdFi tokens
-        if self.run_type in ['default', 'dynamic']:
-            self.use_shared_edfi_token_provider = True
-            self.shared_edfi_token_xcom_key = 'edfi_token'
-        else:
-            self.use_shared_edfi_token_provider = False
-            self.shared_edfi_token_xcom_key = None
-
-
+        # Instance variables for shared EdFi tokens
+        self.use_shared_edfi_token_provider = use_shared_edfi_token_provider
+        self.shared_edfi_token_xcom_key = shared_edfi_token_xcom_key
+        self.shared_edfi_token_pool = shared_edfi_token_pool
+        
         self.pool = pool
         self.tmp_dir = tmp_dir
         self.multiyear = multiyear
@@ -258,8 +258,6 @@ class EdFiResourceDAG:
             raise ValueError(f"Run type {self.run_type} is not one of the expected values: [default, dynamic, bulk].")
 
         # Set up DAG-wide bearer token manager
-        # for default/dynamic dags only
-
         if self.use_shared_edfi_token_provider:
             token_provider = EdFiTokenProviderOperator(
                 task_id='edfi_token_provider',
@@ -267,7 +265,7 @@ class EdFiResourceDAG:
                 xcom_key=self.shared_edfi_token_xcom_key,
                 sentinel_task_id='dag_state_sentinel',
                 dag=self.dag,
-                pool=None,
+                pool=self.shared_edfi_token_pool,
             )
 
             # Set up sensor to wait for first auth before proceeding
@@ -843,6 +841,7 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
                 task_id=f"pull_all_endpoints_to_s3",
                 edfi_conn_id=self.edfi_conn_id,
+                edfi_token_factory=self.build_edfi_token_factory(),
 
                 tmp_dir=self.tmp_dir,
                 s3_conn_id=self.s3_conn_id,
@@ -878,6 +877,7 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
+                edfi_token_factory=self.build_edfi_token_factory(),
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
