@@ -280,6 +280,7 @@ class EdFiResourceDAG:
                 failed_states=[TaskInstanceState.FAILED],
                 dag=self.dag,
                 pool=self.pool,
+                poke_interval=2.0, 
             )
         else:
             token_provider = None
