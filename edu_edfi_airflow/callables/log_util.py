@@ -110,6 +110,10 @@ def capture_logs_to_snowflake(
                 for record in errors
             ]
 
+            # Pull map index if available
+            ti = context.get("ti")
+            map_index = getattr(ti, "map_index", None) if ti else None
+
             # Combine: args/kwargs/timestamp from last error, all other context in nested errors{} object
             # (this is to avoid duplicating args/kwargs/timestamp in each error log, while preserving error-specific context)
             merged = {
@@ -118,6 +122,10 @@ def capture_logs_to_snowflake(
                 "last_error_timestamp": last_error.get("timestamp"),
                 "errors": cleaned_errors,
             }
+
+            if map_index is not None:
+                merged["map_index"] = map_index
+                
             logging.getLogger("airflow.task").info(f"[DEBUG] flushing error log record to Snowflake")
 
             log_to_snowflake(
