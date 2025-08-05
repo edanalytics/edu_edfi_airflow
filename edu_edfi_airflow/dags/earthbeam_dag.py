@@ -891,7 +891,7 @@ class EarthbeamDAG:
                         api_year=api_year,
                         grain_update=grain_update,
                         run_type=self.run_type,
-                        map_index_source_task_id=list_files_task.task_id
+                        map_index_source_task_id=f"{group_id}.list_files_in_dir"
                     )
                 else:
                     wrapped_callable = earthmover_operator.execute
