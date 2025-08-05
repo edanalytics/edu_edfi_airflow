@@ -576,6 +576,7 @@ class EarthbeamDAG:
 
                 # Only defined in dynamic process.
                 map_index_template = "{{ ti.xcom_pull(task_ids='" + list_files_task.task_id + "')[ti.map_index].split('/')[-1] }}",
+                map_index_source_task_id=f"{group_id}.list_files_in_dir",
             
             ).partial(input_file_envs=input_file_var).expand(
                 input_filepaths=list_files_task.output
@@ -735,6 +736,7 @@ class EarthbeamDAG:
         # Internal variable for displaying filenames in dynamic taskgroups.
         # Note that map_index_templates can only be passed to tasks, not groups. (https://github.com/apache/airflow/issues/40799)
         map_index_template: str = None,
+        map_index_source_task_id: str = None,                                     
 
         **kwargs
     ):
@@ -891,7 +893,7 @@ class EarthbeamDAG:
                         api_year=api_year,
                         grain_update=grain_update,
                         run_type=self.run_type,
-                        map_index_source_task_id=f"{group_id}.list_files_in_dir"
+                        map_index_source_task_id=map_index_source_task_id
                     )
                 else:
                     wrapped_callable = earthmover_operator.execute
