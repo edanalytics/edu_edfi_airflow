@@ -36,13 +36,14 @@ class EdFiTokenProviderOperator(BaseOperator):
             # instantiate an EdFi client and grab token, expiry time
             conn = EdFiHook(self.edfi_conn_id).get_conn()
             conn.session.authenticate()
-            token = conn.session.access_token
+            payload = conn.session.last_auth_payload
+            payload['authenticated_at'] = conn.session.authenticated_at
             defer_seconds = conn.session.refresh_at - conn.session.authenticated_at 
 
             logging.info(f'Refreshed token to XCOM {self.xcom_key}. Next refresh scheduled in {defer_seconds}s')
             
             # store the token in an XCOM
-            context['ti'].xcom_push(key=self.xcom_key, value=token)
+            context['ti'].xcom_push(key=self.xcom_key, value=payload)
             
             # defer til later
             self.defer(
