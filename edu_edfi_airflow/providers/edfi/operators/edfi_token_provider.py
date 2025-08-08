@@ -19,6 +19,7 @@ class EdFiTokenProviderOperator(BaseOperator):
         edfi_conn_id: str,
         xcom_key: str = 'edfi_access_token',
         sentinel_task_id: str = 'dag_state_sentinel',
+        extra_refresh_buffer_seconds: int = 60,
         **kwargs
     ):
         super().__init__(**kwargs) 
@@ -26,6 +27,7 @@ class EdFiTokenProviderOperator(BaseOperator):
         self.edfi_conn_id = edfi_conn_id
         self.xcom_key = xcom_key
         self.sentinel_task_id = sentinel_task_id
+        self.extra_refresh_buffer_seconds = extra_refresh_buffer_seconds
 
     # since we defer to this method, must take event as an optional kwarg
     def execute(self, context: Context, event: dict[str, Any] | None = None):
@@ -38,7 +40,9 @@ class EdFiTokenProviderOperator(BaseOperator):
             conn.session.authenticate()
             payload = conn.session.last_auth_payload
             payload['authenticated_at'] = conn.session.authenticated_at
-            defer_seconds = conn.session.refresh_at - conn.session.authenticated_at 
+            # Add in extra buffer to avoid client tasks thinking they hold an expired token  
+            # and making additional requests
+            defer_seconds = conn.session.refresh_at - conn.session.authenticated_at - self.extra_refresh_buffer_seconds
 
             logging.info(f'Refreshed token to XCOM {self.xcom_key}. Next refresh scheduled in {defer_seconds}s')
             
