@@ -87,7 +87,6 @@ class EdFiResourceDAG:
 
         dbt_incrementer_var: Optional[str] = None,
         
-        use_shared_edfi_token_provider: bool = True,
         shared_edfi_token_xcom_key: str = 'edfi_token',
         shared_edfi_token_pool: Optional[str] = None, # use default_pool by default
 
@@ -105,7 +104,6 @@ class EdFiResourceDAG:
         self.snowflake_conn_id = snowflake_conn_id
         
         # Instance variables for shared EdFi tokens
-        self.use_shared_edfi_token_provider = use_shared_edfi_token_provider
         self.shared_edfi_token_xcom_key = shared_edfi_token_xcom_key
         self.shared_edfi_token_pool = shared_edfi_token_pool
         
@@ -258,33 +256,29 @@ class EdFiResourceDAG:
             raise ValueError(f"Run type {self.run_type} is not one of the expected values: [default, dynamic, bulk].")
 
         # Set up DAG-wide bearer token manager
-        if self.use_shared_edfi_token_provider:
-            token_provider = EdFiTokenProviderOperator(
-                task_id='edfi_token_provider',
-                edfi_conn_id=self.edfi_conn_id,
-                xcom_key=self.shared_edfi_token_xcom_key,
-                sentinel_task_id='dag_state_sentinel',
-                dag=self.dag,
-                pool=self.shared_edfi_token_pool,
-            )
+        token_provider = EdFiTokenProviderOperator(
+            task_id='edfi_token_provider',
+            edfi_conn_id=self.edfi_conn_id,
+            xcom_key=self.shared_edfi_token_xcom_key,
+            sentinel_task_id='dag_state_sentinel',
+            dag=self.dag,
+            pool=self.shared_edfi_token_pool,
+        )
 
-            # Set up sensor to wait for first auth before proceeding
-            initial_token_sensor = ExternalTaskSensor(
-                task_id='initial_edfi_token_sensor',
-                external_dag_id='{{ dag.dag_id }}',
-                external_task_id='edfi_token_provider',
-                allowed_states=[TaskInstanceState.DEFERRED],
-                # not default ExternalTaskSensor behavior, but we
-                # do want to fail the rest of the DAG fast if we
-                # were not able to acquire a first token
-                failed_states=[TaskInstanceState.FAILED],
-                dag=self.dag,
-                pool=self.pool,
-                poke_interval=2.0, 
-            )
-        else:
-            token_provider = None
-            initial_token_sensor = None
+        # Set up sensor to wait for first auth before proceeding
+        initial_token_sensor = ExternalTaskSensor(
+            task_id='initial_edfi_token_sensor',
+            external_dag_id='{{ dag.dag_id }}',
+            external_task_id='edfi_token_provider',
+            allowed_states=[TaskInstanceState.DEFERRED],
+            # not default ExternalTaskSensor behavior, but we
+            # do want to fail the rest of the DAG fast if we
+            # were not able to acquire a first token
+            failed_states=[TaskInstanceState.FAILED],
+            dag=self.dag,
+            pool=self.pool,
+            poke_interval=2.0, 
+        )
 
         # Set parent directory and create subfolders for each task group.
         s3_parent_directory = os.path.join(
@@ -987,13 +981,10 @@ class EdFiResourceDAG:
         
         
         def edfi_token_factory(context):
-            if self.use_shared_edfi_token_provider:
-                access_token = lambda: context['ti'].xcom_pull(
-                    task_ids='edfi_token_provider',
-                    key=self.shared_edfi_token_xcom_key
-                )
-            else:
-                access_token = None
+            access_token = lambda: context['ti'].xcom_pull(
+                task_ids='edfi_token_provider',
+                key=self.shared_edfi_token_xcom_key
+            )
 
             return access_token
         

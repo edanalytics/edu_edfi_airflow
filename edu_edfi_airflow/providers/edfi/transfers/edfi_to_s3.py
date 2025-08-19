@@ -291,7 +291,6 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             )
 
         # Make connection outside of loop to not re-authenticate at every resource.
-        # ignore token factory; get own tokens
         access_token = self.edfi_token_factory(context)
         edfi_conn = EdFiHook(self.edfi_conn_id, access_token=access_token).get_conn()
 
