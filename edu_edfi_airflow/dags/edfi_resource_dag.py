@@ -641,7 +641,7 @@ class EdFiResourceDAG:
                 update_cv_operator = None
 
             ### Chain tasks into final task-group
-            airflow_util.chain_tasks(initial_token_provider, get_cv_operator, pull_operators_list, copy_s3_to_snowflake, update_cv_operator)
+            airflow_util.chain_tasks(get_cv_operator, pull_operators_list, copy_s3_to_snowflake, update_cv_operator)
 
         return default_task_group
 

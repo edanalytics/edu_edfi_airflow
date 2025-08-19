@@ -40,6 +40,7 @@ class EdFiTokenProviderOperator(BaseOperator):
             conn.session.authenticate()
             payload = conn.session.last_auth_payload
             payload['authenticated_at'] = conn.session.authenticated_at
+
             # Add in extra buffer to avoid client tasks thinking they hold an expired token  
             # and making additional requests
             defer_seconds = conn.session.refresh_at - conn.session.authenticated_at - self.extra_refresh_buffer_seconds
