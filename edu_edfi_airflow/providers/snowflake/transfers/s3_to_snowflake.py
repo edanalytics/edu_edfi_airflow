@@ -151,7 +151,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                 AND name = '{name}'
             """
             snowflake_hook.run(sql=[qry_delete, qry_copy_into], autocommit=False)
-        
+
         else:
             snowflake_hook.run(sql=qry_copy_into)
 
@@ -160,6 +160,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
+
     def execute(self, context):
         """
 
@@ -168,10 +169,16 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         """
         if not self.resource:
             # For deletes and keyChanges, delete all records during a full refresh.
-            if airflow_util.is_full_refresh(context) and isinstance(self.table_name, str):
+            if airflow_util.is_full_refresh(context) and isinstance(
+                self.table_name, str
+            ):
                 logging.info("Deleting existing records due to full refresh...")
-                self.run_bulk_sql_queries(table=self.table_name, names=airflow_util.get_config_endpoints(context), delete_all=True)
-                
+                self.run_bulk_sql_queries(
+                    table=self.table_name,
+                    names=airflow_util.get_config_endpoints(context),
+                    delete_all=True,
+                )
+
                 if self.xcom_return:  # Maintain backwards-compatibility with original S3ToSnowflakeOperator
                     return self.xcom_return
                 else:
@@ -186,24 +193,24 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # we have to do this for the time being because the XCom that produces this list
         # actually returns a lazily-evaluated object with no len() property
         self.resource = list(self.resource)
-            
+
         ### Optionally set destination key by concatting separate args for dir and filename
         if not self.s3_destination_key:
             if not (self.s3_destination_dir and self.s3_destination_filename):
                 raise ValueError(
                     f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
                 )
-        
+
             if isinstance(self.s3_destination_filename, str):
                 raise ValueError(
                     "Bulk operators require argument `s3_destination_filename` to be a list."
                 )
-            
+
             self.s3_destination_key = [
                 os.path.join(self.s3_destination_dir, filename)
                 for filename in self.s3_destination_filename
             ]
-        
+
         elif isinstance(self.s3_destination_key, str):
             raise ValueError(
                     "Bulk operators require argument `s3_destination_key` to be a list."
@@ -222,14 +229,18 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                 table=self.table_name,
                 s3_dir=self.s3_destination_dir or os.path.dirname(self.s3_destination_key[0])  # Infer directory if not specified.
             )
-        
+
         # Otherwise, loop over each S3 destination and copy in sequence.
         else:
-            for idx, (resource, table, s3_destination_key) in enumerate(zip(self.resource, self.table_name, self.s3_destination_key), start=1):
+            for idx, (resource, table, s3_destination_key) in enumerate(
+                zip(self.resource, self.table_name, self.s3_destination_key), start=1
+            ):
                 logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
                 self.run_sql_queries(
-                    name=resource, table=table,
-                    s3_key=s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
+                    name=resource,
+                    table=table,
+                    s3_key=s3_destination_key,
+                    full_refresh=airflow_util.is_full_refresh(context),
                 )
 
         # Send the prebuilt-output if specified; otherwise, send the compiled list created above.
@@ -239,10 +250,16 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         else:
             return xcom_returns
 
-    def run_bulk_sql_queries(self, table: str, s3_dir: str = '', names: List[str] = [], delete_all: bool = False):
+    def run_bulk_sql_queries(
+        self,
+        table: str,
+        s3_dir: str = "",
+        names: List[str] = [],
+        delete_all: bool = False,
+    ):
         """
         Alternative delete and copy queries to be run when all data is sent to the same table in Snowflake.
-        
+
         S3 Path Structure:
             /{tenant_code}/{api_year}/{ds_nodash}/{ts_no_dash}/{taskgroup_type}/{name}.jsonl
 
@@ -257,7 +274,8 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # This is used to clear deletes and keyChanges during a full refresh.
         if delete_all:
             if len(names):
-                names_string = f"AND name in ('{"', '".join(names)}')"
+                # names_string = f"AND name in ('{"', '".join(names)}')"
+                names_string = ""
             else:
                 names_string = ''
 
