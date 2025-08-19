@@ -97,7 +97,7 @@ class EdFiToS3Operator(BaseOperator):
         config_endpoints = airflow_util.get_config_endpoints(context)
         if config_endpoints and self.resource not in config_endpoints:
             raise AirflowSkipException("Endpoint not specified in DAG config endpoints.")
-        
+
         # Confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
         if self.enabled_endpoints and self.resource not in self.enabled_endpoints:
             raise AirflowSkipException("Endpoint not specified in run endpoints.")
@@ -107,33 +107,43 @@ class EdFiToS3Operator(BaseOperator):
                 raise ValueError(
                     f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
                 )
-            self.s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename)
+            self.s3_destination_key = os.path.join(
+                self.s3_destination_dir, self.s3_destination_filename
+            )
 
         # Check the validity of min and max change-versions.
-        self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
+        self.check_change_version_window_validity(
+            self.min_change_version, self.max_change_version
+        )
 
         # Complete the pull and write to S3
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         self.pull_edfi_to_s3(
             edfi_conn=edfi_conn,
-            resource=self.resource, namespace=self.namespace, page_size=self.page_size,
-            num_retries=self.num_retries, change_version_step_size=self.change_version_step_size,
-            min_change_version=self.min_change_version, max_change_version=self.max_change_version,
-            query_parameters=self.query_parameters, s3_destination_key=self.s3_destination_key
+            resource=self.resource,
+            namespace=self.namespace,
+            page_size=self.page_size,
+            num_retries=self.num_retries,
+            change_version_step_size=self.change_version_step_size,
+            min_change_version=self.min_change_version,
+            max_change_version=self.max_change_version,
+            query_parameters=self.query_parameters,
+            s3_destination_key=self.s3_destination_key,
         )
 
         return (self.resource, self.s3_destination_key)
 
-
     @staticmethod
-    def check_change_version_window_validity(min_change_version: Optional[int], max_change_version: Optional[int]):
+    def check_change_version_window_validity(
+        min_change_version: Optional[int], max_change_version: Optional[int]
+    ):
         """
         Logic to pull the min-change version from its upstream operator and check its validity.
         """
         if min_change_version is None and max_change_version is None:
             return
-        
+
         # Run change-version sanity checks to make sure we aren't doing something wrong.
         if min_change_version == max_change_version:
             logging.info("    ODS is unchanged since previous pull.")
@@ -231,7 +241,7 @@ class EdFiToS3Operator(BaseOperator):
                 filename=tmp_file,
                 bucket_name=s3_bucket,
                 key=s3_destination_key,
-                encrypt=True,
+                encrypt=False,
                 replace=True
             )
         finally:
