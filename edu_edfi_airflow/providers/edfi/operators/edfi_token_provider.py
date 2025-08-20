@@ -48,7 +48,7 @@ class EdFiTokenProviderOperator(BaseOperator):
             logging.info(f'Refreshed token to XCOM {self.xcom_key}. Next refresh scheduled in {defer_seconds}s')
             
             # store the token in an XCOM
-            context['ti'].xcom_push(key=self.xcom_key, value=payload)
+            context['ti'].xcom_push(key=self.xcom_key, value=payload.get('access_token'))
             
             # defer til later
             self.defer(

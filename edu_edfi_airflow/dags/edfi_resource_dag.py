@@ -389,7 +389,10 @@ class EdFiResourceDAG:
                 python_callable=change_version.get_newest_edfi_change_version,
                 op_kwargs={
                     'edfi_conn_id': self.edfi_conn_id,
-                    'edfi_token_factory': self.build_edfi_token_factory()
+                    'edfi_access_token': airflow_util.xcom_pull_template(
+                        'edfi_token_provider',
+                        self.shared_edfi_token_xcom_key
+                    ),
                 },
                 dag=self.dag
             )
@@ -435,7 +438,10 @@ class EdFiResourceDAG:
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
                 'edfi_conn_id': self.edfi_conn_id,
-                'edfi_token_factory': self.build_edfi_token_factory(),
+                'edfi_access_token': airflow_util.xcom_pull_template(
+                    'edfi_token_provider',
+                    self.shared_edfi_token_xcom_key
+                ),
                 'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
             },
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
@@ -595,7 +601,10 @@ class EdFiResourceDAG:
                     enabled_endpoints=enabled_endpoints,
 
                     # Pass token
-                    edfi_token_factory=self.build_edfi_token_factory(),
+                    edfi_access_token=airflow_util.xcom_pull_template(
+                        'edfi_token_provider',
+                        self.shared_edfi_token_xcom_key
+                    ),
 
                     pool=self.pool,
                     trigger_rule='none_skipped',
@@ -613,7 +622,10 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 edfi_conn_id=self.edfi_conn_id,
-                edfi_token_factory=self.build_edfi_token_factory(),
+                edfi_access_token=airflow_util.xcom_pull_template(
+                    'edfi_token_provider',
+                    self.shared_edfi_token_xcom_key
+                ),
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -711,7 +723,10 @@ class EdFiResourceDAG:
                     task_id=f"pull_dynamic_endpoints_to_s3",
                     map_index_template="""{{ task.resource }}""",
                     edfi_conn_id=self.edfi_conn_id,
-                    edfi_token_factory=self.build_edfi_token_factory(),
+                    edfi_access_token=airflow_util.xcom_pull_template(
+                        'edfi_token_provider',
+                        self.shared_edfi_token_xcom_key
+                    ),
 
                     tmp_dir= self.tmp_dir,
                     s3_conn_id= self.s3_conn_id,
@@ -742,7 +757,10 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
-                edfi_token_factory=self.build_edfi_token_factory(),
+                edfi_access_token=airflow_util.xcom_pull_template(
+                    'edfi_token_provider',
+                    self.shared_edfi_token_xcom_key
+                ),
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -836,7 +854,10 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
                 task_id=f"pull_all_endpoints_to_s3",
                 edfi_conn_id=self.edfi_conn_id,
-                edfi_token_factory=self.build_edfi_token_factory(),
+                edfi_access_token=airflow_util.xcom_pull_template(
+                    'edfi_token_provider',
+                    self.shared_edfi_token_xcom_key
+                ),
 
                 tmp_dir=self.tmp_dir,
                 s3_conn_id=self.s3_conn_id,
@@ -872,7 +893,10 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
-                edfi_token_factory=self.build_edfi_token_factory(),
+                edfi_access_token=airflow_util.xcom_pull_template(
+                    'edfi_token_provider',
+                    self.shared_edfi_token_xcom_key
+                ),
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -929,7 +953,10 @@ class EdFiResourceDAG:
                 op_kwargs={
                     'endpoints': [(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     'edfi_conn_id': self.edfi_conn_id,
-                    'edfi_token_factory': self.build_edfi_token_factory(),
+                    'edfi_access_token': airflow_util.xcom_pull_template(
+                        'edfi_token_provider',
+                        self.shared_edfi_token_xcom_key
+                    ),
                     'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 },
                 trigger_rule='none_failed',

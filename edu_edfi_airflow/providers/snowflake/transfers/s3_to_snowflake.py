@@ -16,7 +16,7 @@ class S3ToSnowflakeOperator(BaseOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    template_fields = ('resource', 'table_name', 's3_destination_key', 's3_destination_dir', 's3_destination_filename', 'xcom_return',)
+    template_fields = ('resource', 'table_name', 's3_destination_key', 's3_destination_dir', 's3_destination_filename', 'xcom_return', 'edfi_access_token',)
 
     @apply_defaults
     def __init__(self,
@@ -35,7 +35,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         edfi_conn_id: Optional[str] = None,
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
-        edfi_token_factory: Callable[[dict], Optional[Callable[[], str]]],
+        edfi_access_token: Optional[str] = None,
 
         full_refresh: bool = False,
         xcom_return: Optional[Any] = None,
@@ -50,7 +50,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.api_year = api_year
         self.resource = resource
         self.table_name = table_name
-        self.edfi_token_factory = edfi_token_factory
+        self.edfi_access_token = edfi_access_token
 
         self.s3_destination_key = s3_destination_key
         self.s3_destination_dir = s3_destination_dir
@@ -94,8 +94,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         This needs to occur in execute to not call the API at every Airflow synchronize.
         """
         if self.edfi_conn_id:
-            access_token = self.edfi_token_factory(context)
-            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, access_token=access_token).get_conn()
+            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, access_token=self.edfi_access_token).get_conn()
             if is_edfi2 := edfi_conn.is_edfi2():
                 self.full_refresh = True
 
