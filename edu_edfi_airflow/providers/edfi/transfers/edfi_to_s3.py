@@ -10,8 +10,39 @@ from airflow.io.path import ObjectStoragePath
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 
+
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
+
+
+
+
+class ObjectStorageBackendRegistry:
+    """Registry for object storage backend operators"""
+    def __init__(self):
+        self._backends = {}
+    
+    def register(self, conn_param: str, single_operator, bulk_operator):
+        """Register an object storage backend with its connection parameter and operators"""
+        self._backends[conn_param] = (single_operator, bulk_operator)
+    
+    def get_operators(self, conn_param: str):
+        """Get the operators for a given connection parameter"""
+        return self._backends.get(conn_param)
+    
+    def get_registered_conn_params(self):
+        """Get all registered connection parameters"""
+        return self._backends.keys()
+    
+    def find_backend_for_kwargs(self, **kwargs):
+        """Find the first matching object storage backend from kwargs"""
+        for conn_param in self._backends:
+            if conn_param in kwargs:
+                return conn_param, self._backends[conn_param]
+        return None, (None, None)
+
+# Global registry instance
+OBJECT_STORAGE_REGISTRY = ObjectStorageBackendRegistry()
 
 
 class EdFiToObjectStorageOperator(BaseOperator):
@@ -34,28 +65,20 @@ class EdFiToObjectStorageOperator(BaseOperator):
     def __new__(cls, *args, resource: Union[str, List[str]], **kwargs):
         """
         Use presence of backend-specific arguments to initialize child class.
-        
-        Supported storage backends:
-        - local: (default)
-        - AWS S3: `s3_conn_id`
-        - Azure ADLs: `adls_conn_id`
+        Storage backends are automatically detected from the registry.
         """
-
-        # AWS S3
-        if 's3_conn_id' in kwargs:
-            if isinstance(resource, str):
-                return object.__new__(EdFiToS3Operator)
-            else:
-                return object.__new__(BulkEdFiToS3Operator)
         
-        # Azure ADLS
-        if 'adls_conn_id' in kwargs:
+        # Find matching object storage backend from registry
+        conn_param, (single_op, bulk_op) = OBJECT_STORAGE_REGISTRY.find_backend_for_kwargs(**kwargs)
+        
+        if conn_param:
+            # Use registered storage backend
             if isinstance(resource, str):
-                return object.__new__(EdFiToADLSOperator)
+                return object.__new__(single_op)
             else:
-                return object.__new__(BulkEdFiToADLSOperator)
+                return object.__new__(bulk_op)
 
-        # Local Storage
+        # Local Storage (fallback - could also raise an error for missing storage connection)
         if isinstance(resource, str):
             return object.__new__(EdFiToObjectStorageOperator)
         else:
@@ -68,7 +91,9 @@ class EdFiToObjectStorageOperator(BaseOperator):
 
         *,
         tmp_dir: str,
-        object_storage_conn_id: str,
+        object_storage_conn_id: Optional[str] = None,
+        s3_conn_id: Optional[str] = None,  # Backwards compatibility parameter
+        adls_conn_id: Optional[str] = None,  # Backwards compatibility parameter
         destination_key: Optional[str] = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
         destination_dir: Optional[str] = None,
         destination_filename: Optional[str] = None,
@@ -90,6 +115,15 @@ class EdFiToObjectStorageOperator(BaseOperator):
         **kwargs
     ) -> None:
         super(EdFiToObjectStorageOperator, self).__init__(**kwargs)
+
+        # Handle backwards compatibility for connection ID parameters
+        if object_storage_conn_id is None:
+            if s3_conn_id is not None:
+                object_storage_conn_id = s3_conn_id
+            elif adls_conn_id is not None:
+                object_storage_conn_id = adls_conn_id
+            else:
+                raise ValueError("One of object_storage_conn_id, s3_conn_id, or adls_conn_id must be provided")
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id
@@ -262,7 +296,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         
         os.makedirs(os.path.dirname(self.tmp_dir), exist_ok=True)  # Create its parent-directory if not extant.
         
-        with tempfile.TemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
+        with tempfile.NamedTemporaryFile('w+b', dir=self.tmp_dir, delete=False) as tmp_file:
 
             # Output each page of results as JSONL strings to the output file.
             for page_result in paged_iter:
@@ -271,7 +305,14 @@ class EdFiToObjectStorageOperator(BaseOperator):
 
             # Connect to object storage and copy file
             tmp_file.seek(0)  # Go back to the start of the file before copying to object storage.
-            object_storage.upload_from(tmp_file, force_overwrite_to_cloud=True)
+            with object_storage.open("wb") as storage_file:
+                storage_file.write(tmp_file.read())
+        
+        # Clean up the temporary file
+        try:
+            os.unlink(tmp_file.name)
+        except:
+            pass  # Ignore cleanup errors
                 
         ### Check whether the number of rows returned matched the number expected.
         logging.info(f"    {total_rows} rows were returned for `{resource}`.")
@@ -440,6 +481,7 @@ class BulkEdFiToS3Operator(BulkEdFiToObjectStorageOperator, S3Mixin):
     pass
 
 
+
 class ADLSMixin:
     def __init__(self, *args, adls_conn_id: str, **kwargs) -> None:
         super(ADLSMixin, self).__init__(*args, object_storage_conn_id=adls_conn_id, **kwargs)
@@ -453,20 +495,40 @@ class ADLSMixin:
         **kwargs
     ) -> ObjectStoragePath:
         """
-        Retrieve bucket name from connection schema if undefined.
-        TODO: Correct this logic.
+        Retrieve container and storage account from connection if not specified.
         """
         destination_key = super().get_object_storage(*args, **kwargs).key
 
-        # Infer container name from schema if not specified (internal standard that must be maintained during connection setup)
-        if not adls_container:
-            adls_container = BaseHook.get_connection(conn_id).schema
+        # Get connection to extract storage account and container
+        connection = BaseHook.get_connection(conn_id)
         
-        full_destination_key = f"abfss://{adls_container}@{adls_storage_account}.dfs.core.windows.net/{destination_key}"
-        return ObjectStoragePath(full_destination_key, conn_id=conn_id)
+        # Infer container name from schema if not specified
+        if not adls_container:
+            adls_container = connection.schema
+        
+        # Extract storage account from host if not specified
+        if not adls_storage_account:
+            # Host is just the storage account name
+            adls_storage_account = connection.host
+        
+        # Use abfs:// scheme for ADLS Gen2 with the microsoft.azure provider
+        full_destination_key = f"abfs://{adls_container}/{destination_key}"
+        
+        try:
+            return ObjectStoragePath(full_destination_key, conn_id=conn_id)
+        except Exception as e:
+            logging.error(f"Failed to create ADLS ObjectStoragePath with key '{full_destination_key}': {e}")
+            raise
+    
 
-class EdFiToADLSOperator(EdFiToObjectStorageOperator, ADLSMixin):
+
+class EdFiToADLSOperator(ADLSMixin, EdFiToObjectStorageOperator):
     pass
 
-class BulkEdFiToADLSOperator(BulkEdFiToObjectStorageOperator, ADLSMixin):
+class BulkEdFiToADLSOperator(ADLSMixin, BulkEdFiToObjectStorageOperator):
     pass
+
+
+# Register object storage backends
+OBJECT_STORAGE_REGISTRY.register('s3_conn_id', EdFiToS3Operator, BulkEdFiToS3Operator)
+OBJECT_STORAGE_REGISTRY.register('adls_conn_id', EdFiToADLSOperator, BulkEdFiToADLSOperator)

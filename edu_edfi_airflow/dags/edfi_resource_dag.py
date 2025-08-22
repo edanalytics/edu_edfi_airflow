@@ -14,22 +14,23 @@ from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.callables import airflow_util, change_version, total_counts
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToObjectStorageOperator, BulkEdFiToObjectStorageOperator
-from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkS3ToSnowflakeOperator
+# Generic database operator - will be determined by connection parameters
+from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkS3ToSnowflakeOperator as BulkObjectStorageToDatabaseOperator
 
 
 class EdFiResourceDAG:
     """
     If use_change_version is True, initialize a change group that retrieves the latest Ed-Fi change version.
-    If full_refresh is triggered in DAG configs, reset change versions for the resources being processed in Snowflake.
+    If full_refresh is triggered in DAG configs, reset change versions for the resources being processed in the database.
 
     DAG Structure:
         (Ed-Fi3 Change Version Window) >> [Ed-Fi Resources/Descriptors (Deletes/KeyChanges)] >> (increment_dbt_variable) >> dag_state_sentinel
     
     "Ed-Fi3 Change Version Window" TaskGroup:
-        get_latest_edfi_change_version >> reset_previous_change_versions_in_snowflake
+        get_latest_edfi_change_version >> reset_previous_change_versions_in_database
 
     "Ed-Fi Resources/Descriptors (Deletes/KeyChanges)" TaskGroup:
-        (get_cv_operator) >> [Ed-Fi Endpoint Task] >> copy_all_endpoints_into_snowflake >> (update_change_versions_in_snowflake)
+        (get_cv_operator) >> [Ed-Fi Endpoint Task] >> copy_all_endpoints_into_database >> (update_change_versions_in_database)
 
     There are three types of Ed-Fi Endpoint Tasks. All take the same inputs and return the same outputs (i.e., polymorphism).
         "Default" TaskGroup
@@ -40,7 +41,7 @@ class EdFiResourceDAG:
         - Loop over each endpoint in a single task.
 
     All task groups receive a list of (endpoint, last_change_version) tuples as input.
-    All that successfully retrieve records are passed onward as a (endpoint, filename) tuples to the S3ToSnowflake and UpdateSnowflakeCV operators.
+    All that successfully retrieve records are passed onward as (endpoint, filename) tuples to the ObjectStorageToDatabase and UpdateDatabaseCV operators.
     """
     DEFAULT_CONFIGS = {
         'namespace': 'ed-fi',
@@ -59,7 +60,7 @@ class EdFiResourceDAG:
         api_year   : int,
 
         edfi_conn_id     : str,
-        s3_conn_id       : str,
+        s3_conn_id       : Optional[str] = None,
         snowflake_conn_id: str,
 
         pool     : str,
@@ -96,6 +97,13 @@ class EdFiResourceDAG:
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
         self.snowflake_conn_id = snowflake_conn_id
+        
+        # Store additional kwargs for flexible database/storage connections
+        self.additional_kwargs = kwargs
+        
+        # For registry consistency, also add s3_conn_id to additional_kwargs if provided
+        if s3_conn_id is not None:
+            self.additional_kwargs['s3_conn_id'] = s3_conn_id
 
         self.pool = pool
         self.tmp_dir = tmp_dir
@@ -143,6 +151,19 @@ class EdFiResourceDAG:
         }
 
         self.dag = EACustomDAG(params=dag_params, user_defined_macros=user_defined_macros, **kwargs)
+
+    def _get_object_storage_conn_params(self):
+        """Helper method to get object storage connection parameters"""
+        # Import here to avoid circular dependency
+        from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import OBJECT_STORAGE_REGISTRY
+        
+        # Find the object storage backend from additional_kwargs (includes s3_conn_id if provided)
+        conn_param, _ = OBJECT_STORAGE_REGISTRY.find_backend_for_kwargs(**self.additional_kwargs)
+        if conn_param:
+            return {conn_param: self.additional_kwargs[conn_param]}
+        
+        return {}
+
 
 
     # Helper methods for parsing and building DAG endpoint configs.
@@ -534,13 +555,14 @@ class EdFiResourceDAG:
                 else:
                     min_change_version = None
 
+                storage_params = self._get_object_storage_conn_params()
                 pull_edfi_to_object_storage = BulkEdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
                     resource=endpoint,
 
                     tmp_dir=self.tmp_dir,
-                    s3_conn_id=self.s3_conn_id,
+                    **storage_params,
                     destination_dir=destination_dir,
                     destination_filename=f"{endpoint}.jsonl",
                     
@@ -563,8 +585,8 @@ class EdFiResourceDAG:
 
                 pull_operators_list.append(pull_edfi_to_object_storage)
 
-            ### COPY FROM OBJECT STORAGE TO SNOWFLAKE
-            copy_stage_to_snowflake = BulkS3ToSnowflakeOperator(
+            ### COPY FROM OBJECT STORAGE TO DATABASE
+            copy_stage_to_snowflake = BulkObjectStorageToDatabaseOperator(
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
@@ -671,7 +693,7 @@ class EdFiResourceDAG:
                     edfi_conn_id=self.edfi_conn_id,
 
                     tmp_dir= self.tmp_dir,
-                    s3_conn_id= self.s3_conn_id,
+                    **self._get_object_storage_conn_params(),
                     destination_dir=destination_dir,
 
                     get_deletes=get_deletes,
@@ -690,12 +712,12 @@ class EdFiResourceDAG:
                 .expand_kwargs(kwargs_dicts)
             )
 
-            ### COPY FROM OBJECT STORAGE TO SNOWFLAKE
-            copy_stage_to_snowflake = BulkS3ToSnowflakeOperator(
+                        ### COPY FROM OBJECT STORAGE TO DATABASE
+            copy_stage_to_snowflake = BulkObjectStorageToDatabaseOperator(
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
-                
+
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 edfi_conn_id=self.edfi_conn_id,
@@ -794,7 +816,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
 
                 tmp_dir=self.tmp_dir,
-                s3_conn_id=self.s3_conn_id,
+                **self._get_object_storage_conn_params(),
                 destination_dir=destination_dir,
                 
                 get_deletes=get_deletes,
@@ -818,8 +840,8 @@ class EdFiResourceDAG:
                 dag=self.dag
             )
 
-            ### COPY FROM OBJECT STORAGE TO SNOWFLAKE
-            copy_stage_to_snowflake = BulkS3ToSnowflakeOperator(
+            ### COPY FROM OBJECT STORAGE TO DATABASE
+            copy_stage_to_snowflake = BulkObjectStorageToDatabaseOperator(
                 task_id=f"copy_all_endpoints_into_snowflake",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
