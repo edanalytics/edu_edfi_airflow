@@ -78,7 +78,7 @@ class S3ToSnowflakeOperator(BaseOperator):
             self.s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename)
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
-        self.set_edfi_attributes(context)
+        self.set_edfi_attributes()
 
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         self.run_sql_queries(
@@ -88,7 +88,7 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         return self.xcom_return
 
-    def set_edfi_attributes(self, context):
+    def set_edfi_attributes(self):
         """
         Retrieve the Ed-Fi, ODS, and data model versions if not provided.
         This needs to occur in execute to not call the API at every Airflow synchronize.
@@ -212,7 +212,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                 )
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
-        self.set_edfi_attributes(context)
+        self.set_edfi_attributes()
 
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         xcom_returns = []
