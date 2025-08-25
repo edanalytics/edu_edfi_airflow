@@ -10,7 +10,10 @@ class EdFiHook(BaseHook):
     """
     Establish a connection to the EdFi ODS using an Airflow Connection and,
     optionally, a separate EdFiTokenProvider for shared token provision to
-    reduce the number of tokens needed.
+    reduce the number of tokens needed. If a token provider task ID is
+    provided, will pull the `return_value` XCom from that task ID as an
+    EdFi authentication payload. Only supports token providers in the same
+    DAG.
 
     Default to pulling the EdFi API configs from the connection if not
     explicitly provided.
