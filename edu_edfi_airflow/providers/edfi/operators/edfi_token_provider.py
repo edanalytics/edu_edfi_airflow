@@ -2,7 +2,7 @@ from datetime import timedelta
 from typing import Any
 import logging
 
-from airflow.models import BaseOperator, Variable
+from airflow.models import BaseOperator
 from airflow.triggers.temporal import TimeDeltaTrigger
 from airflow.utils.state import State
 from airflow.utils.context import Context
@@ -17,7 +17,7 @@ class EdFiTokenProviderOperator(BaseOperator):
         self,
         *,
         edfi_conn_id: str,
-        xcom_key: str = 'edfi_access_token',
+        xcom_key: str = 'return_value',
         sentinel_task_id: str = 'dag_state_sentinel',
         extra_refresh_buffer_seconds: int = 60,
         **kwargs
@@ -41,14 +41,13 @@ class EdFiTokenProviderOperator(BaseOperator):
             payload = conn.session.last_auth_payload
             payload['authenticated_at'] = conn.session.authenticated_at
 
-            # Add in extra buffer to avoid client tasks thinking they hold an expired token  
-            # and making additional requests
+            # Add in extra buffer to avoid client tasks thinking they hold an
+            # expired token and making additional requests
             defer_seconds = conn.session.refresh_at - conn.session.authenticated_at - self.extra_refresh_buffer_seconds
-
-            logging.info(f'Refreshed token to XCOM {self.xcom_key}. Next refresh scheduled in {defer_seconds}s')
             
             # store the token in an XCOM
             context['ti'].xcom_push(key=self.xcom_key, value=payload)
+            logging.info(f'Refreshed token to XCOM {self.xcom_key}. Next refresh scheduled in {defer_seconds}s')
             
             # defer til later
             self.defer(

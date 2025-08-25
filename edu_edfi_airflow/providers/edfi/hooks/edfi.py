@@ -1,34 +1,44 @@
-from typing import Optional, Callable, Union
+from typing import Optional
 
 from airflow.hooks.base_hook import BaseHook
-from airflow.models import Variable
+from airflow.operators.python import get_current_context
 
 from edfi_api_client import EdFiClient
 
 
 class EdFiHook(BaseHook):
     """
-    Establish a connection to the EdFi ODS using an Airflow Connection.
-    Default to pulling the EdFi API configs from the connection if not explicitly provided.
+    Establish a connection to the EdFi ODS using an Airflow Connection and,
+    optionally, a separate EdFiTokenProvider for shared token provision to
+    reduce the number of tokens needed.
+
+    Default to pulling the EdFi API configs from the connection if not
+    explicitly provided.
     """
     def __init__(self, 
         edfi_conn_id: str, 
-        access_token: Optional[Union[str, Callable[[], str]]] = None, 
+        token_provider_id: Optional[str] = None, 
         **kwargs
     ) -> None:
         self.edfi_conn_id = edfi_conn_id
         self.api_conn = None
-        self.access_token = access_token
+        self.token_provider_id = token_provider_id
 
 
     def get_conn(self) -> EdFiClient:
         conn = self.get_connection(self.edfi_conn_id)
         extras = conn.extra_dejson
         
-        if self.access_token:
+        if self.token_provider_id:
+            def access_token_getter():
+                context = get_current_context()
+                payload = context['ti'].xcom_pull(self.token_provider_id)
+                
+                return payload
+
             api_conn = EdFiClient(
                 base_url=conn.host,
-                access_token=self.access_token,
+                access_token=access_token_getter,
                 **extras
             )
         else:
