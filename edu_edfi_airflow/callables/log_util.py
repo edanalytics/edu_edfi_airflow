@@ -89,6 +89,7 @@ def capture_logs_to_snowflake(
     api_year: int,
     run_type: str,
     grain_update: Optional[str] = None,
+    map_index_source_task_id: Optional[str] = None,
 ):
     def wrapper(*args, **kwargs):
         
@@ -110,6 +111,19 @@ def capture_logs_to_snowflake(
                 for record in errors
             ]
 
+            # Pull map index if available
+            ti = context.get("ti")
+            map_index = getattr(ti, "map_index", None) if ti else None
+            map_index_name = None
+
+            if map_index is not None and map_index_source_task_id:
+                try:
+                    file_list = ti.xcom_pull(task_ids=map_index_source_task_id)
+                    if file_list and isinstance(file_list, list) and len(file_list) > map_index:
+                        map_index_name = file_list[map_index].split("/")[-1]
+                except Exception as e:
+                    logging.getLogger("airflow.task").warning(f"[log_util] Unable to extract map_index_name: {e}")
+
             # Combine: args/kwargs/timestamp from last error, all other context in nested errors{} object
             # (this is to avoid duplicating args/kwargs/timestamp in each error log, while preserving error-specific context)
             merged = {
@@ -118,6 +132,11 @@ def capture_logs_to_snowflake(
                 "last_error_timestamp": last_error.get("timestamp"),
                 "errors": cleaned_errors,
             }
+
+            if map_index is not None:
+                merged["map_index"] = map_index
+                merged["map_index_name"] = map_index_name
+                
             logging.getLogger("airflow.task").info(f"[DEBUG] flushing error log record to Snowflake")
 
             log_to_snowflake(
