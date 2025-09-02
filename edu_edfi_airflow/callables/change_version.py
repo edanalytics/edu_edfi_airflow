@@ -110,7 +110,7 @@ def get_previous_change_versions(
     elif get_key_changes:
         filter_clause = "is_key_changes"
     else:
-        filter_clause = "not is_deletes and not is_key_changes"
+        filter_clause = "TRUE"
 
     qry_prior_max = f"""
         select name, max(max_version) as max_version
