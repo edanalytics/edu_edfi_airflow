@@ -398,6 +398,7 @@ class EdFiResourceDAG:
                 'change_version_table': self.change_version_table,
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
+                'has_key_changes': self.get_key_changes, # Indicates whether to add keyChanges records on full refresh, since this column is not yet required
                 'edfi_conn_id': self.edfi_conn_id,
                 'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
             },

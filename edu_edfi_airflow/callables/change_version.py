@@ -77,6 +77,7 @@ def get_previous_change_versions(
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
+    has_key_changes: bool = False,
 
     **context
 ) -> None:
@@ -109,8 +110,10 @@ def get_previous_change_versions(
         filter_clause = "is_deletes"
     elif get_key_changes:
         filter_clause = "is_key_changes"
+    elif has_key_changes:  # Handles optionality of `is_key_changes` column
+        filter_clause = "not coalesce(is_deletes, false) and not coalesce(is_key_changes, false)"
     else:
-        filter_clause = "not is_deletes and not is_key_changes"
+        filter_clause = "not coalesce(is_deletes, false)"
 
     qry_prior_max = f"""
         select name, max(max_version) as max_version
@@ -153,6 +156,7 @@ def get_previous_change_versions_with_deltas(
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
+    has_key_changes: bool = False,
 
     **context
 ) -> None:
@@ -162,7 +166,7 @@ def get_previous_change_versions_with_deltas(
     return_tuples = get_previous_change_versions(
         tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
         snowflake_conn_id=snowflake_conn_id, change_version_table=change_version_table,
-        get_deletes=get_deletes, get_key_changes=get_key_changes,
+        get_deletes=get_deletes, get_key_changes=get_key_changes, has_key_changes=has_key_changes,
         **context
     )
 
