@@ -6,7 +6,9 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
+from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.utils.task_group import TaskGroup
+from airflow.utils.state import TaskInstanceState
 
 from ea_airflow_util import EACustomDAG
 from ea_airflow_util import update_variable
@@ -14,6 +16,7 @@ from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.callables import airflow_util, change_version, total_counts
 from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator, BulkEdFiToS3Operator
+from edu_edfi_airflow.providers.edfi.operators.edfi_token_provider import EdFiTokenProviderOperator
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkS3ToSnowflakeOperator
 
 
@@ -83,6 +86,8 @@ class EdFiResourceDAG:
         total_counts_table: str = '_meta_total_counts',
 
         dbt_incrementer_var: Optional[str] = None,
+        
+        shared_edfi_token_pool: Optional[str] = None, # use default_pool by default
 
         **kwargs
     ) -> None:
@@ -96,7 +101,10 @@ class EdFiResourceDAG:
         self.edfi_conn_id = edfi_conn_id
         self.s3_conn_id = s3_conn_id
         self.snowflake_conn_id = snowflake_conn_id
-
+        
+        # Instance variables for shared EdFi tokens
+        self.shared_edfi_token_pool = shared_edfi_token_pool
+        
         self.pool = pool
         self.tmp_dir = tmp_dir
         self.multiyear = multiyear
@@ -112,7 +120,7 @@ class EdFiResourceDAG:
         self.pull_total_counts = pull_total_counts
 
         self.dbt_incrementer_var = dbt_incrementer_var
-        
+
         ### Parse optional config objects (improved performance over adding resources manually).
         resource_configs, resource_deletes, resource_key_changes = self.parse_endpoint_configs(resource_configs)
         descriptor_configs, descriptor_deletes, descriptor_key_changes = self.parse_endpoint_configs(descriptor_configs)
@@ -245,6 +253,30 @@ class EdFiResourceDAG:
         else:
             raise ValueError(f"Run type {self.run_type} is not one of the expected values: [default, dynamic, bulk].")
 
+        # Set up DAG-wide bearer token manager
+        token_provider = EdFiTokenProviderOperator(
+            task_id='edfi_token_provider',
+            edfi_conn_id=self.edfi_conn_id,
+            sentinel_task_id='dag_state_sentinel',
+            dag=self.dag,
+            pool=self.shared_edfi_token_pool,
+        )
+
+        # Set up sensor to wait for first auth before proceeding
+        initial_token_sensor = ExternalTaskSensor(
+            task_id='initial_edfi_token_sensor',
+            external_dag_id='{{ dag.dag_id }}',
+            external_task_id='edfi_token_provider',
+            allowed_states=[TaskInstanceState.DEFERRED],
+            # not default ExternalTaskSensor behavior, but we
+            # do want to fail the rest of the DAG fast if we
+            # were not able to acquire a first token
+            failed_states=[TaskInstanceState.FAILED],
+            dag=self.dag,
+            pool=self.pool,
+            poke_interval=2.0, 
+        )
+
         # Set parent directory and create subfolders for each task group.
         s3_parent_directory = os.path.join(
             self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
@@ -331,7 +363,7 @@ class EdFiResourceDAG:
         )
 
         # Chain tasks and taskgroups into the DAG; chain sentinel after all task groups.
-        airflow_util.chain_tasks(cv_task_group, total_counts_taskgroup, edfi_task_groups, dbt_var_increment_operator)
+        airflow_util.chain_tasks(initial_token_sensor, cv_task_group, total_counts_taskgroup, edfi_task_groups, dbt_var_increment_operator)
         airflow_util.chain_tasks(edfi_task_groups, dag_state_sentinel)
 
 
@@ -354,6 +386,7 @@ class EdFiResourceDAG:
                 python_callable=change_version.get_newest_edfi_change_version,
                 op_kwargs={
                     'edfi_conn_id': self.edfi_conn_id,
+                    'edfi_token_provider_task_id': 'edfi_token_provider'
                 },
                 dag=self.dag
             )
@@ -399,6 +432,7 @@ class EdFiResourceDAG:
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
                 'edfi_conn_id': self.edfi_conn_id,
+                'edfi_token_provider_task_id': 'edfi_token_provider',
                 'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
             },
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
@@ -557,6 +591,10 @@ class EdFiResourceDAG:
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
 
+                    # Pass token
+                    edfi_token_provider_task_id='edfi_token_provider',
+                    
+
                     pool=self.pool,
                     trigger_rule='none_skipped',
                     dag=self.dag
@@ -573,6 +611,7 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 edfi_conn_id=self.edfi_conn_id,
+                edfi_token_provider_task_id='edfi_token_provider',
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -670,6 +709,7 @@ class EdFiResourceDAG:
                     task_id=f"pull_dynamic_endpoints_to_s3",
                     map_index_template="""{{ task.resource }}""",
                     edfi_conn_id=self.edfi_conn_id,
+                    edfi_token_provider_task_id='edfi_token_provider',
 
                     tmp_dir= self.tmp_dir,
                     s3_conn_id= self.s3_conn_id,
@@ -700,6 +740,7 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
+                edfi_token_provider_task_id='edfi_token_provider',
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -793,6 +834,7 @@ class EdFiResourceDAG:
             pull_edfi_to_s3 = BulkEdFiToS3Operator(
                 task_id=f"pull_all_endpoints_to_s3",
                 edfi_conn_id=self.edfi_conn_id,
+                edfi_token_provider_task_id='edfi_token_provider',
 
                 tmp_dir=self.tmp_dir,
                 s3_conn_id=self.s3_conn_id,
@@ -828,6 +870,7 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_s3, 0),
                 edfi_conn_id=self.edfi_conn_id,
+                edfi_token_provider_task_id='edfi_token_provider',
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -884,6 +927,7 @@ class EdFiResourceDAG:
                 op_kwargs={
                     'endpoints': [(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     'edfi_conn_id': self.edfi_conn_id,
+                    'edfi_token_provider_task_id': 'edfi_token_provider',
                     'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 },
                 trigger_rule='none_failed',
