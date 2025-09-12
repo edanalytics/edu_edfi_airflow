@@ -55,6 +55,8 @@ class EdFiToS3Operator(BaseOperator):
 
         enabled_endpoints: Optional[List[str]] = None,
 
+        use_edfi_token_cache: bool = False,
+
         **kwargs
     ) -> None:
         super(EdFiToS3Operator, self).__init__(**kwargs)
@@ -86,6 +88,8 @@ class EdFiToS3Operator(BaseOperator):
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
         self.enabled_endpoints = enabled_endpoints
 
+        self.use_edfi_token_cache = use_edfi_token_cache
+
 
     def execute(self, context) -> str:
         """
@@ -113,7 +117,7 @@ class EdFiToS3Operator(BaseOperator):
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         # Complete the pull and write to S3
-        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+        edfi_conn = EdFiHook(self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
 
         self.pull_edfi_to_s3(
             edfi_conn=edfi_conn,
@@ -287,7 +291,7 @@ class BulkEdFiToS3Operator(EdFiToS3Operator):
             )
 
         # Make connection outside of loop to not re-authenticate at every resource.
-        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+        edfi_conn = EdFiHook(self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
 
         # Gather DAG-level endpoints outside of loop.
         config_endpoints = airflow_util.get_config_endpoints(context)

@@ -16,11 +16,12 @@ def get_total_counts(
     *,
     edfi_conn_id: str,
     max_change_version: int,
+    use_edfi_token_cache: bool = False,
 
     **context
 ) -> None:
 
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
+    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, use_token_cache=use_edfi_token_cache).get_conn()
 
     # Only ping the API if the endpoint is specified in the run.
     config_endpoints = airflow_util.get_config_endpoints(context)
