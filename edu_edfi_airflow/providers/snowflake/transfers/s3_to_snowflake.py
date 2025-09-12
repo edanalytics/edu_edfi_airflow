@@ -38,6 +38,9 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         full_refresh: bool = False,
         xcom_return: Optional[Any] = None,
+
+        s3_staging_schema: str = "util",
+        s3_staging_table: str = "airflow_stage",
         **kwargs
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
@@ -60,6 +63,8 @@ class S3ToSnowflakeOperator(BaseOperator):
         self.full_refresh = full_refresh
         self.xcom_return = xcom_return
 
+        self.s3_staging_schema = s3_staging_schema
+        self.s3_staging_table = s3_staging_table
 
     def execute(self, context):
         """
@@ -135,7 +140,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                     '{self.ods_version}' AS ods_version,
                     '{self.data_model_version}' AS data_model_version,
                     t.$1 AS v
-                FROM '@{database}.util.airflow_stage/{s3_key}'
+                FROM '@{database}.{self.s3_staging_schema}.{self.s3_staging_table}/{s3_key}'
                 (file_format => 'json_default') t
             )
             force = true;
@@ -290,7 +295,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                         '{self.ods_version}' AS ods_version,
                         '{self.data_model_version}' AS data_model_version,
                         t.$1 AS v
-                    FROM '@{database}.util.airflow_stage/{s3_dir}'
+                    FROM '@{database}.{self.s3_staging_schema}.{self.s3_staging_table}/{s3_dir}'
                     (file_format => 'json_default') t
                 )
                 force = true;

@@ -84,6 +84,9 @@ class EdFiResourceDAG:
 
         dbt_incrementer_var: Optional[str] = None,
 
+        s3_staging_schema: str = "util",
+        s3_staging_table: str = "airflow_stage",
+
         **kwargs
     ) -> None:
         self.run_type = run_type
@@ -123,6 +126,9 @@ class EdFiResourceDAG:
         self.descriptors = set(descriptor_configs.keys())
         self.deletes_to_ingest = resource_deletes
         self.key_changes_to_ingest = resource_key_changes
+
+        self.s3_staging_schema = s3_staging_schema
+        self.s3_staging_table = s3_staging_table
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         dag_params = {
@@ -578,6 +584,9 @@ class EdFiResourceDAG:
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
 
+                s3_staging_schema=self.s3_staging_schema,
+                s3_staging_table=self.s3_staging_table,
+
                 trigger_rule='all_done',
                 dag=self.dag
             )
@@ -704,6 +713,9 @@ class EdFiResourceDAG:
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
+
+                s3_staging_schema=self.s3_staging_schema,
+                s3_staging_table=self.s3_staging_table,
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -832,6 +844,9 @@ class EdFiResourceDAG:
                 snowflake_conn_id=self.snowflake_conn_id,
                 s3_destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_s3, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
+
+                s3_staging_schema=self.s3_staging_schema,
+                s3_staging_table=self.s3_staging_table,
 
                 trigger_rule='none_skipped',  # Different trigger rule than default.
                 dag=self.dag
