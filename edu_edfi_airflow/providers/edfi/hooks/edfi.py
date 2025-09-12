@@ -13,6 +13,7 @@ class EdFiHook(BaseHook):
     def __init__(self, edfi_conn_id: str, **kwargs) -> None:
         self.edfi_conn_id = edfi_conn_id
         self.api_conn = None
+        self.kwargs = kwargs
 
 
     def get_conn(self) -> EdFiClient:
@@ -23,6 +24,7 @@ class EdFiHook(BaseHook):
             base_url     = conn.host,
             client_key   = conn.login,
             client_secret= conn.password,
+            **self.kwargs,
             **extras
         )
 
