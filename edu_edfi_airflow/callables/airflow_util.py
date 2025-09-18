@@ -116,7 +116,7 @@ def get_param_from_conn(conn_id: str, param: str, default: Optional[str] = None)
     Get a parameter from a connection.
 
     The 'extras' field is searched automatically. If the parameter is not set
-    and there is no default, a ValueError is raised.
+    anywhere and there is no default, a ValueError is raised.
 
     Examples:
     ```python

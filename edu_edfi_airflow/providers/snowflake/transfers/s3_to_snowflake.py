@@ -115,7 +115,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
         database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
         s3_staging_table = airflow_util.get_param_from_conn(
-            conn=self.snowflake_conn_id,
+            conn_id=self.snowflake_conn_id,
             param="extra__snowflake__s3_staging_table",
             default="airflow_stage"
         )
@@ -258,7 +258,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
         database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
         s3_staging_table = airflow_util.get_param_from_conn(
-            conn=self.snowflake_conn_id,
+            conn_id=self.snowflake_conn_id,
             param="extra__snowflake__s3_staging_table",
             default="airflow_stage"
         )

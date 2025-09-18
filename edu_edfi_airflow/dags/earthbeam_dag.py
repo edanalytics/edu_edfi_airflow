@@ -1039,7 +1039,7 @@ class EarthbeamDAG:
 
                 database = student_id_match_rates_table.partition('.')[0]
                 s3_staging_table = airflow_util.get_param_from_conn(
-                    conn=snowflake_conn_id,
+                    conn_id=snowflake_conn_id,
                     param="extra__snowflake__s3_staging_table",
                     default="airflow_stage"
                 )
