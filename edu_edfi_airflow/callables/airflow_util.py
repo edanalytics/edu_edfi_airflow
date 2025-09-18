@@ -139,7 +139,7 @@ def get_param_from_conn(conn_id: str, param: str, default: Optional[str] = None)
     value = value or conn.extra_dejson.get(param)
 
     # Raise if no value and no default.
-    if not value and default is None:
+    if value is None and default is None:
         raise ValueError(
             f"Connection `{conn_id}` has no value for `{param}` in either "
             "the top-level or 'extras' configuration, and no default was specified."
