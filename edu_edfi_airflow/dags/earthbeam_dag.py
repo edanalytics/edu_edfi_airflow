@@ -54,9 +54,6 @@ class EarthbeamDAG:
 
         fast_cleanup: bool = False,
 
-        s3_staging_schema: str = "util",
-        s3_staging_table: str = "airflow_stage",
-
         **kwargs
     ):
         self.run_type = run_type
@@ -69,9 +66,6 @@ class EarthbeamDAG:
         self.lightbeam_pool = lightbeam_pool or self.pool
 
         self.fast_cleanup = fast_cleanup
-
-        self.s3_staging_schema = s3_staging_schema
-        self.s3_staging_table = s3_staging_table
 
         self.dag = EACustomDAG(params=self.params_dict, **kwargs)
 
@@ -1044,6 +1038,12 @@ class EarthbeamDAG:
                 '''
 
                 database = student_id_match_rates_table.partition('.')[0]
+                s3_staging_table = airflow_util.get_param_from_conn(
+                    conn=snowflake_conn_id,
+                    param="extra__snowflake__s3_staging_table",
+                    default="airflow_stage"
+                )
+
                 copy_sql = f'''
                     COPY INTO {student_id_match_rates_table}
                     (tenant_code, api_year, assessment_name, source_column_name, edfi_column_name, num_matches, num_rows, match_rate)
@@ -1053,7 +1053,7 @@ class EarthbeamDAG:
                             {api_year} as api_year,
                             '{assessment_bundle}' as assessment_name,
                             $1, $2, $3, $4, $5
-                        FROM '@{database}.{self.s3_staging_schema}.{self.s3_staging_table}/{match_rates_s3_filepath}'
+                        FROM '@{database}.util.{s3_staging_table}/{match_rates_s3_filepath}'
                     )
                     FILE_FORMAT = (TYPE = CSV SKIP_HEADER = 1 FIELD_OPTIONALLY_ENCLOSED_BY = '"')
                 '''
@@ -1287,4 +1287,3 @@ class EarthbeamDAG:
 
             return result
         return wrapper
-

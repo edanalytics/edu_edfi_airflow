@@ -111,6 +111,43 @@ def xcom_pull_template(
     return '{{ ' + xcom_string + ' }}'
 
 
+def get_param_from_conn(conn_id: str, param: str, default: Optional[str] = None) -> str:
+    """
+    Get a parameter from a connection.
+
+    The 'extras' field is searched automatically. If the parameter is not set
+    and there is no default, a ValueError is raised.
+
+    Examples:
+    ```python
+    get_param_from_conn(self.snowflake_conn_id, "schema")
+    get_param_from_conn(self.snowflake_conn_id, "extra__snowflake__s3_staging_table", "airflow_stage")
+    ```
+    """
+    conn = Connection.get_connection_from_secrets(conn_id)
+    
+    # Try getting the param at the top-level.
+    #
+    # Yes, this is always a miss for extras, but we don't have the option of a
+    # naming convention (it's our own convention to prefix with "extra__"), and
+    # I don't want to require the user to both remember where a field is located
+    # and to tell this function that it is in extras. Ultimately we don't care
+    # where it is, we just want to use it.
+    value = getattr(conn, param, None)
+
+    # If not at the top level, try looking in extras.
+    value = value or conn.extra_dejson.get(param)
+
+    # Raise if no value and no default.
+    if not value and default is None:
+        raise ValueError(
+            f"Connection `{conn_id}` has no value for `{param}` in either "
+            "the top-level or 'extras' configuration, and no default was specified."
+        )
+
+    return value or default
+    
+
 def get_snowflake_params_from_conn(
     snowflake_conn_id: str
 ) -> Tuple[str, str]:
