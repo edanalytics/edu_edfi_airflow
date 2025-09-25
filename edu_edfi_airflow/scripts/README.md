@@ -7,9 +7,9 @@ Simple script to validate EdFi connections against tenant LEA ID mappings.
 ```bash
 # Create a mapping file (YAML format)
 cat > tenant_mapping.yaml << EOF
-aiken: 201
-allendale: 301
-anderson1: 401
+mytenant1: 101
+mytenant2: 201
+mytenant3: 301
 EOF
 
 # Run validation
@@ -30,25 +30,7 @@ python validate_edfi_connections.py --mapping-file tenant_mapping.yaml --quiet
 
 ### Inline mapping
 ```bash
-python validate_edfi_connections.py --mapping '{"aiken": "201", "allendale": "301"}'
-```
-
-## Mapping File Format
-
-YAML format (recommended):
-```yaml
-aiken: 201
-allendale: 301
-anderson1: 401
-```
-
-JSON format (also supported):
-```json
-{
-  "aiken": "201",
-  "allendale": "301", 
-  "anderson1": "401"
-}
+python validate_edfi_connections.py --mapping '{"mytenant1": "101", "mytenant2": "201"}'
 ```
 
 ## What It Does
@@ -62,8 +44,8 @@ JSON format (also supported):
 
 ```
 Found 3 matching connections
-MATCH: edfi_aiken_2024 - LEA ID matches: 201
-MISMATCH: edfi_allendale_2024 - Expected 301, got 999
+MATCH: edfi_mytenant1_2024 - LEA ID matches: 101
+MISMATCH: edfi_mytenant2_2024 - Expected 201, got 999
 ERROR: edfi_unknown_2024 - No LEA ID mapping for tenant: unknown
 
 Summary: 1/3 matches, 1 mismatches, 1 no mapping, 0 no org ID, 1 errors

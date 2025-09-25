@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-EdFi Connection Validation Script
-
-Validates EdFi connections against tenant LEA ID mappings.
-"""
-
 import re
 import json
 import yaml
