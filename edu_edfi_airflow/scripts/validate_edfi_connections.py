@@ -2,10 +2,96 @@ import re
 import json
 import yaml
 import argparse
-from typing import Dict, List
+from typing import Dict, List, Tuple, Optional
 from airflow.models import Connection
 from edfi_api_client import EdFiClient
 from ea_airflow_util.callables.airflow_connection import list_conn
+
+
+def get_lea_id_with_fallback(client: EdFiClient, expected_lea_id: str) -> Tuple[Optional[str], str]:
+    """
+    Get LEA ID using fallback strategy: token_info -> LEAs endpoint -> calendars/schools.
+    
+    Args:
+        client: EdFiClient instance
+        expected_lea_id: Expected LEA ID for validation
+        
+    Returns:
+        Tuple of (lea_id, method_used)
+    """
+    # Step 1: Try token_info
+    lea_ids, method = try_token_info(client)
+    if len(lea_ids) == 1:
+        return lea_ids[0], f"token_info ({method})"
+    
+    # Step 2: Try LEAs endpoint
+    lea_ids, method = try_leas_endpoint(client, expected_lea_id)
+    if len(lea_ids) == 1:
+        return lea_ids[0], f"leas_endpoint ({method})"
+    
+    # Step 3: Try calendars -> schools
+    lea_ids, method = try_calendars_schools(client, expected_lea_id)
+    if len(lea_ids) == 1:
+        return lea_ids[0], f"calendars_schools ({method})"
+    
+    return None, "all_methods_failed"
+
+
+def try_token_info(client: EdFiClient) -> Tuple[List[str], str]:
+    """Try to get LEA IDs from token_info endpoint."""
+    try:
+        token_info = client.get_token_info()
+        education_orgs = token_info.get('education_organizations', [])
+        
+        lea_ids = [str(org['local_education_agency_id']) for org in education_orgs
+                  if org.get('type') == 'edfi.LocalEducationAgency' and 'local_education_agency_id' in org]
+        
+        return lea_ids, f"found_{len(lea_ids)}_leas" if lea_ids else "no_leas_found"
+    except Exception as e:
+        return [], f"error: {str(e)}"
+
+
+def try_leas_endpoint(client: EdFiClient, expected_lea_id: str) -> Tuple[List[str], str]:
+    """Try to get LEA IDs from LEAs endpoint."""
+    try:
+        leas_resource = client.resource('leas')
+        
+        # Get all LEAs
+        leas = leas_resource.get()
+        lea_ids = [str(lea['localEducationAgencyId']) for lea in leas if 'localEducationAgencyId' in lea]
+        
+        return lea_ids, f"found_{len(lea_ids)}_leas"
+    except Exception as e:
+        return [], f"error: {str(e)}"
+
+
+def try_calendars_schools(client: EdFiClient, expected_lea_id: str) -> Tuple[List[str], str]:
+    """Try to get LEA IDs through calendars -> schools relationship."""
+    try:
+        # Get school IDs from calendars
+        calendars = client.resource('calendars').get()
+        school_ids = {cal['schoolReference']['schoolId'] for cal in calendars 
+                     if 'schoolReference' in cal and 'schoolId' in cal['schoolReference']}
+        
+        if not school_ids:
+            return [], "no_schools_in_calendars"
+        
+        # Get LEA IDs from schools
+        schools_resource = client.resource('schools')
+        lea_ids = set()
+        
+        # Get all schools and filter by the school IDs we found
+        schools = schools_resource.get()
+        for school in schools:
+            if 'schoolId' in school and school['schoolId'] in school_ids:
+                if 'localEducationAgencyReference' in school:
+                    lea_ref = school['localEducationAgencyReference']
+                    if 'localEducationAgencyId' in lea_ref:
+                        lea_ids.add(str(lea_ref['localEducationAgencyId']))
+        
+        return list(lea_ids), f"found_{len(lea_ids)}_leas_via_schools"
+    except Exception as e:
+        return [], f"error: {str(e)}"
 
 
 def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], quiet: bool = False) -> List[Dict]:
@@ -46,25 +132,8 @@ def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], quiet: bool = 
                 **conn.extra_dejson
             )
             
-            # Get org ID from token info
-            token_info = client.get_token_info()
-            education_orgs = token_info.get('education_organizations', [])
-            
-            # Extract LEA IDs from Local Education Agencies only
-            lea_ids = []
-            all_org_ids = []
-            
-            for org in education_orgs:
-                if 'education_organization_id' in org:
-                    all_org_ids.append(str(org['education_organization_id']))
-                    
-                # Check if this is a Local Education Agency
-                if (org.get('type') == 'edfi.LocalEducationAgency' and 
-                    'local_education_agency_id' in org):
-                    lea_ids.append(str(org['local_education_agency_id']))
-            
-            # For validation, use the LEA ID if available, otherwise fall back to first org ID
-            actual_org_id = lea_ids[0] if lea_ids else (all_org_ids[0] if all_org_ids else None)
+            # Use fallback strategy to get LEA ID
+            actual_org_id, method_used = get_lea_id_with_fallback(client, str(expected_lea_id) if expected_lea_id else "")
             
             # Compare and record result (ensure both are strings for comparison)
             expected_lea_id_str = str(expected_lea_id) if expected_lea_id is not None else None
@@ -74,13 +143,13 @@ def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], quiet: bool = 
                 message = f"No LEA ID mapping for tenant: {tenant}"
             elif actual_org_id is None:
                 status = "NO_ORG_ID"
-                message = "No educationOrganizationId in token_info"
+                message = f"No LEA ID found using any method ({method_used})"
             elif expected_lea_id_str == actual_org_id:
                 status = "MATCH"
-                message = f"LEA ID matches: {actual_org_id}"
+                message = f"LEA ID matches: {actual_org_id} (via {method_used})"
             else:
                 status = "MISMATCH"
-                message = f"Expected {expected_lea_id_str}, got {actual_org_id}"
+                message = f"Expected {expected_lea_id_str}, got {actual_org_id} (via {method_used})"
             
             result = {
                 'connection_id': conn_id,
@@ -88,8 +157,7 @@ def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], quiet: bool = 
                 'year': year,
                 'expected_lea_id': expected_lea_id,
                 'actual_org_id': actual_org_id,
-                'lea_ids': lea_ids,  # Store LEA IDs found
-                'all_org_ids': all_org_ids,  # Store all org IDs found
+                'method_used': method_used,
                 'status': status,
                 'message': message
             }
@@ -101,8 +169,7 @@ def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], quiet: bool = 
                 'year': year,
                 'expected_lea_id': expected_lea_id,
                 'actual_org_id': None,
-                'lea_ids': [],
-                'all_org_ids': [],
+                'method_used': 'error',
                 'status': 'ERROR',
                 'message': str(e)
             }
@@ -131,13 +198,11 @@ def main(tenant_lea_mapping: Dict[str, str], quiet: bool = False):
     # Check for multiple LEA IDs per tenant
     tenant_orgs = {}
     for result in results:
-        if result['lea_ids'] and result['status'] in ['MATCH', 'MISMATCH']:
+        if result['actual_org_id'] and result['status'] in ['MATCH', 'MISMATCH']:
             tenant = result['tenant']
             if tenant not in tenant_orgs:
                 tenant_orgs[tenant] = set()
-            # Add all LEA IDs found for this connection
-            for lea_id in result['lea_ids']:
-                tenant_orgs[tenant].add(lea_id)
+            tenant_orgs[tenant].add(result['actual_org_id'])
     
     multiple_orgs = {tenant: list(orgs) for tenant, orgs in tenant_orgs.items() if len(orgs) > 1}
     if multiple_orgs and not quiet:
