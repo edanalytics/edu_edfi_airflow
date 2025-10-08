@@ -687,7 +687,16 @@ class EarthbeamDAG:
     
     @staticmethod
     def get_filename(filepath: str) -> str:
-        return os.path.splitext(os.path.basename(filepath))[0]
+        """ 
+        Helper for getting base names. If filepath is an existing
+        directory, will strip away parent directories ('/foo/bar/baz' ->
+        'baz'). Otherwise, will strip parent directories AND strip away any
+        file extension marked by a period ('/foo/bar/baz.csv' -> 'baz').
+        """
+        if os.path.isdir(filepath):
+            return os.path.basename(filepath)
+        else:
+            return os.path.splitext(os.path.basename(filepath))[0]
     
     @staticmethod
     def get_match_rates_query(student_id_match_rates_table: str, tenant_code: str, api_year: str, assessment_bundle: str, required_id_match_rate: int) -> str:
