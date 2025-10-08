@@ -1174,7 +1174,7 @@ class EarthbeamDAG:
                 # (Lightbeam Send) -> (LB-TO-SF)
                 # Lightbeam results to Snowflake logging table
                 if logging_table:
-                    log_lb_to_snowflake = log_to_snowflake.override(task_id="log_lb_to_snowflake")(lightbeam_results["results_file"])
+                    log_lb_to_snowflake = log_to_snowflake.override(task_id="log_lb_to_snowflake", trigger_rule='all_done')(lightbeam_results["results_file"])
             
 
             ### () -> Earthmover -> (               ) -> Remove Files
