@@ -1,3 +1,7 @@
+# Unreleased
+## Fixes
+- Update `EarthbeamDAG.get_filename` to not try to strip extensions from directories, fixing downstream duplicates in Earthmover results sent to S3 and in Lightbeam logs send to Snowflake.
+
 # edu_edfi_airflow v0.4.10
 ## New features
 - Add map index ID and name to logs sent to Snowflake in `EarthbeamDAG`
