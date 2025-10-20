@@ -1,17 +1,66 @@
 import csv
 import logging
 import os
+from datetime import datetime
 from typing import Optional
 
 from airflow.decorators import task, task_group
 from airflow.exceptions import AirflowFailException
 from airflow.models.param import Param
+from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
 import edfi_api_client
 from ea_airflow_util import EACustomDAG
 
 from edu_edfi_airflow.callables.s3 import remove_filepaths
 from edu_edfi_airflow.providers.earthbeam.operators import LightbeamOperator
+
+
+def get_change_version_from_date(target_date_str: str, tenant_code: str, api_year: int, endpoint: str, snowflake_conn_id: str = 'snowflake') -> Optional[int]:
+    """
+    Query Snowflake to get the change version for a specific date.
+    
+    Args:
+        target_date_str: Target date in ISO format (e.g., '2024-01-15T00:00:00Z')
+        tenant_code: Tenant code to filter by
+        api_year: API year to filter by
+        endpoint: Endpoint name (e.g., 'student_assessments')
+        snowflake_conn_id: Snowflake connection ID
+        
+    Returns:
+        Change version number or None if not found
+    """
+    try:
+        # Parse target date
+        target_date = datetime.fromisoformat(target_date_str.replace('Z', '+00:00')).date()
+        
+        # Query Snowflake
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
+        
+        query = """
+        SELECT change_version
+        FROM raw.edfi3._meta_change_versions
+        WHERE name = %s
+        AND tenant_code = %s
+        AND api_year = %s
+        AND date <= %s
+        ORDER BY date DESC
+        LIMIT 1
+        """
+        
+        result = snowflake_hook.get_first(query, parameters=(endpoint, tenant_code, api_year, target_date))
+        
+        if result:
+            change_version = result[0]
+            logging.info(f"Found change version {change_version} for date {target_date_str} (tenant: {tenant_code}, year: {api_year})")
+            return change_version
+        else:
+            logging.warning(f"No change version found for date {target_date_str} (tenant: {tenant_code}, year: {api_year})")
+            return None
+            
+    except Exception as e:
+        logging.error(f"Error querying change version from Snowflake: {e}")
+        return None
 
 
 class LightbeamDeleteDAG:
@@ -37,15 +86,15 @@ class LightbeamDeleteDAG:
             type="array",
             description="Newline-separated list of endpoints to delete"
         ),
-        "minChangeVersion": Param(
+        "minChangeVersionDate": Param(
             default=None,
-            type="integer",
-            description="Optional minimum change version to filter records (records modified since this change version)"
+            type="string",
+            description="Optional date to filter records modified since this date (ISO format, e.g., '2024-01-15T00:00:00Z'). **Note: Uses the first endpoint in the 'endpoints' list to query Snowflake change versions.**"
         ),
-        "maxChangeVersion": Param(
+        "maxChangeVersionDate": Param(
             default=None,
-            type="integer", 
-            description="Optional maximum change version to filter records (records modified before this change version)"
+            type="string",
+            description="Optional date to filter records modified before this date (ISO format, e.g., '2024-01-15T00:00:00Z'). **Note: Uses the first endpoint in the 'endpoints' list to query Snowflake change versions.**"
         ),
     }
 
@@ -68,6 +117,7 @@ class LightbeamDeleteDAG:
         tenant_code: str,
         api_year: int,
         edfi_conn_id: Optional[str] = None,
+        snowflake_conn_id: Optional[str] = 'snowflake',
         lightbeam_kwargs: Optional[dict] = None,
         **kwargs
     ):
@@ -84,16 +134,40 @@ class LightbeamDeleteDAG:
                 lightbeam_kwargs['query'] = context['params']['query_parameters']
                 lightbeam_kwargs['selector'] = context['params']['endpoints']
                 
-                # Add change version parameters to query if provided
+                # Add change version parameters to query if date-based parameters are provided
                 query_params = context['params']['query_parameters'].copy()
                 
-                # Add minChangeVersion if provided
-                if context['params'].get('minChangeVersion') is not None:
-                    query_params['minChangeVersion'] = context['params']['minChangeVersion']
-                
-                # Add maxChangeVersion if provided  
-                if context['params'].get('maxChangeVersion') is not None:
-                    query_params['maxChangeVersion'] = context['params']['maxChangeVersion']
+                # Query Snowflake for change versions if date parameters are provided
+                # Get the endpoint name from the selector (convert camelCase to snake_case)
+                endpoints = context['params']['endpoints']
+                if endpoints:
+                    # Use the first endpoint and convert to snake_case for Snowflake table
+                    endpoint_name = endpoints[0].lower()
+                    # Convert camelCase to snake_case (e.g., studentAssessments -> student_assessments)
+                    import re
+                    endpoint_name = re.sub(r'(?<!^)(?=[A-Z])', '_', endpoint_name).lower()
+                    
+                    if context['params'].get('minChangeVersionDate'):
+                        min_cv = get_change_version_from_date(
+                            context['params']['minChangeVersionDate'],
+                            tenant_code,
+                            api_year,
+                            endpoint_name,
+                            snowflake_conn_id
+                        )
+                        if min_cv is not None:
+                            query_params['minChangeVersion'] = min_cv
+                    
+                    if context['params'].get('maxChangeVersionDate'):
+                        max_cv = get_change_version_from_date(
+                            context['params']['maxChangeVersionDate'],
+                            tenant_code,
+                            api_year,
+                            endpoint_name,
+                            snowflake_conn_id
+                        )
+                        if max_cv is not None:
+                            query_params['maxChangeVersion'] = max_cv
                 
                 lightbeam_kwargs['query'] = query_params
 
