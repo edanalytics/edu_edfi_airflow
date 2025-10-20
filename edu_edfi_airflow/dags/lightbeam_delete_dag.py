@@ -37,6 +37,11 @@ class LightbeamDeleteDAG:
             type="array",
             description="Newline-separated list of endpoints to delete"
         ),
+        "older_than": Param(
+            default=None,
+            type="string",
+            description="Optional timestamp string to filter records modified before this date (ISO 8601 format, e.g., '2024-01-15T00:00:00Z')"
+        ),
     }
 
     def __init__(self,
@@ -73,6 +78,10 @@ class LightbeamDeleteDAG:
             def run_lightbeam(command: str, **context):
                 lightbeam_kwargs['query'] = context['params']['query_parameters']
                 lightbeam_kwargs['selector'] = context['params']['endpoints']
+                
+                # Pass older_than from DAG params to operator if provided
+                if context['params'].get('older_than'):
+                    lightbeam_kwargs['older_than'] = context['params']['older_than']
 
                 lb_output_dir = edfi_api_client.url_join(
                     self.lb_output_directory,
