@@ -37,10 +37,15 @@ class LightbeamDeleteDAG:
             type="array",
             description="Newline-separated list of endpoints to delete"
         ),
-        "older_than": Param(
+        "minChangeVersion": Param(
             default=None,
-            type="string",
-            description="Optional timestamp string to filter records modified before this date (ISO 8601 format, e.g., '2024-01-15T00:00:00Z')"
+            type="integer",
+            description="Optional minimum change version to filter records (records modified since this change version)"
+        ),
+        "maxChangeVersion": Param(
+            default=None,
+            type="integer", 
+            description="Optional maximum change version to filter records (records modified before this change version)"
         ),
     }
 
@@ -79,9 +84,18 @@ class LightbeamDeleteDAG:
                 lightbeam_kwargs['query'] = context['params']['query_parameters']
                 lightbeam_kwargs['selector'] = context['params']['endpoints']
                 
-                # Pass older_than from DAG params to operator if provided
-                if context['params'].get('older_than'):
-                    lightbeam_kwargs['older_than'] = context['params']['older_than']
+                # Add change version parameters to query if provided
+                query_params = context['params']['query_parameters'].copy()
+                
+                # Add minChangeVersion if provided
+                if context['params'].get('minChangeVersion') is not None:
+                    query_params['minChangeVersion'] = context['params']['minChangeVersion']
+                
+                # Add maxChangeVersion if provided  
+                if context['params'].get('maxChangeVersion') is not None:
+                    query_params['maxChangeVersion'] = context['params']['maxChangeVersion']
+                
+                lightbeam_kwargs['query'] = query_params
 
                 lb_output_dir = edfi_api_client.url_join(
                     self.lb_output_directory,
