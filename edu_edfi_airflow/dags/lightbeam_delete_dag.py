@@ -41,7 +41,7 @@ def get_change_version_from_date(target_date_str: str, tenant_code: str, api_yea
         snowflake_hook = SnowflakeHook(snowflake_conn_id=snowflake_conn_id)
         
         query = """
-        SELECT change_version
+        SELECT max_version
         FROM raw.edfi3._meta_change_versions
         WHERE name = %s
         AND tenant_code = %s
