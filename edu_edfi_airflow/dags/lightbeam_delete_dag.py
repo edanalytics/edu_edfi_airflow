@@ -16,7 +16,7 @@ from edu_edfi_airflow.callables.s3 import remove_filepaths
 from edu_edfi_airflow.providers.earthbeam.operators import LightbeamOperator
 
 
-def get_change_version_from_date(target_date_str: str, tenant_code: str, api_year: int, endpoint: str, snowflake_conn_id: str = 'snowflake') -> Optional[int]:
+def get_change_version_from_date(target_date_str: str, tenant_code: str, api_year: int, endpoint: str, snowflake_conn_id: str = 'snowflake') -> int:
     """
     Query Snowflake to get the change version for a specific date.
     
@@ -28,7 +28,10 @@ def get_change_version_from_date(target_date_str: str, tenant_code: str, api_yea
         snowflake_conn_id: Snowflake connection ID
         
     Returns:
-        Change version number or None if not found
+        Change version number
+        
+    Raises:
+        AirflowFailException: If Snowflake connection fails or no change version is found
     """
     try:
         # Parse target date
@@ -55,12 +58,19 @@ def get_change_version_from_date(target_date_str: str, tenant_code: str, api_yea
             logging.info(f"Found change version {change_version} for date {target_date_str} (tenant: {tenant_code}, year: {api_year})")
             return change_version
         else:
-            logging.warning(f"No change version found for date {target_date_str} (tenant: {tenant_code}, year: {api_year})")
-            return None
+            raise AirflowFailException(
+                f"No change version found for date {target_date_str} (tenant: {tenant_code}, year: {api_year}, endpoint: {endpoint}). "
+                f"Please check that the date is valid and that change version data exists for this tenant/year/endpoint combination."
+            )
             
+    except AirflowFailException:
+        # Re-raise AirflowFailException as-is
+        raise
     except Exception as e:
-        logging.error(f"Error querying change version from Snowflake: {e}")
-        return None
+        raise AirflowFailException(
+            f"Failed to query change version from Snowflake for date {target_date_str} (tenant: {tenant_code}, year: {api_year}, endpoint: {endpoint}): {e}. "
+            f"Please check your Snowflake connection '{snowflake_conn_id}' and ensure the table 'raw.edfi3._meta_change_versions' exists and is accessible."
+        )
 
 
 class LightbeamDeleteDAG:
@@ -155,8 +165,7 @@ class LightbeamDeleteDAG:
                             endpoint_name,
                             snowflake_conn_id
                         )
-                        if min_cv is not None:
-                            query_params['minChangeVersion'] = min_cv
+                        query_params['minChangeVersion'] = min_cv
                     
                     if context['params'].get('maxChangeVersionDate'):
                         max_cv = get_change_version_from_date(
@@ -166,8 +175,7 @@ class LightbeamDeleteDAG:
                             endpoint_name,
                             snowflake_conn_id
                         )
-                        if max_cv is not None:
-                            query_params['maxChangeVersion'] = max_cv
+                        query_params['maxChangeVersion'] = max_cv
                 
                 lightbeam_kwargs['query'] = query_params
 
