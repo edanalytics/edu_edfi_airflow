@@ -46,8 +46,8 @@ def get_change_version_from_date(target_date_str: str, tenant_code: str, api_yea
         WHERE name = %s
         AND tenant_code = %s
         AND api_year = %s
-        AND date <= %s
-        ORDER BY date DESC
+        AND pull_timestamp <= %s
+        ORDER BY pull_timestamp DESC
         LIMIT 1
         """
         
