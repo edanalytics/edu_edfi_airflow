@@ -88,13 +88,13 @@ class LightbeamDeleteDAG:
         ),
         "minChangeVersionDate": Param(
             default=None,
-            type="string",
-            description="Optional date to filter records modified since this date (ISO format, e.g., '2024-01-15T00:00:00Z'). **Note: Uses the first endpoint in the 'endpoints' list to query Snowflake change versions.**"
+            type=["string", "null"],
+            description="**OPTIONAL** - Date to filter records modified since this date (ISO format, e.g., '2024-01-15T00:00:00Z'). **Note: Uses the first endpoint in the 'endpoints' list to query Snowflake change versions.**"
         ),
         "maxChangeVersionDate": Param(
             default=None,
-            type="string",
-            description="Optional date to filter records modified before this date (ISO format, e.g., '2024-01-15T00:00:00Z'). **Note: Uses the first endpoint in the 'endpoints' list to query Snowflake change versions.**"
+            type=["string", "null"],
+            description="**OPTIONAL** - Date to filter records modified before this date (ISO format, e.g., '2024-01-15T00:00:00Z'). **Note: Uses the first endpoint in the 'endpoints' list to query Snowflake change versions.**"
         ),
     }
 
