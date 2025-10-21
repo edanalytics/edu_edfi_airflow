@@ -148,14 +148,19 @@ class LightbeamDeleteDAG:
                 query_params = context['params']['query_parameters'].copy()
                 
                 # Query Snowflake for change versions if date parameters are provided
-                # Get the endpoint name from the selector (convert camelCase to snake_case)
+                # Get the endpoint name from the selector (convert to snake_case for Snowflake table)
                 endpoints = context['params']['endpoints']
                 if endpoints:
                     # Use the first endpoint and convert to snake_case for Snowflake table
-                    endpoint_name = endpoints[0].lower()
-                    # Convert camelCase to snake_case (e.g., studentAssessments -> student_assessments)
-                    import re
-                    endpoint_name = re.sub(r'(?<!^)(?=[A-Z])', '_', endpoint_name).lower()
+                    endpoint_name = endpoints[0]
+                    
+                    # Handle both camelCase and snake_case inputs
+                    if '_' in endpoint_name:
+                        # Already in snake_case, just convert to lowercase
+                        endpoint_name = endpoint_name.lower()
+                    else:
+                        # Convert camelCase to snake_case using edfi_api_client utility
+                        endpoint_name = edfi_api_client.camel_to_snake(endpoint_name)
                     
                     if context['params'].get('minChangeVersionDate'):
                         min_cv = get_change_version_from_date(
