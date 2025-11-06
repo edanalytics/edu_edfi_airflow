@@ -39,7 +39,13 @@ class ObjectStorageBackendRegistry:
         for conn_param in self._backends:
             if conn_param in kwargs:
                 return conn_param, self._backends[conn_param]
-        return None, (None, None)
+        
+        # Raise error if no backend found
+        available_params = list(self._backends.keys())
+        raise ValueError(
+            f"No object storage backend found. "
+            f"One of {available_params} must be provided in kwargs."
+        )
 
 # Global registry instance
 OBJECT_STORAGE_REGISTRY = ObjectStorageBackendRegistry()
@@ -68,21 +74,14 @@ class EdFiToObjectStorageOperator(BaseOperator):
         Storage backends are automatically detected from the registry.
         """
         
-        # Find matching object storage backend from registry
+        # Find matching object storage backend from registry (raises ValueError if not found)
         conn_param, (single_op, bulk_op) = OBJECT_STORAGE_REGISTRY.find_backend_for_kwargs(**kwargs)
         
-        if conn_param:
-            # Use registered storage backend
-            if isinstance(resource, str):
-                return object.__new__(single_op)
-            else:
-                return object.__new__(bulk_op)
-
-        # Local Storage (fallback - could also raise an error for missing storage connection)
+        # Use registered storage backend
         if isinstance(resource, str):
-            return object.__new__(EdFiToObjectStorageOperator)
+            return object.__new__(single_op)
         else:
-            return object.__new__(BulkEdFiToObjectStorageOperator)
+            return object.__new__(bulk_op)
         
 
     def __init__(self,
@@ -122,8 +121,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
                 object_storage_conn_id = s3_conn_id
             elif adls_conn_id is not None:
                 object_storage_conn_id = adls_conn_id
-            else:
-                raise ValueError("One of object_storage_conn_id, s3_conn_id, or adls_conn_id must be provided")
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id
