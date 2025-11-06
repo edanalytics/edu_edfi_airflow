@@ -293,7 +293,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         
         os.makedirs(os.path.dirname(self.tmp_dir), exist_ok=True)  # Create its parent-directory if not extant.
         
-        with tempfile.NamedTemporaryFile('w+b', dir=self.tmp_dir, delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
 
             # Output each page of results as JSONL strings to the output file.
             for page_result in paged_iter:
@@ -305,11 +305,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
             with object_storage.open("wb") as storage_file:
                 storage_file.write(tmp_file.read())
         
-        # Clean up the temporary file
-        try:
-            os.unlink(tmp_file.name)
-        except:
-            pass  # Ignore cleanup errors
                 
         ### Check whether the number of rows returned matched the number expected.
         logging.info(f"    {total_rows} rows were returned for `{resource}`.")
