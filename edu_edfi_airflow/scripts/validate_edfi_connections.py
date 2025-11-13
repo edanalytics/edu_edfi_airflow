@@ -22,18 +22,23 @@ def get_lea_id_with_fallback(client: EdFiClient, expected_lea_id: str) -> Tuple[
     # Step 1: Try token_info
     lea_ids, method = try_token_info(client)
     if len(lea_ids) == 1:
-        return lea_ids[0], f"token_info ({method})"
+        # Only one LEA returned, check if it matches expected
+        if str(expected_lea_id) == lea_ids[0]:
+            return lea_ids[0], f"token_info ({method})"
+        else:
+            return None, f"token_info_mismatch (returned: {lea_ids}, expected: {expected_lea_id})"
+    elif len(lea_ids) > 1:
+        # Multiple LEAs returned, flag as red flag and do not continue
+        return None, f"token_info_multiple_leas (returned: {lea_ids})"
     
     # Step 2: Try LEAs endpoint
     lea_ids, method = try_leas_endpoint(client, expected_lea_id)
     if len(lea_ids) == 1:
         return lea_ids[0], f"leas_endpoint ({method})"
-    
     # Step 3: Try calendars -> schools
     lea_ids, method = try_calendars_schools(client, expected_lea_id)
     if len(lea_ids) == 1:
         return lea_ids[0], f"calendars_schools ({method})"
-    
     return None, "all_methods_failed"
 
 
