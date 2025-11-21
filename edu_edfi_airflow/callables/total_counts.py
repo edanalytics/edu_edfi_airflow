@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional
 
 from airflow.exceptions import AirflowSkipException
 
-from edu_edfi_airflow.callables.database import insert_into_database, run_database_query
+from edu_edfi_airflow.callables.generic_database import insert_into_database, run_database_query
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
