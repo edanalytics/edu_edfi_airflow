@@ -11,9 +11,7 @@ from airflow.models import BaseOperator
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from airflow.io.path import ObjectStoragePath
+from airflow.io.path import ObjectStoragePath
 
 class ObjectStorageToDatabaseOperator(BaseOperator, abc.ABC):
     """

@@ -60,7 +60,8 @@ class EdFiResourceDAG:
         api_year   : int,
 
         edfi_conn_id     : str,
-        s3_conn_id       : Optional[str] = None,
+        s3_conn_id       : Optional[str] = None, # Deprecated, use storage_conn_id
+        object_storage_conn_id  : Optional[str] = None,
         snowflake_conn_id: Optional[str] = None,  # Deprecated, use database_conn_id
         database_conn_id: Optional[str] = None,
 
@@ -96,16 +97,12 @@ class EdFiResourceDAG:
         self.api_year = api_year
 
         self.edfi_conn_id = edfi_conn_id
-        self.s3_conn_id = s3_conn_id
+        self.object_storage_conn_id = object_storage_conn_id or s3_conn_id
         self.database_conn_id = database_conn_id or snowflake_conn_id
         
         # Store additional kwargs for flexible database/storage connections
         self.additional_kwargs = kwargs
         
-        # For registry consistency, also add s3_conn_id to additional_kwargs if provided
-        if s3_conn_id is not None:
-            self.additional_kwargs['s3_conn_id'] = s3_conn_id
-
         self.pool = pool
         self.tmp_dir = tmp_dir
         self.multiyear = multiyear
@@ -152,32 +149,6 @@ class EdFiResourceDAG:
         }
 
         self.dag = EACustomDAG(params=dag_params, user_defined_macros=user_defined_macros, **kwargs)
-
-    def _get_object_storage_conn_params(self):
-        """Helper method to get object storage connection parameters"""
-        # Import here to avoid circular dependency
-        from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import OBJECT_STORAGE_REGISTRY
-        
-        # Find the object storage backend from additional_kwargs (includes s3_conn_id if provided)
-        conn_param, _ = OBJECT_STORAGE_REGISTRY.find_backend_for_kwargs(**self.additional_kwargs)
-        if conn_param:
-            return {conn_param: self.additional_kwargs[conn_param]}
-        
-        return {}
-
-    # def _get_database_conn_params(self):
-    #     """Helper method to get database connection parameters"""
-    #     # Import here to avoid circular dependency
-    #     from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import DATABASE_REGISTRY
-        
-    #     # Find the database backend from additional_kwargs
-    #     conn_param, _ = DATABASE_REGISTRY.find_backend_for_kwargs(**self.additional_kwargs)
-    #     if conn_param:
-    #         return {conn_param: self.additional_kwargs[conn_param]}
-        
-    #     return {}
-
-
 
     # Helper methods for parsing and building DAG endpoint configs.
     def build_endpoint_configs(self, enabled: bool = True, fetch_deletes: bool = True, **kwargs):
@@ -567,14 +538,13 @@ class EdFiResourceDAG:
                 else:
                     min_change_version = None
 
-                storage_params = self._get_object_storage_conn_params()
                 pull_edfi_to_object_storage = BulkEdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
                     resource=endpoint,
 
                     tmp_dir=self.tmp_dir,
-                    **storage_params,
+                    object_storage_conn_id=self.object_storage_conn_id,
                     destination_dir=destination_dir,
                     destination_filename=f"{endpoint}.jsonl",
                     
@@ -705,7 +675,7 @@ class EdFiResourceDAG:
                     edfi_conn_id=self.edfi_conn_id,
 
                     tmp_dir= self.tmp_dir,
-                    **self._get_object_storage_conn_params(),
+                    object_storage_conn_id=self.object_storage_conn_id,
                     destination_dir=destination_dir,
 
                     get_deletes=get_deletes,
@@ -828,7 +798,7 @@ class EdFiResourceDAG:
                 edfi_conn_id=self.edfi_conn_id,
 
                 tmp_dir=self.tmp_dir,
-                **self._get_object_storage_conn_params(),
+                object_storage_conn_id=self.object_storage_conn_id,
                 destination_dir=destination_dir,
                 
                 get_deletes=get_deletes,

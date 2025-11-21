@@ -3,21 +3,15 @@ import logging
 import os
 import tempfile
 
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Union, Type, Tuple
 
 from airflow.hooks.base import BaseHook
 from airflow.io.path import ObjectStoragePath
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 
-
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
-from edu_edfi_airflow.providers.registry import BackendRegistry
-
-
-# Global registry instance
-OBJECT_STORAGE_REGISTRY = BackendRegistry(backend_type="object storage")
 
 
 class EdFiToObjectStorageOperator(BaseOperator):
@@ -37,20 +31,20 @@ class EdFiToObjectStorageOperator(BaseOperator):
         'min_change_version', 'max_change_version', 'enabled_endpoints',
     )
 
-    def __new__(cls, *args, resource: Union[str, List[str]], **kwargs):
-        """
-        Use presence of backend-specific arguments to initialize child class.
-        Storage backends are automatically detected from the registry.
-        """
+    # def __new__(cls, *args, resource: Union[str, List[str]], **kwargs):
+    #     """
+    #     Use presence of backend-specific arguments to initialize child class.
+    #     Storage backends are automatically detected from the registry.
+    #     """
         
-        # Find matching object storage backend from registry (raises ValueError if not found)
-        conn_param, (single_op, bulk_op) = OBJECT_STORAGE_REGISTRY.find_backend_for_kwargs(**kwargs)
+    #     # (single_op, bulk_op) = find_ops_for_conn(kwargs['storage_conn_id'])
+    #     (single_op, bulk_op) = (EdFiToObjectStorageOperator, BulkEdFiToObjectStorageOperator)
         
-        # Use registered storage backend
-        if isinstance(resource, str):
-            return object.__new__(single_op)
-        else:
-            return object.__new__(bulk_op)
+    #     # Use registered storage backend
+    #     if isinstance(resource, str):
+    #         return object.__new__(single_op)
+    #     else:
+    #         return object.__new__(bulk_op)
         
 
     def __init__(self,
@@ -60,8 +54,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         *,
         tmp_dir: str,
         object_storage_conn_id: Optional[str] = None,
-        s3_conn_id: Optional[str] = None,  # Backwards compatibility parameter
-        adls_conn_id: Optional[str] = None,  # Backwards compatibility parameter
         destination_key: Optional[str] = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
         destination_dir: Optional[str] = None,
         destination_filename: Optional[str] = None,
@@ -83,13 +75,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         **kwargs
     ) -> None:
         super(EdFiToObjectStorageOperator, self).__init__(**kwargs)
-
-        # Handle backwards compatibility for connection ID parameters
-        if object_storage_conn_id is None:
-            if s3_conn_id is not None:
-                object_storage_conn_id = s3_conn_id
-            elif adls_conn_id is not None:
-                object_storage_conn_id = adls_conn_id
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id
@@ -118,7 +103,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
         self.enabled_endpoints = enabled_endpoints
 
-        # Save kwargs to pass into get_object_storage()
         self.kwargs = kwargs
 
 
@@ -139,11 +123,12 @@ class EdFiToObjectStorageOperator(BaseOperator):
 
         # Build the object storage based on passed arguments.
         # Note: this logic is overridden in each of the child classes.
-        object_storage = self.get_object_storage(
-            conn_id=self.object_storage_conn_id, destination_key=self.destination_key,
+        object_storage, clean_url = self.get_object_storage(
+            object_storage_conn_id=self.object_storage_conn_id, destination_key=self.destination_key,
             destination_dir=self.destination_dir, destination_filename=self.destination_filename,
             **self.kwargs
         )
+
         edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
 
         self.pull_edfi_to_object_storage(
@@ -154,17 +139,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
             query_parameters=self.query_parameters, object_storage=object_storage
         )
 
-        # Extract the actual container name from the bucket (which contains conn_id@container)
-        # object_storage.bucket is "adls_data_lake@grandbend-datalake", we want just "grandbend-datalake"
-        container_name = object_storage.bucket.split('@')[-1] if '@' in object_storage.bucket else object_storage.bucket
-        
-        # Get storage account from connection for the full ADLS URL
-        from airflow.hooks.base import BaseHook
-        adls_conn = BaseHook.get_connection(self.object_storage_conn_id)
-        storage_account = adls_conn.host
-        
-        # Return full ADLS URL format for XCom (container@storage-account.dfs.core.windows.net)
-        clean_url = f"abfs://{container_name}@{storage_account}.dfs.core.windows.net/{object_storage.key}"
+        # Return the clean URL string (not ObjectStoragePath) for downstream operators
+        # ObjectStoragePath mangles the URL when conn_id is passed, so extract the original path
         return (self.resource, clean_url)
 
 
@@ -205,8 +181,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
 
     @classmethod
     def get_object_storage(cls,
+        object_storage_conn_id: str,
         destination_key: Optional[str] = None,
-        *,
         destination_dir: Optional[str] = None,
         destination_filename: Optional[str] = None,
         **kwargs
@@ -215,6 +191,9 @@ class EdFiToObjectStorageOperator(BaseOperator):
         Infer object storage destination path by passed arguments.
         Build destination key from directory and filename if undefined.
         Retrieve bucket name from connection schema if undefined.
+        
+        Note: This method handles both S3 and ADLS in a single implementation.
+        For a mixin-based approach, see S3MixinV2 and ADLSMixinV2 at bottom of file.
         """
         # Optionally set destination key by concatting separate args for dir and filename
         if not destination_key and not (destination_dir and destination_filename):
@@ -225,7 +204,44 @@ class EdFiToObjectStorageOperator(BaseOperator):
         if not destination_key:
             destination_key = os.path.join(destination_dir, destination_filename)
 
-        return ObjectStoragePath(destination_key)
+        # Get connection to determine storage type
+        conn = BaseHook.get_connection(object_storage_conn_id)
+        print(conn.conn_type)
+        
+        if conn.conn_type == 'adls':
+            # ADLS: Use Airflow's internal format with conn_id embedded in URL
+            # Format: abfs://conn_id@container/path
+            # Airflow will extract conn_id and use it to get credentials
+            container = conn.schema
+            account_name = conn.host
+            
+            if not container:
+                raise ValueError(f"Container name not found in connection {object_storage_conn_id}")
+            
+            # Internal format for ObjectStoragePath - embed conn_id in URL
+            internal_storage_path = f"abfs://{object_storage_conn_id}@{container}/{destination_key}"
+            
+            # Clean URL format for downstream operators (database loading)
+            clean_storage_path = f"abfs://{container}@{account_name}.dfs.core.windows.net/{destination_key}"
+                
+        #TODO faulty assumption that all http connections are S3.. needs to be updated to support other object storage types.
+        elif conn.conn_type == 'http':
+            # S3 path format: s3://bucket/path
+            bucket = conn.schema
+            
+            if not bucket:
+                raise ValueError(f"Bucket name not found in connection {object_storage_conn_id}")
+            
+            # For S3, both formats are the same
+            internal_storage_path = f"s3://{bucket}/{destination_key}"
+            clean_storage_path = internal_storage_path
+            
+        else:
+            raise ValueError(f"Unsupported connection type: {conn.conn_type}")
+
+        # Create ObjectStoragePath with internal format (Airflow extracts conn_id from URL)
+        # Return both the ObjectStoragePath and the clean URL for downstream use
+        return (ObjectStoragePath(internal_storage_path), clean_storage_path)
 
 
     def pull_edfi_to_object_storage(self,
@@ -381,9 +397,8 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
             self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
             # Build the object storage based on passed arguments.
-            # Note: this logic is overridden in each of the child classes.
-            object_storage = self.get_object_storage(
-                conn_id=self.object_storage_conn_id,
+            object_storage, clean_url = self.get_object_storage(
+                object_storage_conn_id=self.object_storage_conn_id,
                 destination_dir=self.destination_dir, destination_filename=destination_filename,
                 **self.kwargs
             )
@@ -397,16 +412,7 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
                     min_change_version=min_change_version, max_change_version=self.max_change_version,
                     query_parameters=query_parameters, object_storage=object_storage
                 )
-                # Extract the actual container name from the bucket (which contains conn_id@container)
-                container_name = object_storage.bucket.split('@')[-1] if '@' in object_storage.bucket else object_storage.bucket
-                
-                # Get storage account from connection for the full ADLS URL
-                from airflow.hooks.base import BaseHook
-                adls_conn = BaseHook.get_connection(self.object_storage_conn_id)
-                storage_account = adls_conn.host
-                
-                # Return full ADLS URL format for XCom (container@storage-account.dfs.core.windows.net)
-                clean_url = f"abfs://{container_name}@{storage_account}.dfs.core.windows.net/{object_storage.key}"
+                # Return the clean URL string (not ObjectStoragePath) for downstream operators
                 return_tuples.append((resource, clean_url))
 
             except AirflowSkipException:
@@ -433,86 +439,117 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
         return return_tuples
 
 
-class S3Mixin:
-    def __init__(self, *args, s3_conn_id: str, **kwargs) -> None:
-        super(S3Mixin, self).__init__(*args, object_storage_conn_id=s3_conn_id, **kwargs)
-
-    @classmethod
-    def get_object_storage(cls,
-        conn_id: Optional[str],
-        *args,
-        bucket_name: Optional[str] = None,
-        **kwargs
-    ) -> ObjectStoragePath:
-        """
-        Retrieve bucket name from connection schema if undefined.
-        """
-        destination_key = super().get_object_storage(*args, **kwargs).key
-
-        # Infer bucket name from schema if not specified (internal standard that must be maintained during connection setup)
-        if not bucket_name:
-            bucket_name = BaseHook.get_connection(conn_id).schema
-        
-        full_destination_key = f"s3://{bucket_name}/{destination_key}"
-        return ObjectStoragePath(full_destination_key, conn_id=conn_id)
-
-class EdFiToS3Operator(EdFiToObjectStorageOperator, S3Mixin):
-    pass
-
-class BulkEdFiToS3Operator(BulkEdFiToObjectStorageOperator, S3Mixin):
-    pass
 
 
+# ============================================================================
+# UPDATED MIXIN APPROACH (2025-11-21)
+# Alternative implementation that matches current base class logic.
+# Uncomment these to use mixins instead of if/else in get_object_storage()
+# ============================================================================
 
-class ADLSMixin:
-    def __init__(self, *args, adls_conn_id: str, **kwargs) -> None:
-        super(ADLSMixin, self).__init__(*args, object_storage_conn_id=adls_conn_id, **kwargs)
+# class S3MixinV2:
+#     """
+#     Updated S3 mixin that creates ObjectStoragePath with conn_id.
+#     Returns tuple of (ObjectStoragePath, clean_url) for downstream operators.
+#     """
+#     def __init__(self, *args, s3_conn_id: str, **kwargs) -> None:
+#         super(S3MixinV2, self).__init__(*args, object_storage_conn_id=s3_conn_id, **kwargs)
+# 
+#     @classmethod
+#     def get_object_storage(cls,
+#         object_storage_conn_id: Optional[str],
+#         destination_key: Optional[str] = None,
+#         destination_dir: Optional[str] = None,
+#         destination_filename: Optional[str] = None,
+#         **kwargs
+#     ):
+#         """Build S3 path and return ObjectStoragePath with clean URL."""
+#         # Build destination_key if not provided
+#         if not destination_key:
+#             if not destination_dir or not destination_filename:
+#                 raise ValueError("Must provide destination_key or both destination_dir and destination_filename")
+#             destination_key = os.path.join(destination_dir, destination_filename)
+#         
+#         # Get connection to extract bucket
+#         conn = BaseHook.get_connection(object_storage_conn_id)
+#         bucket = conn.schema
+#         
+#         if not bucket:
+#             raise ValueError(f"Bucket name not found in connection {object_storage_conn_id}")
+#         
+#         # S3 format: same for both internal and external use
+#         storage_path = f"s3://{bucket}/{destination_key}"
+#         
+#         return (ObjectStoragePath(storage_path, conn_id=object_storage_conn_id), storage_path)
 
-    @classmethod
-    def get_object_storage(cls,
-        conn_id: Optional[str],
-        *args,
-        adls_container: Optional[str] = None,
-        adls_storage_account: Optional[str] = None,
-        **kwargs
-    ) -> ObjectStoragePath:
-        """
-        Retrieve container and storage account from connection if not specified.
-        """
-        destination_key = super().get_object_storage(*args, **kwargs).key
 
-        # Get connection to extract storage account and container
-        connection = BaseHook.get_connection(conn_id)
-        
-        # Infer container name from schema if not specified
-        if not adls_container:
-            adls_container = connection.schema
-        
-        # Extract storage account from host if not specified
-        if not adls_storage_account:
-            # Host is just the storage account name
-            adls_storage_account = connection.host
-        
-        # Use abfs:// scheme for ADLS Gen2 with the microsoft.azure provider
-        # Include conn_id in the URL so Airflow can extract it via _transform_init_args
-        full_destination_key = f"abfs://{conn_id}@{adls_container}/{destination_key}"
-        
-        try:
-            # Don't pass conn_id as parameter - let Airflow extract it from the URL
-            return ObjectStoragePath(full_destination_key)
-        except Exception as e:
-            logging.error(f"Failed to create ADLS ObjectStoragePath with key '{full_destination_key}': {e}")
-            raise
+# class ADLSMixinV2:
+#     """
+#     Updated ADLS mixin that embeds conn_id in URL (Airflow pattern).
+#     Returns tuple of (ObjectStoragePath, clean_url) for downstream operators.
+#     """
+#     def __init__(self, *args, adls_conn_id: str, **kwargs) -> None:
+#         super(ADLSMixinV2, self).__init__(*args, object_storage_conn_id=adls_conn_id, **kwargs)
+# 
+#     @classmethod
+#     def get_object_storage(cls,
+#         object_storage_conn_id: Optional[str],
+#         destination_key: Optional[str] = None,
+#         destination_dir: Optional[str] = None,
+#         destination_filename: Optional[str] = None,
+#         **kwargs
+#     ):
+#         """Build ADLS paths and return ObjectStoragePath with clean URL."""
+#         # Build destination_key if not provided
+#         if not destination_key:
+#             if not destination_dir or not destination_filename:
+#                 raise ValueError("Must provide destination_key or both destination_dir and destination_filename")
+#             destination_key = os.path.join(destination_dir, destination_filename)
+#         
+#         # Get connection to extract container and storage account
+#         conn = BaseHook.get_connection(object_storage_conn_id)
+#         container = conn.schema
+#         account_name = conn.host
+#         
+#         if not container:
+#             raise ValueError(f"Container name not found in connection {object_storage_conn_id}")
+#         
+#         # Internal format: embed conn_id in URL so Airflow can extract it
+#         internal_storage_path = f"abfs://{object_storage_conn_id}@{container}/{destination_key}"
+#         
+#         # Clean format: full Azure URL for downstream operators
+#         clean_storage_path = f"abfs://{container}@{account_name}.dfs.core.windows.net/{destination_key}"
+#         
+#         return (ObjectStoragePath(internal_storage_path), clean_storage_path)
+
+
+# # Operator classes using updated mixins
+# class EdFiToS3OperatorV2(S3MixinV2, EdFiToObjectStorageOperator):
+#     pass
+
+# class BulkEdFiToS3OperatorV2(S3MixinV2, BulkEdFiToObjectStorageOperator):
+#     pass
+
+# class EdFiToADLSOperatorV2(ADLSMixinV2, EdFiToObjectStorageOperator):
+#     pass
+
+# class BulkEdFiToADLSOperatorV2(ADLSMixinV2, BulkEdFiToObjectStorageOperator):
+#     pass
+
+
+# def find_ops_for_conn(storage_conn_id: str) -> Tuple[Type[EdFiToObjectStorageOperator], Type[EdFiToObjectStorageOperator]]:
+#     """
+#     Find the operators for a given storage connection ID.
     
-
-
-class EdFiToADLSOperator(ADLSMixin, EdFiToObjectStorageOperator):
-    pass
-
-class BulkEdFiToADLSOperator(ADLSMixin, BulkEdFiToObjectStorageOperator):
-    pass
-
-
-# Register object storage backends
-OBJECT_STORAGE_REGISTRY.register('s3_conn_id', EdFiToS3Operator, BulkEdFiToS3Operator)
-OBJECT_STORAGE_REGISTRY.register('adls_conn_id', EdFiToADLSOperator, BulkEdFiToADLSOperator)
+#     Note: This function is not currently used since we removed the __new__ factory pattern.
+#     If you uncomment the V2 mixins above, you would also need to:
+#     1. Uncomment the __new__ method in EdFiToObjectStorageOperator
+#     2. Update the return statements below to use V2 operators
+#     """
+#     connection = Connection.get_connection_from_secrets(storage_conn_id)
+#     if connection.conn_type == 'aws':
+#         return EdFiToS3Operator, BulkEdFiToS3Operator  # Or: EdFiToS3OperatorV2, BulkEdFiToS3OperatorV2
+#     elif connection.conn_type == 'adls':
+#         return EdFiToADLSOperator, BulkEdFiToADLSOperator  # Or: EdFiToADLSOperatorV2, BulkEdFiToADLSOperatorV2
+#     else:
+#         raise ValueError(f"Unsupported storage type: {connection.conn_type}")
