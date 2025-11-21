@@ -3,9 +3,8 @@ import logging
 from typing import Dict, List, Tuple, Optional
 
 from airflow.exceptions import AirflowSkipException, AirflowFailException
-from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
-from edu_edfi_airflow.callables.snowflake import insert_into_snowflake
+from edu_edfi_airflow.callables.database import insert_into_database, run_database_query
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
@@ -35,8 +34,8 @@ def reset_change_versions(
     api_year    : int,
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
 
     **kwargs
 ) -> None:
@@ -44,9 +43,10 @@ def reset_change_versions(
     if not airflow_util.is_full_refresh(kwargs):
         raise AirflowSkipException(f"Full refresh not specified. Change version table `{change_version_table}` unchanged.")
 
+
     ### Prepare the SQL query.
-    # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_database_params_from_conn(snowflake_conn_id, 'extra__snowflake__database')
+    # Retrieve the database and schema from the database connection
+    database, schema = airflow_util.get_database_params_from_conn(database_conn_id)
 
     # Reset all resources in this tenant-year.
     qry_mark_inactive = f"""
@@ -61,9 +61,9 @@ def reset_change_versions(
     if config_endpoints := airflow_util.get_config_endpoints(kwargs):
         qry_mark_inactive += "    and name in ('{}')".format("', '".join(config_endpoints))
 
-    ### Connect to Snowflake and execute the query.
+    ### Connect to database and execute the query.
     logging.info("Full refresh: marking previous pulls inactive.")
-    SnowflakeHook(snowflake_conn_id).run(qry_mark_inactive)
+    run_database_query(database_conn_id, qry_mark_inactive, **kwargs)
 
 
 def get_previous_change_versions(
@@ -72,8 +72,8 @@ def get_previous_change_versions(
     endpoints: List[Tuple[str, str]],
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
@@ -98,11 +98,12 @@ def get_previous_change_versions(
     if airflow_util.is_full_refresh(context) and (get_deletes or get_key_changes):
         raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
 
-    logging.info("Retrieving max previously-ingested change versions from Snowflake.")
+
+    logging.info("Retrieving max previously-ingested change versions from database.")
 
     ### Prepare the SQL query.
-    # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_database_params_from_conn(snowflake_conn_id, 'extra__snowflake__database')
+    # Retrieve the database and schema from the database connection
+    database, schema = airflow_util.get_database_params_from_conn(database_conn_id)
 
     # Retrieve the previous max change versions for this tenant-year.
     if get_deletes:
@@ -123,7 +124,7 @@ def get_previous_change_versions(
     """
 
     ### Retrieve previous endpoint-level change versions and push as an XCom.
-    prior_change_versions = dict(SnowflakeHook(snowflake_conn_id).get_records(qry_prior_max))
+    prior_change_versions = dict(run_database_query(database_conn_id, qry_prior_max, **context))
     logging.info(
         f"Collected prior change versions for {len(prior_change_versions)} endpoints."
     )
@@ -145,8 +146,8 @@ def get_previous_change_versions_with_deltas(
     endpoints: List[Tuple[str, str]],
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
 
     edfi_conn_id: Optional[str],
     max_change_version: Optional[int],
@@ -161,7 +162,8 @@ def get_previous_change_versions_with_deltas(
     """
     return_tuples = get_previous_change_versions(
         tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
-        snowflake_conn_id=snowflake_conn_id, change_version_table=change_version_table,
+        database_conn_id=database_conn_id,
+        change_version_table=change_version_table,
         get_deletes=get_deletes, get_key_changes=get_key_changes,
         **context
     )
@@ -231,8 +233,8 @@ def update_change_versions(
     api_year   : int,
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
     
     edfi_change_version: int,
     endpoints: List[str],
@@ -284,11 +286,12 @@ def update_change_versions(
 
         rows_to_insert.append(row)
 
-    insert_into_snowflake(
-        snowflake_conn_id=snowflake_conn_id,
+    insert_into_database(
+        database_conn_id=database_conn_id,
         table_name=change_version_table,
         columns=columns,
-        values=rows_to_insert
+        values=rows_to_insert,
+        **kwargs
     )
 
     return True

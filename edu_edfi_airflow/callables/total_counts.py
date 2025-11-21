@@ -1,11 +1,10 @@
 import logging
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from airflow.exceptions import AirflowSkipException
-from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
-from edu_edfi_airflow.callables.snowflake import insert_into_snowflake
+from edu_edfi_airflow.callables.database import insert_into_database, run_database_query
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
@@ -69,7 +68,7 @@ def delete_total_counts(
     api_year    : int,
 
     *,
-    snowflake_conn_id: str,
+    database_conn_id: Optional[str] = None,
     total_counts_table: str,
 
     **kwargs
@@ -79,8 +78,8 @@ def delete_total_counts(
         raise AirflowSkipException(f"Full refresh not specified. Total counts table `{total_counts_table}` unchanged.")
 
     ### Prepare the SQL query.
-    # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_database_params_from_conn(snowflake_conn_id, 'extra__snowflake__database')
+    # Retrieve the database and schema from the database connection
+    database, schema = airflow_util.get_database_params_from_conn(database_conn_id)
 
     qry_delete = f"""
         DELETE FROM {database}.{schema}.{total_counts_table}
@@ -88,9 +87,9 @@ def delete_total_counts(
         AND api_year = '{api_year}'
     """
 
-    ### Connect to Snowflake and execute the query.
+    ### Connect to database and execute the query.
     logging.info("Full refresh: deleting data from previous pulls.")
-    SnowflakeHook(snowflake_conn_id).run(qry_delete)
+    run_database_query(database_conn_id, qry_delete, **kwargs)
 
 
 def insert_total_counts(
@@ -98,7 +97,7 @@ def insert_total_counts(
     api_year   : int,
 
     *,
-    snowflake_conn_id: str,
+    database_conn_id: Optional[str] = None,
     total_counts_table: str,
     endpoint_counts: List[Tuple[str, int]],
 
@@ -128,11 +127,12 @@ def insert_total_counts(
         ]
         rows_to_insert.append(row)
 
-    insert_into_snowflake(
-        snowflake_conn_id=snowflake_conn_id,
+    insert_into_database(
+        database_conn_id=database_conn_id,
         table_name=total_counts_table,
         columns=columns,
-        values=rows_to_insert
+        values=rows_to_insert,
+        **kwargs
     )
 
     return True

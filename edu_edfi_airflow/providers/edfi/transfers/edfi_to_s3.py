@@ -13,42 +13,11 @@ from airflow.exceptions import AirflowSkipException, AirflowFailException
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
+from edu_edfi_airflow.providers.registry import BackendRegistry
 
-
-
-
-class ObjectStorageBackendRegistry:
-    """Registry for object storage backend operators"""
-    def __init__(self):
-        self._backends = {}
-    
-    def register(self, conn_param: str, single_operator, bulk_operator):
-        """Register an object storage backend with its connection parameter and operators"""
-        self._backends[conn_param] = (single_operator, bulk_operator)
-    
-    def get_operators(self, conn_param: str):
-        """Get the operators for a given connection parameter"""
-        return self._backends.get(conn_param)
-    
-    def get_registered_conn_params(self):
-        """Get all registered connection parameters"""
-        return self._backends.keys()
-    
-    def find_backend_for_kwargs(self, **kwargs):
-        """Find the first matching object storage backend from kwargs"""
-        for conn_param in self._backends:
-            if conn_param in kwargs:
-                return conn_param, self._backends[conn_param]
-        
-        # Raise error if no backend found
-        available_params = list(self._backends.keys())
-        raise ValueError(
-            f"No object storage backend found. "
-            f"One of {available_params} must be provided in kwargs."
-        )
 
 # Global registry instance
-OBJECT_STORAGE_REGISTRY = ObjectStorageBackendRegistry()
+OBJECT_STORAGE_REGISTRY = BackendRegistry(backend_type="object storage")
 
 
 class EdFiToObjectStorageOperator(BaseOperator):
@@ -185,7 +154,18 @@ class EdFiToObjectStorageOperator(BaseOperator):
             query_parameters=self.query_parameters, object_storage=object_storage
         )
 
-        return (self.resource, object_storage)
+        # Extract the actual container name from the bucket (which contains conn_id@container)
+        # object_storage.bucket is "adls_data_lake@grandbend-datalake", we want just "grandbend-datalake"
+        container_name = object_storage.bucket.split('@')[-1] if '@' in object_storage.bucket else object_storage.bucket
+        
+        # Get storage account from connection for the full ADLS URL
+        from airflow.hooks.base import BaseHook
+        adls_conn = BaseHook.get_connection(self.object_storage_conn_id)
+        storage_account = adls_conn.host
+        
+        # Return full ADLS URL format for XCom (container@storage-account.dfs.core.windows.net)
+        clean_url = f"abfs://{container_name}@{storage_account}.dfs.core.windows.net/{object_storage.key}"
+        return (self.resource, clean_url)
 
 
     @staticmethod
@@ -417,7 +397,17 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
                     min_change_version=min_change_version, max_change_version=self.max_change_version,
                     query_parameters=query_parameters, object_storage=object_storage
                 )
-                return_tuples.append((resource, object_storage))
+                # Extract the actual container name from the bucket (which contains conn_id@container)
+                container_name = object_storage.bucket.split('@')[-1] if '@' in object_storage.bucket else object_storage.bucket
+                
+                # Get storage account from connection for the full ADLS URL
+                from airflow.hooks.base import BaseHook
+                adls_conn = BaseHook.get_connection(self.object_storage_conn_id)
+                storage_account = adls_conn.host
+                
+                # Return full ADLS URL format for XCom (container@storage-account.dfs.core.windows.net)
+                clean_url = f"abfs://{container_name}@{storage_account}.dfs.core.windows.net/{object_storage.key}"
+                return_tuples.append((resource, clean_url))
 
             except AirflowSkipException:
                 continue
@@ -504,10 +494,12 @@ class ADLSMixin:
             adls_storage_account = connection.host
         
         # Use abfs:// scheme for ADLS Gen2 with the microsoft.azure provider
-        full_destination_key = f"abfs://{adls_container}/{destination_key}"
+        # Include conn_id in the URL so Airflow can extract it via _transform_init_args
+        full_destination_key = f"abfs://{conn_id}@{adls_container}/{destination_key}"
         
         try:
-            return ObjectStoragePath(full_destination_key, conn_id=conn_id)
+            # Don't pass conn_id as parameter - let Airflow extract it from the URL
+            return ObjectStoragePath(full_destination_key)
         except Exception as e:
             logging.error(f"Failed to create ADLS ObjectStoragePath with key '{full_destination_key}': {e}")
             raise

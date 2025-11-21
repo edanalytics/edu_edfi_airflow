@@ -111,25 +111,27 @@ def xcom_pull_template(
     return '{{ ' + xcom_string + ' }}'
 
 
-def get_database_params_from_conn(conn_id: str, extra_params: str) -> Tuple[str, str]:
-
-    undefined_connection_error = ValueError(
-        f"Unable to parse database connection: `{extra_params}` and `schema` must be defined within `{conn_id}`."
-    )
-
+def get_database_params_from_conn(conn_id: str) -> Tuple[str, str]:
+    """
+    Extract database and schema parameters from an Airflow connection.
+    """
+    
     try:
         conn = Connection.get_connection_from_secrets(conn_id)
-
-        database = conn.extra_dejson[extra_params]
+        database = conn.extra_dejson[f'extra__{conn.conn_type}__database']
         schema   = conn.schema
 
         if database is None or schema is None:
-            raise undefined_connection_error
+            raise ValueError(
+                f"Unable to parse database connection: `extra__{conn.conn_type}__database` and `schema` must be defined within `{conn_id}`."
+            )
 
         return database, schema
 
     except KeyError:
-        raise undefined_connection_error
+        raise ValueError(
+            f"Unable to parse database connection: `{conn_id}` must be defined within Airflow."
+        )
 
 
 def fail_if_any_task_failed(**context):

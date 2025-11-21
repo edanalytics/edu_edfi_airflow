@@ -19,7 +19,7 @@ from ea_airflow_util import EACustomDAG
 from edu_edfi_airflow.callables.s3 import local_filepath_to_s3, remove_filepaths, check_for_key
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
-from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
+from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import ObjectStorageToDatabaseOperator
 
 
 class EarthbeamDAG:
@@ -923,7 +923,7 @@ class EarthbeamDAG:
                 else:
                     table_name = snake_endpoint
 
-                sideload_op = S3ToSnowflakeOperator(
+                sideload_op = ObjectStorageToDatabaseOperator(
                     task_id=f"copy_s3_to_snowflake__{camel_endpoint}",
 
                     tenant_code=tenant_code,
