@@ -19,7 +19,7 @@ from ea_airflow_util import EACustomDAG
 from edu_edfi_airflow.callables.s3 import local_filepath_to_s3, remove_filepaths, check_for_key
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
-from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import ObjectStorageToDatabaseOperator
+from edu_edfi_airflow.providers.generic.transfers.object_storage_to_database import ObjectStorageToDatabaseOperator
 
 
 class EarthbeamDAG:

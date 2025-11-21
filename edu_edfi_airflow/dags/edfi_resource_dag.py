@@ -13,9 +13,9 @@ from ea_airflow_util import update_variable
 from edfi_api_client import camel_to_snake
 
 from edu_edfi_airflow.callables import airflow_util, change_version, total_counts
-from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToObjectStorageOperator, BulkEdFiToObjectStorageOperator
+from edu_edfi_airflow.providers.generic.transfers.edfi_to_object_storage import EdFiToObjectStorageOperator, BulkEdFiToObjectStorageOperator
 # Generic database operator - will be determined by connection parameters
-from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import BulkObjectStorageToDatabaseOperator
+from edu_edfi_airflow.providers.generic.transfers.object_storage_to_database import BulkObjectStorageToDatabaseOperator
 
 
 class EdFiResourceDAG:
