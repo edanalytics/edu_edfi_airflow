@@ -10,16 +10,10 @@ from airflow.models import BaseOperator
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
-# from edu_edfi_airflow.providers.registry import BackendRegistry
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from airflow.io.path import ObjectStoragePath
-
-
-# Global registry instance
-# DATABASE_REGISTRY = BackendRegistry(backend_type="database")
-
 
 class ObjectStorageToDatabaseOperator(BaseOperator, abc.ABC):
     """
@@ -78,19 +72,6 @@ class ObjectStorageToDatabaseOperator(BaseOperator, abc.ABC):
 
         self.database_conn_id = database_conn_id
         
-        # # Convert destination_key to object_storage if needed
-        # if object_storage is None and destination_key is not None:
-        #     from airflow.io.path import ObjectStoragePath
-        #     # Handle both single destination_key and list of destination_keys (for bulk operations)
-        #     if isinstance(destination_key, list):
-        #         self.object_storage = [ObjectStoragePath(key) for key in destination_key]
-        #     else:
-        #         self.object_storage = ObjectStoragePath(destination_key)
-        # elif object_storage is not None:
-        #     self.object_storage = object_storage
-        # else:
-        #     raise ValueError("Either 'object_storage' or 'destination_key' must be provided")
-
         # Store both parameters - will be resolved in execute()
         self.object_storage = object_storage
         self.destination_key = destination_key
