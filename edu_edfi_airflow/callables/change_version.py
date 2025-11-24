@@ -2,10 +2,10 @@ import logging
 
 from typing import Dict, List, Tuple, Optional
 
-from airflow.exceptions import AirflowSkipException, AirflowFailException
+from airflow.exceptions import AirflowSkipException
 
-from edu_edfi_airflow.callables.generic_database import insert_into_database, run_database_query
 from edu_edfi_airflow.callables import airflow_util
+from edu_edfi_airflow.mixins.database import DatabaseMixin
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -63,7 +63,7 @@ def reset_change_versions(
 
     ### Connect to database and execute the query.
     logging.info("Full refresh: marking previous pulls inactive.")
-    run_database_query(database_conn_id, qry_mark_inactive, **kwargs)
+    DatabaseMixin(database_conn_id).query_database(qry_mark_inactive, **kwargs)
 
 
 def get_previous_change_versions(
@@ -124,7 +124,9 @@ def get_previous_change_versions(
     """
 
     ### Retrieve previous endpoint-level change versions and push as an XCom.
-    prior_change_versions = dict(run_database_query(database_conn_id, qry_prior_max, **context))
+    prior_change_versions = DatabaseMixin(database_conn_id).query_database(qry_prior_max, **context)
+    prior_change_versions = dict(prior_change_versions)
+    
     logging.info(
         f"Collected prior change versions for {len(prior_change_versions)} endpoints."
     )
@@ -285,9 +287,8 @@ def update_change_versions(
             row.append(get_key_changes)
 
         rows_to_insert.append(row)
-
-    insert_into_database(
-        database_conn_id=database_conn_id,
+    
+    DatabaseMixin(database_conn_id).insert_into_database(
         table_name=change_version_table,
         columns=columns,
         values=rows_to_insert,

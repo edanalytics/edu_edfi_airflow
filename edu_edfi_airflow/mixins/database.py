@@ -1,4 +1,5 @@
 import abc
+import logging
 
 from airflow.hooks.base import BaseHook
 
@@ -27,7 +28,15 @@ class DatabaseMixin(abc.ABC):
         self.database, self.schema = airflow_util.get_database_params_from_conn(database_conn_id)
 
     @abc.abstractmethod
-    def run_sql_queries(self, queries: List[str]):
+    def query_database(self, sql: str, **kwargs):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def run_sql_queries(self, sql: List[str], **kwargs):
+        raise NotImplementedError
+    
+    @abc.abstractmethod
+    def insert_into_database(self, table: str, columns: List[str], values: List[str], **kwargs):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -52,11 +61,39 @@ class DatabaseMixin(abc.ABC):
 
 class SnowflakeDatabaseMixin(DatabaseMixin):
 
-    def run_sql_queries(self, sql: List[str]):
+    def query_database(self, sql: str, **kwargs):
+        """Run query on Snowflake and return results."""
+        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=self.database_conn_id)
+        return snowflake_hook.get_records(sql)
+
+    def run_sql_queries(self, sql: List[str], **kwargs):
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
         snowflake_hook = SnowflakeHook(self.database_conn_id)
         snowflake_hook.run(sql=sql, autocommit=False)
     
+    def insert_into_database(self, table: str, columns: List[str], values: List[list], **kwargs):
+        """Insert into Snowflake database."""
+        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+        
+        # Force a single record into a list for iteration below.
+        if not all(isinstance(val, (list, tuple)) for val in values):
+            values = [values]
+
+        # Retrieve the database and schema from the Snowflake hook.
+        logging_string = f"Inserting the following values into Snowflake table `{self.database}.{self.schema}.{table}`\nCols: {columns}\n"
+        for idx, value in enumerate(values, start=1):
+            logging_string += f"   {idx}: {value}\n"
+        logging.info(logging_string)
+
+        snowflake_hook = SnowflakeHook(snowflake_conn_id=self.database_conn_id)
+        snowflake_hook.insert_rows(
+            table=f"{self.database}.{self.schema}.{table}",
+            rows=values,
+            target_fields=columns,
+        )
+
+    # SQL Queries
     def build_delete_query(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
         if not isinstance(name, str):
@@ -129,12 +166,61 @@ class SnowflakeDatabaseMixin(DatabaseMixin):
             force = true;
         """
 
-class DatabricksDatabaseMixin:
-    def run_sql_queries(self, sql: List[str]):
+class DatabricksDatabaseMixin(DatabaseMixin):
+
+    def query_database(self, sql: str, **kwargs):
+        """Run query on Databricks and return results."""
+        from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
+        databricks_hook = DatabricksSqlHook(self.database_conn_id)
+        return databricks_hook.get_records(sql)
+
+    def run_sql_queries(self, sql: List[str], **kwargs):
         from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
         databricks_hook = DatabricksSqlHook(self.database_conn_id)
         databricks_hook.run(sql=sql, autocommit=False)
     
+    def insert_into_database(self, table: str, columns: List[str], values: List[list], **kwargs):
+        """Insert into Databricks database."""
+        from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
+        
+        # Force a single record into a list for iteration below.
+        if not all(isinstance(val, (list, tuple)) for val in values):
+            values = [values]
+
+        logging_string = f"Inserting the following values into Databricks table `{self.database}.{self.schema}.{table}`\nCols: {columns}\n"
+        for idx, value in enumerate(values, start=1):
+            logging_string += f"   {idx}: {value}\n"
+        logging.info(logging_string)
+
+        # Build INSERT SQL statement
+        full_table_name = f"{self.database}.{self.schema}.{table}"
+        columns_str = ", ".join(columns)
+        
+        # Build VALUES clauses for all rows
+        insert_statements = []
+        for row in values:
+            # Escape and quote string values, handle None/NULL values
+            escaped_values = []
+            for val in row:
+                if val is None:
+                    escaped_values.append("NULL")
+                elif isinstance(val, str):
+                    # Escape single quotes by doubling them
+                    escaped_val = val.replace("'", "''")
+                    escaped_values.append(f"'{escaped_val}'")
+                elif isinstance(val, bool):
+                    escaped_values.append("TRUE" if val else "FALSE")
+                else:
+                    escaped_values.append(str(val))
+            
+            values_str = ", ".join(escaped_values)
+            insert_statements.append(f"INSERT INTO {full_table_name} ({columns_str}) VALUES ({values_str})")
+
+        # Execute all insert statements
+        databricks_hook = DatabricksSqlHook(self.database_conn_id)
+        databricks_hook.run(sql=insert_statements, autocommit=True)
+
+    # SQL Queries
     def build_delete_query(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
         if not isinstance(name, str):
