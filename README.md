@@ -572,28 +572,6 @@ Extends `BashOperator` to run Lightbeam with optional CLI arguments.
 
 ## Callables
 
-### insert_into_snowflake
-Generic callable to insert a list of rows into a specified Snowflake table.
-This callable utilizes `SnowflakeHook.insert_rows()`.
-
-Note: this method requires the length of `columns` to match the length of each row being inserted in `values`.
-
-<details>
-<summary>Arguments:</summary>
-
-| Argument          | Description                                                                         |
-|:------------------|:------------------------------------------------------------------------------------|
-| snowflake_conn_id | Name of the Airflow connection where Snowflake connection metadata has been defined |
-| table_name        | Name of the table to insert rows into                                               |
-| columns           | Name of the columns to insert                                                       |
-| values            | A single row or list of rows to insert                                              |
-
------
-
-</details>
-
-
-
 ### local_filepath_to_s3
 Generic callable to upload files within a local filepath to a specified S3 bucket and key.
 This callable works on either a single file or a directory of files.
