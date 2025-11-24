@@ -1,4 +1,5 @@
 # Adding New Object Storage and Database Support
+The edfi_resource_dag can currently support loading to datalakes in S3 or Azure Data Lake Storage, and loading to databases in Snowflake or Databricks. To add more storage options, see instructions below.
 
 ## Adding Object Storage Support
 
