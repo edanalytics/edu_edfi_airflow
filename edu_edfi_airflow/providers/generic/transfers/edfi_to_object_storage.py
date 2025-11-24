@@ -36,7 +36,7 @@ class EdFiToObjectStorageOperator(BaseOperator, ObjectStorageMixin):
 
         *,
         tmp_dir: str,
-        object_storage_conn_id: Optional[str] = None,    # Used in ObjectStorageMixin
+        object_storage_conn_id: Optional[str] = None,  # Used in ObjectStorageMixin
         destination_key: Optional[str] = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
         destination_dir: Optional[str] = None,
         destination_filename: Optional[str] = None,
@@ -57,7 +57,7 @@ class EdFiToObjectStorageOperator(BaseOperator, ObjectStorageMixin):
 
         **kwargs
     ) -> None:
-        super(EdFiToObjectStorageOperator, self).__init__(**kwargs)
+        super(EdFiToObjectStorageOperator, self).__init__(object_storage_conn_id=object_storage_conn_id, **kwargs)
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id

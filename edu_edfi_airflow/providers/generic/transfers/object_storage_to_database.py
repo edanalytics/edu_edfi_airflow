@@ -1,6 +1,4 @@
-import abc
 import logging
-import os
 
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException
@@ -36,7 +34,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator, DatabaseMixin):
         full_refresh: bool = False,
         **kwargs
     ) -> None:
-        super(ObjectStorageToDatabaseOperator, self).__init__(**kwargs)
+        super(ObjectStorageToDatabaseOperator, self).__init__(database_conn_id=database_conn_id, **kwargs)
 
         # Store both parameters - will be resolved in execute()
         self.object_storage = object_storage
