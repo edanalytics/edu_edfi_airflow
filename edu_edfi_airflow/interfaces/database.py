@@ -72,6 +72,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
     def __enter__(self):
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
         self.hook = SnowflakeHook(self.database_conn_id)
+        return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.hook.run(sql=self.sql, autocommit=False)
@@ -192,6 +193,7 @@ class DatabricksDatabaseInterface(DatabaseInterface):
     def __enter__(self):
         from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
         self.hook = DatabricksSqlHook(self.database_conn_id)
+        return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.hook.run(sql=self.sql, autocommit=False)
