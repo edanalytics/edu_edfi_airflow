@@ -160,8 +160,7 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
                 return  # Break out of the context-manager.
             
             # Otherwise, loop over each destination and copy in sequence.
-            for idx, (resource, table, destination_key) in enumerate(zip(self.resource, self.table_name, self.destination_key), start=1):
-                logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
+            for resource, table, destination_key in zip(self.resource, self.table_name, self.destination_key):
                 if self.full_refresh or airflow_util.is_full_refresh(context):
                     db.delete_from_raw(
                         tenant_code=self.tenant_code, api_year=self.api_year, name=resource, table=table

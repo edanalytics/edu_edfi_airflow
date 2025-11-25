@@ -22,6 +22,7 @@ class DatabaseInterface(abc.ABC):
             return object.__new__(DatabricksDatabaseInterface)
         else:
             raise ValueError(f"DatabaseInterface type {conn.conn_type} is not defined!")
+    
         
     def __init__(self, database_conn_id: str, **kwargs):
         self.database_conn_id: str = database_conn_id
@@ -30,6 +31,7 @@ class DatabaseInterface(abc.ABC):
         # Initialized within context manager.
         self.hook = None
         self.sql: List[str] = []
+    
 
     @abc.abstractmethod
     def __enter__(self):
@@ -152,7 +154,6 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
         self.sql.append(qry)
         return qry
 
-    
     def bulk_copy_into_raw(self,
         tenant_code: str, api_year: str, name: List[str], table: str,
         ods_version: int, data_model_version: str, storage_path: str

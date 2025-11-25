@@ -111,6 +111,7 @@ def xcom_pull_template(
     return '{{ ' + xcom_string + ' }}'
 
 
+# TODO: Re-add get_snowflake_params_from_conn() to keep unbreaking, and move this logic into the DatabaseInterface.
 def get_database_params_from_conn(conn_id: str) -> Tuple[str, str]:
     """
     Extract database and schema parameters from an Airflow connection.
