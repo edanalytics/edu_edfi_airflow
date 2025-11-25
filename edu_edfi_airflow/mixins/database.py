@@ -15,7 +15,6 @@ class DatabaseMixin(abc.ABC):
     def __new__(cls, database_conn_id: str, **kwargs):
         conn = BaseHook.get_connection(database_conn_id)
         
-        # TODO: the logic used to determine connection type will not be this easy.
         if conn.conn_type == 'snowflake':
             return object.__new__(SnowflakeDatabaseMixin)
         elif conn.conn_type == 'databricks':

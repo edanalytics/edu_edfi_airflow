@@ -14,11 +14,10 @@ class ObjectStorageMixin(abc.ABC):
     def __new__(cls, object_storage_conn_id: str, **kwargs):
         conn = BaseHook.get_connection(object_storage_conn_id)
         
-        # TODO: the logic used to determine connection type will not be this easy.
-        if conn.conn_type == 's3':
-            return object.__new__(S3ObjectStorageMixin)
-        elif conn.conn_type == 'adls':
+        if conn.conn_type == 'adls':
             return object.__new__(ADLSObjectStorageMixin)
+        elif conn.conn_type == 'http':
+            return object.__new__(S3ObjectStorageMixin)
         else:
             raise ValueError(f"ObjectStorageMixin type {conn.conn_type} is not defined!")
         
