@@ -58,10 +58,11 @@ class S3ObjectStorageMixin(ObjectStorageMixin):
         if not bucket:
             raise ValueError(f"Bucket name not found in connection {self.object_storage_conn_id}")
         
-        # S3 format: same for both internal and external use
+        # Internal format: embed conn_id in URL so Airflow can extract it
+        # Clean format: S3 key without bucket for downstream operators
         storage_path = f"s3://{bucket}/{destination_key}"
         
-        return (ObjectStoragePath(storage_path, conn_id=self.object_storage_conn_id), storage_path)
+        return (ObjectStoragePath(storage_path, conn_id=self.object_storage_conn_id), destination_key)
 
 
 class ADLSObjectStorageMixin:
