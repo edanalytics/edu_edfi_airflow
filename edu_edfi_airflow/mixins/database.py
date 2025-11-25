@@ -39,18 +39,18 @@ class DatabaseMixin(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def build_delete_query(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
+    def delete_from_raw(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
         raise NotImplementedError
     
     @abc.abstractmethod
-    def build_copy_query(self,
+    def copy_into_raw(self,
         tenant_code: str, api_year: str, name: str, table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
         raise NotImplementedError
     
     @abc.abstractmethod
-    def build_bulk_copy_query(self,
+    def bulk_copy_into_raw(self,
         tenant_code: str, api_year: str, name: Union[str, List[str]], table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
@@ -93,7 +93,7 @@ class SnowflakeDatabaseMixin(DatabaseMixin):
         )
 
     # SQL Queries
-    def build_delete_query(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
+    def delete_from_raw(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
         if not isinstance(name, str):
             name = [name]
@@ -107,7 +107,7 @@ class SnowflakeDatabaseMixin(DatabaseMixin):
             AND name in ('{names_repr}')
         """
     
-    def build_copy_query(self,
+    def copy_into_raw(self,
         tenant_code: str, api_year: str, name: str, table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
@@ -136,7 +136,7 @@ class SnowflakeDatabaseMixin(DatabaseMixin):
             force = true;
         """
     
-    def build_bulk_copy_query(self,
+    def bulk_copy_into_raw(self,
         tenant_code: str, api_year: str, name: Union[str, List[str]], table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
@@ -220,7 +220,7 @@ class DatabricksDatabaseMixin(DatabaseMixin):
         databricks_hook.run(sql=insert_statements, autocommit=True)
 
     # SQL Queries
-    def build_delete_query(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
+    def delete_from_raw(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
         if not isinstance(name, str):
             name = [name]
@@ -234,7 +234,7 @@ class DatabricksDatabaseMixin(DatabaseMixin):
             AND name in ('{names_repr}')
         """
     
-    def build_copy_query(self,
+    def copy_into_raw(self,
         tenant_code: str, api_year: str, name: str, table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
@@ -260,7 +260,7 @@ class DatabricksDatabaseMixin(DatabaseMixin):
             COPY_OPTIONS ('force' = 'true', 'mergeSchema' = 'true')
         """
     
-    def build_bulk_copy_query(self,
+    def bulk_copy_into_raw(self,
         tenant_code: str, api_year: str, name: Union[str, List[str]], table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
