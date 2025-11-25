@@ -7,7 +7,7 @@ from airflow.io.path import ObjectStoragePath
 from typing import Optional
 
 
-class ObjectStorageMixin(abc.ABC):
+class ObjectStorageInterface(abc.ABC):
     """
     Abstract class for creating generic Airflow ObjectStoragePath objects for Ed-Fi copies.
     """
@@ -15,11 +15,11 @@ class ObjectStorageMixin(abc.ABC):
         conn = BaseHook.get_connection(object_storage_conn_id)
         
         if conn.conn_type == 'adls':
-            return object.__new__(ADLSObjectStorageMixin)
+            return object.__new__(ADLSObjectStorageInterface)
         elif conn.conn_type == 'http':
-            return object.__new__(S3ObjectStorageMixin)
+            return object.__new__(S3ObjectStorageInterface)
         else:
-            raise ValueError(f"ObjectStorageMixin type {conn.conn_type} is not defined!")
+            raise ValueError(f"ObjectStorageInterface type {conn.conn_type} is not defined!")
         
     def __init__(self, object_storage_conn_id: str, **kwargs):
         self.object_storage_conn_id: str = object_storage_conn_id
@@ -34,9 +34,9 @@ class ObjectStorageMixin(abc.ABC):
         raise NotImplementedError
 
 
-class S3ObjectStorageMixin(ObjectStorageMixin):
+class S3ObjectStorageInterface(ObjectStorageInterface):
     """
-    Updated S3 mixin that creates ObjectStoragePath with conn_id.
+    Updated S3 interface that creates ObjectStoragePath with conn_id.
     Returns tuple of (ObjectStoragePath, clean_url) for downstream operators.
     """
     def get_object_storage(self,
@@ -65,9 +65,9 @@ class S3ObjectStorageMixin(ObjectStorageMixin):
         return (ObjectStoragePath(storage_path, conn_id=self.object_storage_conn_id), destination_key)
 
 
-class ADLSObjectStorageMixin:
+class ADLSObjectStorageInterface:
     """
-    Updated ADLS mixin that embeds conn_id in URL (Airflow pattern).
+    Updated ADLS interface that embeds conn_id in URL (Airflow pattern).
     Returns tuple of (ObjectStoragePath, clean_url) for downstream operators.
     """
     def get_object_storage(self,

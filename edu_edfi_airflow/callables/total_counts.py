@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 from airflow.exceptions import AirflowSkipException
 
 from edu_edfi_airflow.callables import airflow_util
-from edu_edfi_airflow.mixins.database import DatabaseMixin
+from edu_edfi_airflow.interfaces.database import DatabaseInterface
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -89,7 +89,7 @@ def delete_total_counts(
 
     ### Connect to database and execute the query.
     logging.info("Full refresh: deleting data from previous pulls.")
-    DatabaseMixin(database_conn_id).query_database(qry_delete, **kwargs)
+    DatabaseInterface(database_conn_id).query_database(qry_delete, **kwargs)
 
 
 def insert_total_counts(
@@ -127,7 +127,7 @@ def insert_total_counts(
         ]
         rows_to_insert.append(row)
 
-    DatabaseMixin(database_conn_id).insert_into_database(
+    DatabaseInterface(database_conn_id).insert_into_database(
         table=total_counts_table,
         columns=columns,
         values=rows_to_insert,

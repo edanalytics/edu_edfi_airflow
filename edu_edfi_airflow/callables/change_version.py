@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple, Optional
 from airflow.exceptions import AirflowSkipException
 
 from edu_edfi_airflow.callables import airflow_util
-from edu_edfi_airflow.mixins.database import DatabaseMixin
+from edu_edfi_airflow.interfaces.database import DatabaseInterface
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -63,7 +63,7 @@ def reset_change_versions(
 
     ### Connect to database and execute the query.
     logging.info("Full refresh: marking previous pulls inactive.")
-    DatabaseMixin(database_conn_id).query_database(qry_mark_inactive, **kwargs)
+    DatabaseInterface(database_conn_id).query_database(qry_mark_inactive, **kwargs)
 
 
 def get_previous_change_versions(
@@ -124,7 +124,7 @@ def get_previous_change_versions(
     """
 
     ### Retrieve previous endpoint-level change versions and push as an XCom.
-    prior_change_versions = DatabaseMixin(database_conn_id).query_database(qry_prior_max, **context)
+    prior_change_versions = DatabaseInterface(database_conn_id).query_database(qry_prior_max, **context)
     prior_change_versions = dict(prior_change_versions)
     
     logging.info(
@@ -288,7 +288,7 @@ def update_change_versions(
 
         rows_to_insert.append(row)
     
-    DatabaseMixin(database_conn_id).insert_into_database(
+    DatabaseInterface(database_conn_id).insert_into_database(
         table=change_version_table,
         columns=columns,
         values=rows_to_insert,

@@ -9,7 +9,7 @@ from typing import List, Union
 from edu_edfi_airflow.callables import airflow_util
 
 
-class DatabaseMixin(abc.ABC):
+class DatabaseInterface(abc.ABC):
     """
     
     """
@@ -17,11 +17,11 @@ class DatabaseMixin(abc.ABC):
         conn = BaseHook.get_connection(database_conn_id)
         
         if conn.conn_type == 'snowflake':
-            return object.__new__(SnowflakeDatabaseMixin)
+            return object.__new__(SnowflakeDatabaseInterface)
         elif conn.conn_type == 'databricks':
-            return object.__new__(DatabricksDatabaseMixin)
+            return object.__new__(DatabricksDatabaseInterface)
         else:
-            raise ValueError(f"DatabaseType type {conn.conn_type} is not defined!")
+            raise ValueError(f"DatabaseInterface type {conn.conn_type} is not defined!")
         
     def __init__(self, database_conn_id: str, **kwargs):
         self.database_conn_id: str = database_conn_id
@@ -59,7 +59,7 @@ class DatabaseMixin(abc.ABC):
         raise NotImplementedError
 
 
-class SnowflakeDatabaseMixin(DatabaseMixin):
+class SnowflakeDatabaseInterface(DatabaseInterface):
 
     def query_database(self, sql: str, **kwargs):
         """Run query on Snowflake and return results."""
@@ -169,7 +169,7 @@ class SnowflakeDatabaseMixin(DatabaseMixin):
             force = true;
         """
 
-class DatabricksDatabaseMixin(DatabaseMixin):
+class DatabricksDatabaseInterface(DatabaseInterface):
 
     def query_database(self, sql: str, **kwargs):
         """Run query on Databricks and return results."""

@@ -6,7 +6,7 @@ from airflow.exceptions import AirflowSkipException
 from typing import Optional
 
 from edu_edfi_airflow.callables import airflow_util
-from edu_edfi_airflow.mixins.database import DatabaseMixin
+from edu_edfi_airflow.interfaces.database import DatabaseInterface
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
@@ -67,7 +67,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
 
         ### Commit the update queries to database.
         # Build and run the SQL queries to database. Delete first if EdFi2 or a full-refresh.
-        database = DatabaseMixin(self.database_conn_id)
+        database = DatabaseInterface(self.database_conn_id)
         queries_to_run = []
 
         # Incremental runs are only available in EdFi 3+.
@@ -145,7 +145,7 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
         self.set_edfi_attributes()
         
         # Build and run the SQL queries to database. Delete first if EdFi2 or a full-refresh.
-        database = DatabaseMixin(self.database_conn_id)
+        database = DatabaseInterface(self.database_conn_id)
         queries_to_run = []
         
         if self.full_refresh or airflow_util.is_full_refresh(context):
