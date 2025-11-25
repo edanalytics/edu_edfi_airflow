@@ -1,5 +1,6 @@
 import abc
 import logging
+import os
 
 from airflow.hooks.base import BaseHook
 
@@ -140,6 +141,9 @@ class SnowflakeDatabaseMixin(DatabaseMixin):
         tenant_code: str, api_year: str, name: Union[str, List[str]], table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
+        # Always use the directory for bulk copies into Snowflake
+        storage_dir = os.path.dirname(storage_path)
+
         # Brackets in regex conflict with string formatting.
         date_regex = "\\\\d{8}"
         ts_regex = "\\\\d{8}T\\\\d{6}"
@@ -159,7 +163,7 @@ class SnowflakeDatabaseMixin(DatabaseMixin):
                     '{ods_version}' AS ods_version,
                     '{data_model_version}' AS data_model_version,
                     t.$1 AS v
-                FROM '@{self.database}.util.airflow_stage/{storage_path}'
+                FROM '@{self.database}.util.airflow_stage/{storage_dir}'
                 (file_format => 'json_default') t
             )
             force = true;
