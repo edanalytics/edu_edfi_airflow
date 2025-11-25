@@ -10,7 +10,7 @@ from edu_edfi_airflow.mixins.database import DatabaseMixin
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
-class ObjectStorageToDatabaseOperator(BaseOperator, DatabaseMixin):
+class ObjectStorageToDatabaseOperator(BaseOperator):
     """
     Copy the Ed-Fi files from object storage to raw resource tables in database.
     """
