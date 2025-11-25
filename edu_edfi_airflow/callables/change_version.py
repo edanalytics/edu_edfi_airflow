@@ -77,6 +77,7 @@ def get_previous_change_versions(
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
+    has_key_changes: bool = False,
 
     **context
 ) -> None:
@@ -109,8 +110,10 @@ def get_previous_change_versions(
         filter_clause = "is_deletes"
     elif get_key_changes:
         filter_clause = "is_key_changes"
+    elif has_key_changes:  # Handles optionality of `is_key_changes` column
+        filter_clause = "not coalesce(is_deletes, false) and not coalesce(is_key_changes, false)"
     else:
-        filter_clause = "TRUE"
+        filter_clause = "not coalesce(is_deletes, false)"
 
     # Retrieve the database and schema from the database connection
     qry_prior_max = f"""
@@ -156,6 +159,7 @@ def get_previous_change_versions_with_deltas(
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
+    has_key_changes: bool = False,
 
     **context
 ) -> None:
@@ -164,9 +168,8 @@ def get_previous_change_versions_with_deltas(
     """
     return_tuples = get_previous_change_versions(
         tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
-        database_conn_id=database_conn_id,
-        change_version_table=change_version_table,
-        get_deletes=get_deletes, get_key_changes=get_key_changes,
+        database_conn_id=database_conn_id, change_version_table=change_version_table,
+        get_deletes=get_deletes, get_key_changes=get_key_changes, has_key_changes=has_key_changes,
         **context
     )
 
@@ -242,8 +245,9 @@ def update_change_versions(
     endpoints: List[str],
     get_deletes: bool,
     get_key_changes: bool,
+    has_key_changes: bool,
 
-    **kwargs
+    **context
 ):
     """
 
@@ -275,24 +279,34 @@ def update_change_versions(
     # Build and insert row tuples for each endpoint.
     rows_to_insert = []
 
-    for endpoint in endpoints:
-        row = [
-            tenant_code, api_year, endpoint,
-            kwargs["ds"], kwargs["ts"],
-            edfi_change_version, True,
-            get_deletes,
-        ]
+    row_sets = [{"get_deletes": get_deletes, "get_key_changes": get_key_changes}]
 
-        if get_key_changes:
-            row.append(get_key_changes)
+    # If a full-refresh is being run, also insert records for deletes and key changes (if enabled).
+    # This prevents all deletes and key changes from being pulled in the next run.
+    if airflow_util.is_full_refresh(context):
+        row_sets.append({"get_deletes": True, "get_key_changes": False})
+        if has_key_changes:
+            row_sets.append({"get_deletes": False, "get_key_changes": True})
 
-        rows_to_insert.append(row)
-    
+    for row_set in row_sets:
+        for endpoint in endpoints:
+            row = [
+                tenant_code, api_year, endpoint,
+                context["ds"], context["ts"],
+                edfi_change_version, True,
+                row_set["get_deletes"],
+            ]
+
+            if get_key_changes:
+                row.append(row_set["get_key_changes"])
+
+            rows_to_insert.append(row)
+
     DatabaseInterface(database_conn_id).insert_into_database(
         table=change_version_table,
         columns=columns,
         values=rows_to_insert,
-        **kwargs
+        **context
     )
 
     return True

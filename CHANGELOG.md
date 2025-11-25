@@ -1,3 +1,33 @@
+# edu_edfi_airflow v0.4.10
+## New features
+- Add map index ID and name to logs sent to Snowflake in `EarthbeamDAG`
+## Under the hood
+- Add `has_key_changes` argument to `EdFiResourceDAG` to selectively enable key-changes logic (default `False`)
+
+# edu_edfi_airflow v0.4.9
+## Under the hood
+- Run Total-Counts taskgroup earlier in `EdFiResourceDAG` to minimize time between latest change-version and total-counts pulls
+## Fixes
+- Update helpers in `EdFiResourceDAG` to reset all records in `deletes` and `keyChanges` tables during a full-refresh
+
+# edu_edfi_airflow v0.4.8
+## New features
+- Add error-logging to Snowflake in Earthmover tasks in `EarthbeamDAG`
+- Label tasks in dynamic taskgroups with filename in `EarthbeamDAG`
+## Under the hood
+- Update match-rates table query in `EarthbeamDAG` to return match rates greater than required threshold and sort competing matches by name descending
+- Add gate in `EarthbeamDAG` to not post or sideload Ed-Fi if match-rate was not met
+
+# edu_edfi_airflow v0.4.7
+## Under the hood
+- Revert default of `pull_all_deletes` to false in preparation for deprecation. (Behavior resolved in dbt)
+
+# edu_edfi_airflow v0.4.6
+## New features
+- Add functionality to store total counts from the ODS, for data quality checks
+## Under the hood
+- Consistency fix in earthbeam dag
+
 # edu_edfi_airflow v0.4.5
 ## New features
 - Update Resources DAG UI for compatibility with Airflow 2.9.x (backwards compatibility with prior versions is retained)
