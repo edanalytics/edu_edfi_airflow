@@ -45,12 +45,12 @@ def reset_change_versions(
 
 
     ### Prepare the SQL query.
-    # Retrieve the database and schema from the database connection
-    database, schema = airflow_util.get_database_params_from_conn(database_conn_id)
+    db = DatabaseInterface(database_conn_id)
 
+    # Retrieve the database and schema from the database connection
     # Reset all resources in this tenant-year.
     qry_mark_inactive = f"""
-        update {database}.{schema}.{change_version_table}
+        update {db.database}.{db.schema}.{change_version_table}
             set is_active = FALSE
         where tenant_code = '{tenant_code}'
         and api_year = {api_year}
@@ -63,7 +63,7 @@ def reset_change_versions(
 
     ### Connect to database and execute the query.
     logging.info("Full refresh: marking previous pulls inactive.")
-    DatabaseInterface(database_conn_id).query_database(qry_mark_inactive, **kwargs)
+    db.query_database(qry_mark_inactive, **kwargs)
 
 
 def get_previous_change_versions(
@@ -102,9 +102,8 @@ def get_previous_change_versions(
     logging.info("Retrieving max previously-ingested change versions from database.")
 
     ### Prepare the SQL query.
-    # Retrieve the database and schema from the database connection
-    database, schema = airflow_util.get_database_params_from_conn(database_conn_id)
-
+    db = DatabaseInterface(database_conn_id)
+    
     # Retrieve the previous max change versions for this tenant-year.
     if get_deletes:
         filter_clause = "is_deletes"
@@ -113,9 +112,10 @@ def get_previous_change_versions(
     else:
         filter_clause = "TRUE"
 
+    # Retrieve the database and schema from the database connection
     qry_prior_max = f"""
         select name, max(max_version) as max_version
-        from {database}.{schema}.{change_version_table}
+        from {db.database}.{db.schema}.{change_version_table}
         where tenant_code = '{tenant_code}'
             and api_year = {api_year}
             and is_active
@@ -124,7 +124,7 @@ def get_previous_change_versions(
     """
 
     ### Retrieve previous endpoint-level change versions and push as an XCom.
-    prior_change_versions = DatabaseInterface(database_conn_id).query_database(qry_prior_max, **context)
+    prior_change_versions = db.query_database(qry_prior_max, **context)
     prior_change_versions = dict(prior_change_versions)
     
     logging.info(

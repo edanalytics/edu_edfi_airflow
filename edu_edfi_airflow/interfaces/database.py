@@ -3,10 +3,9 @@ import logging
 import os
 
 from airflow.hooks.base import BaseHook
+from airflow.models import Connection
 
-from typing import List, Union
-
-from edu_edfi_airflow.callables import airflow_util
+from typing import List, Tuple, Union
 
 
 class DatabaseInterface(abc.ABC):
@@ -26,7 +25,7 @@ class DatabaseInterface(abc.ABC):
         
     def __init__(self, database_conn_id: str, **kwargs):
         self.database_conn_id: str = database_conn_id
-        self.database, self.schema = airflow_util.get_database_params_from_conn(database_conn_id)
+        self.database, self.schema = self.get_database_params_from_conn()
 
         # Initialized within context manager.
         self.hook = None
@@ -67,6 +66,27 @@ class DatabaseInterface(abc.ABC):
     ) -> str:
         """ Same argument signature as singleton method. """
         raise NotImplementedError
+    
+    def get_database_params_from_conn(self) -> Tuple[str, str]:
+        """
+        Extract database and schema parameters from an Airflow connection.
+        """
+        try:
+            conn = Connection.get_connection_from_secrets(self.database_conn_id)
+            database = conn.extra_dejson[f'extra__{conn.conn_type}__database']
+            schema   = conn.schema
+
+            if database is None or schema is None:
+                raise ValueError(
+                    f"Unable to parse database connection: `extra__{conn.conn_type}__database` and `schema` must be defined within `{self.database_conn_id}`."
+                )
+
+            return database, schema
+
+        except KeyError:
+            raise ValueError(
+                f"Unable to parse database connection: `{self.database_conn_id}` must be defined within Airflow."
+            )
 
 
 class SnowflakeDatabaseInterface(DatabaseInterface):

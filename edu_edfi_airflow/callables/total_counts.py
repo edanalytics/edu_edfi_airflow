@@ -78,18 +78,18 @@ def delete_total_counts(
         raise AirflowSkipException(f"Full refresh not specified. Total counts table `{total_counts_table}` unchanged.")
 
     ### Prepare the SQL query.
-    # Retrieve the database and schema from the database connection
-    database, schema = airflow_util.get_database_params_from_conn(database_conn_id)
+    db = DatabaseInterface(database_conn_id)
 
+    # Retrieve the database and schema from the database connection
     qry_delete = f"""
-        DELETE FROM {database}.{schema}.{total_counts_table}
+        DELETE FROM {db.database}.{db.schema}.{total_counts_table}
         WHERE tenant_code = '{tenant_code}'
         AND api_year = '{api_year}'
     """
 
     ### Connect to database and execute the query.
     logging.info("Full refresh: deleting data from previous pulls.")
-    DatabaseInterface(database_conn_id).query_database(qry_delete, **kwargs)
+    db.query_database(qry_delete, **kwargs)
 
 
 def insert_total_counts(

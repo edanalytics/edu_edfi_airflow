@@ -111,28 +111,27 @@ def xcom_pull_template(
     return '{{ ' + xcom_string + ' }}'
 
 
-# TODO: Re-add get_snowflake_params_from_conn() to keep unbreaking, and move this logic into the DatabaseInterface.
-def get_database_params_from_conn(conn_id: str) -> Tuple[str, str]:
-    """
-    Extract database and schema parameters from an Airflow connection.
-    """
-    
+def get_snowflake_params_from_conn(
+    snowflake_conn_id: str
+) -> Tuple[str, str]:
+
+    undefined_snowflake_error = ValueError(
+        f"Snowflake `extra__snowflake__database` and `schema` must be defined within `{snowflake_conn_id}`."
+    )
+
     try:
-        conn = Connection.get_connection_from_secrets(conn_id)
-        database = conn.extra_dejson[f'extra__{conn.conn_type}__database']
-        schema   = conn.schema
+        snowflake_conn = Connection.get_connection_from_secrets(snowflake_conn_id)
+
+        database = snowflake_conn.extra_dejson['extra__snowflake__database']
+        schema   = snowflake_conn.schema
 
         if database is None or schema is None:
-            raise ValueError(
-                f"Unable to parse database connection: `extra__{conn.conn_type}__database` and `schema` must be defined within `{conn_id}`."
-            )
+            raise undefined_snowflake_error
 
         return database, schema
 
     except KeyError:
-        raise ValueError(
-            f"Unable to parse database connection: `{conn_id}` must be defined within Airflow."
-        )
+        raise undefined_snowflake_error
 
 
 def fail_if_any_task_failed(**context):

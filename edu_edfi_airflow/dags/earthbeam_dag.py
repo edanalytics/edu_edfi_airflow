@@ -641,7 +641,7 @@ class EarthbeamDAG:
                 )
 
         # Retrieve the database and schema from the Snowflake hook and build the insert-query.
-        database, schema = airflow_util.get_database_params_from_conn(snowflake_conn_id, 'extra__snowflake__database')
+        database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
         grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
 
