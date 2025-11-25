@@ -22,17 +22,27 @@ class DatabaseInterface(abc.ABC):
             return object.__new__(DatabricksDatabaseInterface)
         else:
             raise ValueError(f"DatabaseInterface type {conn.conn_type} is not defined!")
+    
         
     def __init__(self, database_conn_id: str, **kwargs):
         self.database_conn_id: str = database_conn_id
         self.database, self.schema = airflow_util.get_database_params_from_conn(database_conn_id)
 
+        # Initialized within context manager.
+        self.hook = None
+        self.sql: List[str] = []
+    
+
     @abc.abstractmethod
-    def query_database(self, sql: str, **kwargs):
+    def __enter__(self):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def run_sql_queries(self, sql: List[str], **kwargs):
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        raise NotImplementedError
+    
+    @abc.abstractmethod
+    def query_database(self, sql: str, **kwargs):
         raise NotImplementedError
     
     @abc.abstractmethod
@@ -52,7 +62,7 @@ class DatabaseInterface(abc.ABC):
     
     @abc.abstractmethod
     def bulk_copy_into_raw(self,
-        tenant_code: str, api_year: str, name: Union[str, List[str]], table: str,
+        tenant_code: str, api_year: str, name: List[str], table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
         """ Same argument signature as singleton method. """
@@ -61,16 +71,19 @@ class DatabaseInterface(abc.ABC):
 
 class SnowflakeDatabaseInterface(DatabaseInterface):
 
+    def __enter__(self):
+        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+        self.hook = SnowflakeHook(self.database_conn_id)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.hook.run(sql=self.sql, autocommit=False)
+
     def query_database(self, sql: str, **kwargs):
         """Run query on Snowflake and return results."""
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.database_conn_id)
         return snowflake_hook.get_records(sql)
-
-    def run_sql_queries(self, sql: List[str], **kwargs):
-        from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-        snowflake_hook = SnowflakeHook(self.database_conn_id)
-        snowflake_hook.run(sql=sql, autocommit=False)
     
     def insert_into_database(self, table: str, columns: List[str], values: List[list], **kwargs):
         """Insert into Snowflake database."""
@@ -101,12 +114,14 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
 
         names_repr = "', '".join(name)
 
-        return f"""
+        qry = f"""
             DELETE FROM {self.database}.{self.schema}.{table}
             WHERE tenant_code = '{tenant_code}'
             AND api_year = '{api_year}'
             AND name in ('{names_repr}')
         """
+        self.sql.append(qry)
+        return qry
     
     def copy_into_raw(self,
         tenant_code: str, api_year: str, name: str, table: str,
@@ -116,7 +131,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
         date_regex = "\\\\d{8}"
         ts_regex = "\\\\d{8}T\\\\d{6}"
 
-        return f"""
+        qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
                 (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
             FROM (
@@ -136,9 +151,11 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
             )
             force = true;
         """
-    
+        self.sql.append(qry)
+        return qry
+
     def bulk_copy_into_raw(self,
-        tenant_code: str, api_year: str, name: Union[str, List[str]], table: str,
+        tenant_code: str, api_year: str, name: List[str], table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
         # Always use the directory for bulk copies into Snowflake
@@ -148,7 +165,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
         date_regex = "\\\\d{8}"
         ts_regex = "\\\\d{8}T\\\\d{6}"
 
-        return f"""
+        qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
                 (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
             FROM (
@@ -168,19 +185,25 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
             )
             force = true;
         """
+        self.sql.append(qry)
+        return qry
+
 
 class DatabricksDatabaseInterface(DatabaseInterface):
+
+    def __enter__(self):
+        from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
+        self.hook = DatabricksSqlHook(self.database_conn_id)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.hook.run(sql=self.sql, autocommit=False)
 
     def query_database(self, sql: str, **kwargs):
         """Run query on Databricks and return results."""
         from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
         databricks_hook = DatabricksSqlHook(self.database_conn_id)
         return databricks_hook.get_records(sql)
-
-    def run_sql_queries(self, sql: List[str], **kwargs):
-        from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
-        databricks_hook = DatabricksSqlHook(self.database_conn_id)
-        databricks_hook.run(sql=sql, autocommit=False)
     
     def insert_into_database(self, table: str, columns: List[str], values: List[list], **kwargs):
         """Insert into Databricks database."""
@@ -231,18 +254,20 @@ class DatabricksDatabaseInterface(DatabaseInterface):
 
         names_repr = "', '".join(name)
 
-        return f"""
+        qry = f"""
             DELETE FROM {self.database}.{self.schema}.{table}
             WHERE tenant_code = '{tenant_code}'
             AND api_year = '{api_year}'
             AND name in ('{names_repr}')
         """
+        self.sql.append(qry)
+        return qry
     
     def copy_into_raw(self,
         tenant_code: str, api_year: str, name: str, table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
-        return f"""
+        qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
             FROM (
                 SELECT 
@@ -263,15 +288,21 @@ class DatabricksDatabaseInterface(DatabaseInterface):
             FORMAT_OPTIONS ('singleVariantColumn' = 'v')
             COPY_OPTIONS ('force' = 'true', 'mergeSchema' = 'true')
         """
+        self.sql.append(qry)
+        return qry
     
     def bulk_copy_into_raw(self,
-        tenant_code: str, api_year: str, name: Union[str, List[str]], table: str,
+        tenant_code: str, api_year: str, name: List[str], table: str,
         ods_version: int, data_model_version: str, storage_path: str
     ) -> str:
-        ### Retrieve the database and schema from the database connection.
-        copy_queries = [
-            self.build_copy_query(tenant_code, api_year, nn, table, ods_version, data_model_version, storage_path)
-            for nn in name
-        ]
+        """
+        For now, implement bulk operations by calling the single operation for each name.
+        This is a simple implementation that can be optimized later.
+        """
+        all_queries = []
 
-        return copy_queries.join("\n")
+        for nn in name:
+            qry = self.copy_into_raw(tenant_code, api_year, nn, table, ods_version, data_model_version, storage_path)
+            all_queries.append(qry)
+
+        return all_queries.join("\n")  # Return all queries at once.

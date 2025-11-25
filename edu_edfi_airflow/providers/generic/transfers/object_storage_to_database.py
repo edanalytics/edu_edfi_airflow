@@ -67,20 +67,18 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
 
         ### Commit the update queries to database.
         # Build and run the SQL queries to database. Delete first if EdFi2 or a full-refresh.
-        database = DatabaseInterface(self.database_conn_id)
-        queries_to_run = []
+        with DatabaseInterface(self.database_conn_id) as db:
 
-        # Incremental runs are only available in EdFi 3+.
-        if self.full_refresh or airflow_util.is_full_refresh(context):
-            queries_to_run.append(database.delete_from_raw(
-                tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name
-            ))
-        
-        queries_to_run.append(database.copy_into_raw(
-            tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name,
-            ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=storage_path
-        ))
-        return database.run_sql_queries(queries_to_run)
+            # Incremental runs are only available in EdFi 3+.
+            if self.full_refresh or airflow_util.is_full_refresh(context):
+                db.delete_from_raw(
+                    tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name
+                )
+            
+            db.copy_into_raw(
+                tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name,
+                ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=storage_path
+            )
 
 
     def set_edfi_attributes(self):
@@ -145,33 +143,30 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
         self.set_edfi_attributes()
         
         # Build and run the SQL queries to database. Delete first if EdFi2 or a full-refresh.
-        database = DatabaseInterface(self.database_conn_id)
-        queries_to_run = []
+        with DatabaseInterface(self.database_conn_id) as db:
 
-        # If all data is sent to the same table, use a single massive SQL query to copy the data from the directory.
-        if isinstance(self.table_name, str):
-            logging.info("Running bulk statements on a single table.")
-            if self.full_refresh or airflow_util.is_full_refresh(context):
-                queries_to_run.append(database.delete_from_raw(
-                    tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name
-                ))
+            # If all data is sent to the same table, use a single massive SQL query to copy the data from the directory.
+            if isinstance(self.table_name, str):
+                logging.info("Running bulk statements on a single table.")
+                if self.full_refresh or airflow_util.is_full_refresh(context):
+                    db.delete_from_raw(
+                        tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name
+                    )
 
-            queries_to_run.append(database.bulk_copy_into_raw(
-                tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name,
-                ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=self.destination_key[0]  # Infer directory if not specified.
-            ))
-            return database.run_sql_queries(queries_to_run)
-        
-        # Otherwise, loop over each destination and copy in sequence.
-        for idx, (resource, table, destination_key) in enumerate(zip(self.resource, self.table_name, self.destination_key), start=1):
-            logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
-            if self.full_refresh or airflow_util.is_full_refresh(context):
-                queries_to_run.append(database.delete_from_raw(
-                    tenant_code=self.tenant_code, api_year=self.api_year, name=resource, table=table
-                ))
+                db.bulk_copy_into_raw(
+                    tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name,
+                    ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=self.destination_key[0]  # Directory is inferred in bulk-copy.
+                )
+                return  # Break out of the context-manager.
+            
+            # Otherwise, loop over each destination and copy in sequence.
+            for resource, table, destination_key in zip(self.resource, self.table_name, self.destination_key):
+                if self.full_refresh or airflow_util.is_full_refresh(context):
+                    db.delete_from_raw(
+                        tenant_code=self.tenant_code, api_year=self.api_year, name=resource, table=table
+                    )
 
-            queries_to_run.append(database.copy_into_raw(
-                tenant_code=self.tenant_code, api_year=self.api_year, name=resource, table=table,
-                ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=destination_key
-            ))
-            database.run_sql_queries(queries_to_run)
+                db.copy_into_raw(
+                    tenant_code=self.tenant_code, api_year=self.api_year, name=resource, table=table,
+                    ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=destination_key
+                )

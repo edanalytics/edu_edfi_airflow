@@ -21,8 +21,10 @@ class ObjectStorageInterface(abc.ABC):
         else:
             raise ValueError(f"ObjectStorageInterface type {conn.conn_type} is not defined!")
         
+
     def __init__(self, object_storage_conn_id: str, **kwargs):
         self.object_storage_conn_id: str = object_storage_conn_id
+
 
     @abc.abstractmethod
     def get_object_storage(self,
