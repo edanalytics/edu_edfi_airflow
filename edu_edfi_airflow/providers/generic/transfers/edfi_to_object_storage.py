@@ -13,7 +13,7 @@ from edu_edfi_airflow.mixins.object_storage import ObjectStorageMixin
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
-class EdFiToObjectStorageOperator(BaseOperator, ObjectStorageMixin):
+class EdFiToObjectStorageOperator(BaseOperator):
     """
     Establish a connection to the EdFi ODS using an Airflow Connection.
     Default to pulling the EdFi API configs from the connection if not explicitly provided.
@@ -36,7 +36,7 @@ class EdFiToObjectStorageOperator(BaseOperator, ObjectStorageMixin):
 
         *,
         tmp_dir: str,
-        object_storage_conn_id: Optional[str] = None,  # Used in ObjectStorageMixin
+        object_storage_conn_id: Optional[str] = None,
         destination_key: Optional[str] = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
         destination_dir: Optional[str] = None,
         destination_filename: Optional[str] = None,
@@ -57,7 +57,7 @@ class EdFiToObjectStorageOperator(BaseOperator, ObjectStorageMixin):
 
         **kwargs
     ) -> None:
-        super(EdFiToObjectStorageOperator, self).__init__(object_storage_conn_id=object_storage_conn_id, **kwargs)
+        super(EdFiToObjectStorageOperator, self).__init__(**kwargs)
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id
@@ -70,6 +70,7 @@ class EdFiToObjectStorageOperator(BaseOperator, ObjectStorageMixin):
 
         # Storage variables
         self.tmp_dir = tmp_dir
+        self.object_storage_conn_id = object_storage_conn_id
         self.destination_key = destination_key
         self.destination_dir = destination_dir
         self.destination_filename = destination_filename
@@ -104,7 +105,7 @@ class EdFiToObjectStorageOperator(BaseOperator, ObjectStorageMixin):
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         # Build the object storage based on passed arguments, using the custom Mixin implementation.
-        object_storage, clean_url = self.get_object_storage(
+        object_storage, clean_url = ObjectStorageMixin(self.object_storage_conn_id).get_object_storage(
             destination_key=self.destination_key, destination_dir=self.destination_dir, destination_filename=self.destination_filename,
             **self.kwargs
         )
@@ -310,7 +311,7 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
             self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
             # Build the object storage based on passed arguments, using the custom Mixin implementation.
-            object_storage, clean_url = self.get_object_storage(
+            object_storage, clean_url = ObjectStorageMixin(self.object_storage_conn_id).get_object_storage(
                 destination_dir=self.destination_dir, destination_filename=destination_filename,
                 **self.kwargs
             )

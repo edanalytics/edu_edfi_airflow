@@ -23,7 +23,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator, DatabaseMixin):
         resource: str,
         table_name: str,
 
-        database_conn_id: str,  # Used in DatabaseMixin
+        database_conn_id: str,
         object_storage: Optional['ObjectStoragePath'] = None,
         destination_key: Optional[str] = None,  # Alternative to object_storage
 
@@ -34,7 +34,8 @@ class ObjectStorageToDatabaseOperator(BaseOperator, DatabaseMixin):
         full_refresh: bool = False,
         **kwargs
     ) -> None:
-        super(ObjectStorageToDatabaseOperator, self).__init__(database_conn_id=database_conn_id, **kwargs)
+        super(ObjectStorageToDatabaseOperator, self).__init__(**kwargs)
+        self.database_conn_id = database_conn_id
 
         # Store both parameters - will be resolved in execute()
         self.object_storage = object_storage
@@ -78,7 +79,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator, DatabaseMixin):
             tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name,
             ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=storage_path
         ))
-        return self.run_sql_queries(queries_to_run)
+        return DatabaseMixin(self.database_conn_id).run_sql_queries(queries_to_run)
 
 
     def set_edfi_attributes(self):
@@ -157,7 +158,7 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
                 tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name,
                 ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=self.destination_key[0]  # Infer directory if not specified.
             ))
-            return self.run_sql_queries(queries_to_run)
+            return DatabaseMixin(self.database_conn_id).run_sql_queries(queries_to_run)
         
         # Otherwise, loop over each destination and copy in sequence.
         for idx, (resource, table, destination_key) in enumerate(zip(self.resource, self.table_name, self.destination_key), start=1):
@@ -166,4 +167,4 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
                 tenant_code=self.tenant_code, api_year=self.api_year, name=resource, table=table,
                 ods_version=self.ods_version, data_model_version=self.data_model_version, storage_path=destination_key
             ))
-            self.run_sql_queries(queries_to_run)
+            DatabaseMixin(self.database_conn_id).run_sql_queries(queries_to_run)
