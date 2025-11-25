@@ -96,7 +96,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
     # SQL Queries
     def delete_from_raw(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
-        if not isinstance(name, str):
+        if isinstance(name, str):
             name = [name]
 
         names_repr = "', '".join(name)
@@ -226,7 +226,7 @@ class DatabricksDatabaseInterface(DatabaseInterface):
     # SQL Queries
     def delete_from_raw(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
-        if not isinstance(name, str):
+        if isinstance(name, str):
             name = [name]
 
         names_repr = "', '".join(name)
