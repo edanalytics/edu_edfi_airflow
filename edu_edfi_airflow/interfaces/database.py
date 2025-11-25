@@ -40,7 +40,7 @@ class DatabaseInterface(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def delete_from_raw(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
+    def delete_from_raw(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
         raise NotImplementedError
     
     @abc.abstractmethod
@@ -224,7 +224,7 @@ class DatabricksDatabaseInterface(DatabaseInterface):
         databricks_hook.run(sql=insert_statements, autocommit=True)
 
     # SQL Queries
-    def delete_from_raw(self, tenant_code: str, api_year: str, name: str, table: str) -> str:
+    def delete_from_raw(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
         if isinstance(name, str):
             name = [name]
