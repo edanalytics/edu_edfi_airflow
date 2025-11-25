@@ -289,7 +289,7 @@ def update_change_versions(
         rows_to_insert.append(row)
     
     DatabaseMixin(database_conn_id).insert_into_database(
-        table_name=change_version_table,
+        table=change_version_table,
         columns=columns,
         values=rows_to_insert,
         **kwargs
