@@ -67,7 +67,7 @@ class S3ObjectStorageInterface(ObjectStorageInterface):
         return (ObjectStoragePath(storage_path, conn_id=self.object_storage_conn_id), destination_key)
 
 
-class ADLSObjectStorageInterface:
+class ADLSObjectStorageInterface(ObjectStorageInterface):
     """
     Updated ADLS interface that embeds conn_id in URL (Airflow pattern).
     Returns tuple of (ObjectStoragePath, clean_url) for downstream operators.
