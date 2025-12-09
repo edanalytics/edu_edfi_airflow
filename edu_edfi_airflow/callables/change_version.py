@@ -227,7 +227,9 @@ def get_previous_change_versions_with_deltas(
 
     # But also raise an error if at least one endpoint failed!
     if failed_endpoints:
-        raise AirflowFailException(f"Failed getting delta row count for one or more endpoints: {failed_endpoints}")
+        raise AirflowFailException(
+            f"Failed getting delta row count for one or more endpoints: {failed_endpoints}"
+        ) from None  # Disable stacktrace
     
     return delta_endpoints
 
