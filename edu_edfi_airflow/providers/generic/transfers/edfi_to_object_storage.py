@@ -331,10 +331,10 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
             except AirflowSkipException:
                 continue
 
-            except Exception:
+            except Exception as err:
                 failed_endpoints.append(resource)
                 logging.warning(
-                    f"    Unable to complete ingestion of endpoint: {namespace}/{resource}"
+                    f"    Unable to complete ingestion of endpoint `{namespace}/{resource}`: {err}"
                 )
                 continue
 
