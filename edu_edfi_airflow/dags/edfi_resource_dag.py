@@ -540,7 +540,7 @@ class EdFiResourceDAG:
                 else:
                     min_change_version = None
 
-                pull_edfi_to_object_storage = BulkEdFiToObjectStorageOperator(
+                pull_edfi_to_object_storage = EdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
                     resource=endpoint,
@@ -795,7 +795,7 @@ class EdFiResourceDAG:
                 for key in self.DEFAULT_CONFIGS.keys()  # Create lists for all keys in config.
             }
 
-            pull_edfi_to_object_storage = EdFiToObjectStorageOperator(
+            pull_edfi_to_object_storage = BulkEdFiToObjectStorageOperator(
                 task_id=f"pull_all_endpoints_to_data_lake",
                 edfi_conn_id=self.edfi_conn_id,
 
