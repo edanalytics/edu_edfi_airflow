@@ -392,7 +392,7 @@ class EdFiResourceDAG:
 
         :return:
         """
-        get_cv_operator = PythonOperator(
+        return PythonOperator(
             task_id=task_id,
             python_callable=change_version.get_previous_change_versions_with_deltas if get_with_deltas else change_version.get_previous_change_versions,
             op_kwargs={
