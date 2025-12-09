@@ -2,7 +2,7 @@ import logging
 
 from typing import Dict, List, Tuple, Optional
 
-from airflow.exceptions import AirflowFailException, AirflowSkipException
+from airflow.exceptions import AirflowSkipException
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.interfaces.database import DatabaseInterface
@@ -227,7 +227,7 @@ def get_previous_change_versions_with_deltas(
 
     # But also raise an error if at least one endpoint failed!
     if failed_endpoints:
-        raise AirflowFailException(
+        raise ValueError(
             f"Failed getting delta row count for one or more endpoints: {failed_endpoints}"
         ) from None  # Disable stacktrace
     
