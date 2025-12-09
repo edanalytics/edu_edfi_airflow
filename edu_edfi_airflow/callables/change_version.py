@@ -2,7 +2,7 @@ import logging
 
 from typing import Dict, List, Tuple, Optional
 
-from airflow.exceptions import AirflowSkipException
+from airflow.exceptions import AirflowFailException, AirflowSkipException
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.interfaces.database import DatabaseInterface
@@ -219,17 +219,16 @@ def get_previous_change_versions_with_deltas(
             failed_endpoints.append(endpoint)  # Still return the tuples, but mark as failed in the UI.
             continue
 
-    # Always push the xcom, but return a second xcom if at least one endpoint failed.
-    # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
-    if failed_endpoints:
-        logging.info(
-            f"Failed getting delta row count for one or more endpoints: {failed_endpoints}"
-        )
-        context['ti'].xcom_push(key='failed_endpoints', value=failed_endpoints)
-
+    # Always push the xcom if at least one endpoint succeeded...
     if not delta_endpoints:
         raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
+    
+    context['ti'].xcom_push(key='return_value', value=delta_endpoints)
 
+    # But also raise an error if at least one endpoint failed!
+    if failed_endpoints:
+        raise AirflowFailException(f"Failed getting delta row count for one or more endpoints: {failed_endpoints}")
+    
     return delta_endpoints
 
 
