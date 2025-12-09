@@ -308,7 +308,7 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
                 continue
 
             # Check the validity of min and max change-versions.
-            self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
+            self.check_change_version_window_validity(min_change_version, self.max_change_version)
 
             # Build the object storage based on passed arguments, using the custom interface implementation.
             object_storage, clean_url = ObjectStorageInterface(self.object_storage_conn_id).get_object_storage(
