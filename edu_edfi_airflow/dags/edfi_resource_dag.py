@@ -411,25 +411,6 @@ class EdFiResourceDAG:
             dag=self.dag
         )
 
-        # One or more endpoints can fail total-get count. Create a second operator to track that failed status.
-        # This should NOT be necessary, but we encountered a bug where a downstream "none_skipped" task skipped with "upstream_failed" status.
-        def fail_if_xcom(xcom_value, **context):
-            if xcom_value:
-                raise AirflowFailException(f"The following endpoints failed when pulling total counts: {xcom_value}")
-            else:
-                raise AirflowSkipException  # Force a skip to not mark the taskgroup as a success when all tasks skip.
-
-        failed_sentinel = PythonOperator(
-            task_id=f"{task_id}__failed_total_counts",
-            python_callable=fail_if_xcom,
-            op_args=[airflow_util.xcom_pull_template(get_cv_operator, key='failed_endpoints')],
-            trigger_rule='all_done',
-            dag=self.dag
-        )
-        get_cv_operator >> failed_sentinel
-
-        return get_cv_operator
-
     def build_change_version_update_operator(self,
         task_id: str,
         endpoints: List[str],
