@@ -751,7 +751,7 @@ class EdFiResourceDAG:
             # If change versions are enabled, dynamically expand the output of the CV operator task into the Ed-Fi bulk operator.
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
-                    task_id=f"get_last_change_versions",
+                    task_id=f"get_last_change_versions_from_database",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
