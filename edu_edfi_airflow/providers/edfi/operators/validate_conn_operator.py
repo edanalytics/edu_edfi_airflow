@@ -18,10 +18,8 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         can pull from Airflow Variables (e.g. {{ var.value.edfi_tenant_lea_mapping }}).
     quiet : bool
         If True, suppress individual connection result output
-    fail_on_mismatch : bool
-        If True, task will fail if any connection is MISMATCH or NO_ORG_ID. #TODO: should we also include "NO_MAPPING"?
-    fail_on_error : bool
-        If True, task will fail if any connection resulted in ERROR.
+    fail_on_any_issue : bool
+        If True, task will fail if any connection is MISMATCH, NO_MAPPING, NO_ORG_ID, or ERROR.
     """
 
     template_fields = ("tenant_lea_mapping_json",)
@@ -31,17 +29,14 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         *,
         tenant_lea_mapping_json: str,
         quiet: bool = False,
-        fail_on_mismatch: bool = False, #TODO: should we default this to True?
-        fail_on_error: bool = True,  #TODO: do we also want to fail on error option / default to true?
+        fail_on_any_issue: bool = True,
         **kwargs: Any,
     ) -> None:
-       
         super().__init__(**kwargs)
 
         self.tenant_lea_mapping_json = tenant_lea_mapping_json
         self.quiet = quiet
-        self.fail_on_mismatch = fail_on_mismatch
-        self.fail_on_error = fail_on_error
+        self.fail_on_any_issue = fail_on_any_issue
 
     def execute(self, context: Context) -> List[Dict[str, Any]]:
         """
@@ -68,17 +63,18 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         no_org_id = [r for r in results if r["status"] == "NO_ORG_ID"]
         errors = [r for r in results if r["status"] == "ERROR"]
 
-        logging.info(f"\nSummary: {len(matches)}/{total} matches, {len(mismatches)} mismatches, "
-            f"{len(no_mapping)} no mapping, {len(no_org_id)} no org ID, {len(errors)} errors")
-        
-        # TODO: Do we want the option to fail if it is a either a mismatch or error?
-        if self.fail_on_mismatch and (mismatches or no_org_id):
-            raise ValueError(
-                f"EdFi validation failed: {len(mismatches)} mismatches, "
-                f"{len(no_org_id)} connections with no org ID."
-            )
+        logging.info(
+            f"\nSummary: {len(matches)}/{total} matches, {len(mismatches)} mismatches, "
+            f"{len(no_mapping)} no mapping, {len(no_org_id)} no org ID, {len(errors)} errors"
+        )
 
-        if self.fail_on_error and errors:
-            raise RuntimeError(f"EdFi connection validation {len(errors)} errors.")
+        # Fail run if any of this status are returned
+        if self.fail_on_any_issue and (mismatches or no_mapping or no_org_id or errors):
+            raise RuntimeError(
+                f"EdFi validation failed: {len(mismatches)} mismatches, "
+                f"{len(no_mapping)} no mapping, "
+                f"{len(no_org_id)} connections with no org ID, "
+                f"{len(errors)} errors."
+            )
 
         return results
