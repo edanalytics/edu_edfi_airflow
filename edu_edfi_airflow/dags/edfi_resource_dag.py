@@ -585,7 +585,7 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 edfi_conn_id=self.edfi_conn_id,
-                use_edfi_token_cache=self.use_edfi_token_cache,`
+                use_edfi_token_cache=self.use_edfi_token_cache,
               
                 database_conn_id=self.database_conn_id,
                 destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
