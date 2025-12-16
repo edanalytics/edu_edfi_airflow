@@ -6,7 +6,7 @@
 ## Under the hood
 - Genericize `EdFiResourceDAG` to use abstract interfaces for data lakes and databases, instead of hard coding "S3" and "Snowflake".
   - Note that all task names have been updated to reflect this genericization.
-
+- Deprecate `pull_all_deletes` functionality in `EdFiResourceDAG` (behaviour resolved in dbt)
 
 # edu_edfi_airflow v0.4.10
 ## New features
