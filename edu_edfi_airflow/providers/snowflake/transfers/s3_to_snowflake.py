@@ -43,6 +43,8 @@ class S3ToSnowflakeOperator(BaseOperator):
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
 
+        logging.warning("Operators defined in `edu_edfi_airflow.providers.transfers.s3_to_snowflake` are deprecated.")
+
         self.edfi_conn_id = edfi_conn_id
         self.snowflake_conn_id = snowflake_conn_id
 
