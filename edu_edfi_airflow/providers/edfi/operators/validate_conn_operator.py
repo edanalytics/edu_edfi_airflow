@@ -65,7 +65,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
 
         logging.info(
             f"\nSummary: {len(matches)}/{total} matches, {len(mismatches)} mismatches, "
-            f"{len(no_mapping)} no mapping, {len(no_org_id)} onnections with no org ID, {len(errors)} errors"
+            f"{len(no_mapping)} no mapping, {len(no_org_id)} connections with no org ID, {len(errors)} errors"
         )
         
         # Detailed breakdown (always show in quiet mode, or if there are issues)
