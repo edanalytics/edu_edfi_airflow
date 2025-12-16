@@ -326,7 +326,6 @@ First completes a `DELETE FROM` statement if `full_refresh` is set to True in th
 | ods_version        | Optional Ed-Fi ODS version to save as metadata if `edfi_conn_id` is undefined         |
 | data_model_version | Optional Ed-Fi data model version to save as metadata if `edfi_conn_id` is undefined  |
 | full_refresh       | Boolean flag to run a full truncate-replace of the warehouse data for the given grain |
-| xcom_return        | Helper variable to specific return type on success (used for downstream XComs)        |
 
 -----
 
@@ -571,28 +570,6 @@ Extends `BashOperator` to run Lightbeam with optional CLI arguments.
 
 
 ## Callables
-
-### insert_into_snowflake
-Generic callable to insert a list of rows into a specified Snowflake table.
-This callable utilizes `SnowflakeHook.insert_rows()`.
-
-Note: this method requires the length of `columns` to match the length of each row being inserted in `values`.
-
-<details>
-<summary>Arguments:</summary>
-
-| Argument          | Description                                                                         |
-|:------------------|:------------------------------------------------------------------------------------|
-| snowflake_conn_id | Name of the Airflow connection where Snowflake connection metadata has been defined |
-| table_name        | Name of the table to insert rows into                                               |
-| columns           | Name of the columns to insert                                                       |
-| values            | A single row or list of rows to insert                                              |
-
------
-
-</details>
-
-
 
 ### local_filepath_to_s3
 Generic callable to upload files within a local filepath to a specified S3 bucket and key.
