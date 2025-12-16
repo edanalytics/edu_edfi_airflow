@@ -1,9 +1,11 @@
 # edu_edfi_airflow v0.5.0
 ## New features
+- Add Ed-Fi token caching (new in `edfi_api_client` 0.3.0), enabled by default.
+- Add support for Azure Data Lake Storage (ADLS) and Databricks Delta Lake in `EdFiResourceDAG`.
 
 ## Under the hood
-
-## Fixes
+- Genericize `EdFiResourceDAG` to use abstract interfaces for data lakes and databases, instead of hard coding "S3" and "Snowflake".
+  - Note that all task names have been updated to reflect this genericization.
 
 
 # edu_edfi_airflow v0.4.10
