@@ -54,7 +54,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         query_parameters  : Optional[dict] = None,
 
         enabled_endpoints: Optional[List[str]] = None,
-
         use_edfi_token_cache: bool = False,
 
         **kwargs
