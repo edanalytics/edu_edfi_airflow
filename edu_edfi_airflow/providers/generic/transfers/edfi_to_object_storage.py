@@ -54,6 +54,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         query_parameters  : Optional[dict] = None,
 
         enabled_endpoints: Optional[List[str]] = None,
+        use_edfi_token_cache: bool = False,
 
         **kwargs
     ) -> None:
@@ -86,6 +87,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
         self.enabled_endpoints = enabled_endpoints
 
+        self.use_edfi_token_cache = use_edfi_token_cache
         self.kwargs = kwargs
 
 
@@ -110,7 +112,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
             **self.kwargs
         )
 
-        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+        edfi_conn = EdFiHook(self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
 
         self.pull_edfi_to_object_storage(
             edfi_conn=edfi_conn,
@@ -277,7 +279,7 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
             )
 
         # Make connection outside of loop to not re-authenticate at every resource.
-        edfi_conn = EdFiHook(self.edfi_conn_id).get_conn()
+        edfi_conn = EdFiHook(self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
 
         # Gather DAG-level endpoints outside of loop.
         config_endpoints = airflow_util.get_config_endpoints(context)

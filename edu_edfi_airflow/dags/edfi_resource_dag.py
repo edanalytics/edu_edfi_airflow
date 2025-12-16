@@ -87,6 +87,8 @@ class EdFiResourceDAG:
 
         dbt_incrementer_var: Optional[str] = None,
 
+        use_edfi_token_cache: bool = True,
+
         **kwargs
     ) -> None:
         self.run_type = run_type
@@ -118,6 +120,8 @@ class EdFiResourceDAG:
         self.pull_total_counts = pull_total_counts
 
         self.dbt_incrementer_var = dbt_incrementer_var
+
+        self.use_edfi_token_cache = use_edfi_token_cache
         
         ### Parse optional config objects (improved performance over adding resources manually).
         resource_configs, resource_deletes, resource_key_changes = self.parse_endpoint_configs(resource_configs)
@@ -359,6 +363,7 @@ class EdFiResourceDAG:
                 python_callable=change_version.get_newest_edfi_change_version,
                 op_kwargs={
                     'edfi_conn_id': self.edfi_conn_id,
+                    'use_edfi_token_cache': self.use_edfi_token_cache,
                 },
                 dag=self.dag
             )
@@ -405,6 +410,7 @@ class EdFiResourceDAG:
                 'get_key_changes': get_key_changes,
                 'has_key_changes': self.get_key_changes, # Indicates whether to add keyChanges records on full refresh, since this column is not yet required
                 'edfi_conn_id': self.edfi_conn_id,
+                'use_edfi_token_cache': self.use_edfi_token_cache,
                 'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
             },
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
@@ -543,6 +549,7 @@ class EdFiResourceDAG:
                 pull_edfi_to_object_storage = EdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
+                    use_edfi_token_cache=self.use_edfi_token_cache,
                     resource=endpoint,
 
                     tmp_dir=self.tmp_dir,
@@ -578,6 +585,8 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_operators_list, 0),
                 edfi_conn_id=self.edfi_conn_id,
+                use_edfi_token_cache=self.use_edfi_token_cache,`
+              
                 database_conn_id=self.database_conn_id,
                 destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -675,6 +684,7 @@ class EdFiResourceDAG:
                     task_id=f"pull_dynamic_endpoints_to_data_lake",
                     map_index_template="""{{ task.resource }}""",
                     edfi_conn_id=self.edfi_conn_id,
+                    use_edfi_token_cache=self.use_edfi_token_cache,
 
                     tmp_dir= self.tmp_dir,
                     object_storage_conn_id=self.object_storage_conn_id,
@@ -705,6 +715,8 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 edfi_conn_id=self.edfi_conn_id,
+                use_edfi_token_cache=self.use_edfi_token_cache,
+
                 database_conn_id=self.database_conn_id,
                 destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -798,6 +810,7 @@ class EdFiResourceDAG:
             pull_edfi_to_object_storage = BulkEdFiToObjectStorageOperator(
                 task_id=f"pull_all_endpoints_to_data_lake",
                 edfi_conn_id=self.edfi_conn_id,
+                use_edfi_token_cache=self.use_edfi_token_cache,
 
                 tmp_dir=self.tmp_dir,
                 object_storage_conn_id=self.object_storage_conn_id,
@@ -833,6 +846,8 @@ class EdFiResourceDAG:
                 resource=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 table_name=table or self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                 edfi_conn_id=self.edfi_conn_id,
+                use_edfi_token_cache=self.use_edfi_token_cache,
+
                 database_conn_id=self.database_conn_id,
                 destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
@@ -883,6 +898,7 @@ class EdFiResourceDAG:
                 op_kwargs={
                     'endpoints': [(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     'edfi_conn_id': self.edfi_conn_id,
+                    'use_edfi_token_cache': self.use_edfi_token_cache,
                     'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 },
                 trigger_rule='none_failed',
