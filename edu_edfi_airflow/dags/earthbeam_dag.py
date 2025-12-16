@@ -828,8 +828,13 @@ class EarthbeamDAG:
                 input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
                 input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
             
-                file_basename = self.get_filename(input_filepaths[0])
-                env_mapping = dict(zip(input_file_envs, input_filepaths))
+                # Handle empty input_filepaths
+                if input_filepaths:
+                    file_basename = self.get_filename(input_filepaths[0])
+                    env_mapping = dict(zip(input_file_envs, input_filepaths))
+                else:
+                    file_basename = 'non_file_source'
+                    env_mapping = {}
 
                 # Add params needed for the student ID bundle
                 if student_id_match_rates_table is not None:
@@ -1107,7 +1112,7 @@ class EarthbeamDAG:
 
             # (RAW-TO-S3) -> Earthmover -> () -> Remove Files
             # One subfolder per input file environment variable
-            if s3_conn_id:
+            if s3_conn_id and input_filepaths:
                 raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw", s3_file_subdirs=input_file_envs)
                 main_tasks.append(raw_to_s3)
             
