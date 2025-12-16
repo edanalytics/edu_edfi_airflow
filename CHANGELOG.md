@@ -1,3 +1,11 @@
+# edu_edfi_airflow v0.5.0
+## New features
+
+## Under the hood
+
+## Fixes
+
+
 # edu_edfi_airflow v0.4.10
 ## New features
 - Add map index ID and name to logs sent to Snowflake in `EarthbeamDAG`
