@@ -6,7 +6,9 @@
 ## Under the hood
 - Genericize `EdFiResourceDAG` to use abstract interfaces for data lakes and databases, instead of hard coding "S3" and "Snowflake".
   - Note that all task names have been updated to reflect this genericization.
-
+- Deprecate `pull_all_deletes` functionality in `EdFiResourceDAG` (behaviour resolved in dbt).
+- Update `EarthbeamDAG.get_filename()` to not strip extensions from directories, fixing downstream duplicates in Earthmover results sent to S3 and in Lightbeam logs send to Snowflake.
+- Skip copy tasks if empty `input_filepaths` passed to `EarthbeamDAG`.
 
 # edu_edfi_airflow v0.4.10
 ## New features

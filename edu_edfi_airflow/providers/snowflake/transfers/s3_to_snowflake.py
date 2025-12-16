@@ -262,7 +262,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # This is used to clear deletes and keyChanges during a full refresh.
         if delete_all:
             if len(names):
-                names_string = f"AND name in ('{"', '".join(names)}')"
+                names_string = f"""AND name in ('{"', '".join(names)}')"""
             else:
                 names_string = ''
 
