@@ -65,8 +65,42 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
 
         logging.info(
             f"\nSummary: {len(matches)}/{total} matches, {len(mismatches)} mismatches, "
-            f"{len(no_mapping)} no mapping, {len(no_org_id)} no org ID, {len(errors)} errors"
+            f"{len(no_mapping)} no mapping, {len(no_org_id)} onnections with no org ID, {len(errors)} errors"
         )
+        
+        # Detailed breakdown (always show in quiet mode, or if there are issues)
+        if not self.quiet or (mismatches or no_mapping or no_org_id or errors):
+            if mismatches:
+                self.log.error("Mismatches (%d):", len(mismatches))
+                for r in mismatches:
+                    self.log.error(
+                        "  - %s: expected %s, got %s",
+                        r["connection_id"], r.get("expected_lea_id"), r.get("actual_org_id")
+                    )
+
+            if no_mapping:
+                self.log.error("No Mapping Found (%d):", len(no_mapping))
+                for r in no_mapping:
+                    self.log.error(
+                        "  - %s: tenant '%s' not in mapping",
+                        r["connection_id"], r.get("tenant")
+                    )
+
+            if no_org_id:
+                self.log.error("No LEA ID Found (%d):", len(no_org_id))
+                for r in no_org_id:
+                    self.log.error(
+                        "  - %s: %s",
+                        r["connection_id"], r.get("message")
+                    )
+
+            if errors:
+                self.log.error("Errors (%d):", len(errors))
+                for r in errors:
+                    self.log.error(
+                        "  - %s: %s",
+                        r["connection_id"], r.get("message")
+                    )
 
         # Fail run if any of this status are returned
         if self.fail_on_any_issue and (mismatches or no_mapping or no_org_id or errors):
