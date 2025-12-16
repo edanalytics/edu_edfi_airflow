@@ -37,6 +37,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         *,
         tmp_dir: str,
         object_storage_conn_id: Optional[str] = None,
+        object_storage_type: Optional[str] = None,
         destination_key: Optional[str] = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
         destination_dir: Optional[str] = None,
         destination_filename: Optional[str] = None,
@@ -73,6 +74,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         # Storage variables
         self.tmp_dir = tmp_dir
         self.object_storage_conn_id = object_storage_conn_id
+        self.object_storage_type = object_storage_type
         self.destination_key = destination_key
         self.destination_dir = destination_dir
         self.destination_filename = destination_filename
@@ -107,7 +109,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         # Build the object storage based on passed arguments, using the custom interface implementation.
-        object_storage, clean_url = ObjectStorageInterface(self.object_storage_conn_id).get_object_storage(
+        object_interface = ObjectStorageInterface(self.object_storage_conn_id, object_storage_type=self.object_storage_type)
+        object_storage, clean_url = object_interface.get_object_storage(
             destination_key=self.destination_key, destination_dir=self.destination_dir, destination_filename=self.destination_filename,
             **self.kwargs
         )
@@ -313,7 +316,8 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
             self.check_change_version_window_validity(min_change_version, self.max_change_version)
 
             # Build the object storage based on passed arguments, using the custom interface implementation.
-            object_storage, clean_url = ObjectStorageInterface(self.object_storage_conn_id).get_object_storage(
+            object_interface = ObjectStorageInterface(self.object_storage_conn_id, object_storage_type=self.object_storage_type)
+            object_storage, clean_url = object_interface.get_object_storage(
                 destination_dir=self.destination_dir, destination_filename=destination_filename,
                 **self.kwargs
             )

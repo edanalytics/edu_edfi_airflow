@@ -62,10 +62,12 @@ class EdFiResourceDAG:
         edfi_conn_id     : str,
         use_edfi_token_cache: bool = True,
 
-        s3_conn_id       : Optional[str] = None, # Deprecated, use storage_conn_id
         object_storage_conn_id  : Optional[str] = None,
-        snowflake_conn_id: Optional[str] = None,  # Deprecated, use database_conn_id
         database_conn_id: Optional[str] = None,
+        object_storage_type: str = "data_lake",  # Generic type name if not explicitly specified
+        database_type: str = "database",  # Generic type name if not explicitly specified
+        snowflake_conn_id: Optional[str] = None,  # Deprecated, use database_conn_id
+        s3_conn_id       : Optional[str] = None,  # Deprecated, use storage_conn_id
 
         pool     : str,
         tmp_dir  : str,
@@ -104,6 +106,8 @@ class EdFiResourceDAG:
         
         self.object_storage_conn_id = object_storage_conn_id or s3_conn_id
         self.database_conn_id = database_conn_id or snowflake_conn_id
+        self.object_storage_type = object_storage_type
+        self.database_type = database_type
         
         # Store additional kwargs for flexible database/storage connections
         self.additional_kwargs = kwargs
@@ -372,12 +376,13 @@ class EdFiResourceDAG:
 
             # Reset the database change version table (if a full-refresh).
             reset_database_cvs = PythonOperator(
-                task_id="reset_previous_change_versions_in_database",
+                task_id=f"reset_previous_change_versions_in_{self.database_type}",
                 python_callable=change_version.reset_change_versions,
                 op_kwargs={
                     'tenant_code': self.tenant_code,
                     'api_year': self.api_year,
                     'database_conn_id': self.database_conn_id,
+                    'database_type': self.database_type,
                     'change_version_table': self.change_version_table,
                 },
                 trigger_rule='all_success',
@@ -407,6 +412,7 @@ class EdFiResourceDAG:
                 'api_year': self.api_year,
                 'endpoints': endpoints,
                 'database_conn_id': self.database_conn_id,
+                'database_type': self.database_type,
                 'change_version_table': self.change_version_table,
                 'get_deletes': get_deletes,
                 'get_key_changes': get_key_changes,
@@ -456,6 +462,7 @@ class EdFiResourceDAG:
                 'tenant_code': self.tenant_code,
                 'api_year': self.api_year,
                 'database_conn_id': self.database_conn_id,
+                'database_type': self.database_type,
                 'change_version_table': self.change_version_table,
                 'edfi_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                 'endpoints': endpoints,
@@ -526,7 +533,7 @@ class EdFiResourceDAG:
             ### LATEST SNOWFLAKE CHANGE VERSIONS: Output Dict[endpoint, last_change_version]
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
-                    task_id=f"get_last_change_versions_from_database",
+                    task_id=f"get_last_change_versions_from_{self.database_type}",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -556,6 +563,7 @@ class EdFiResourceDAG:
 
                     tmp_dir=self.tmp_dir,
                     object_storage_conn_id=self.object_storage_conn_id,
+                    object_storage_type=self.object_storage_type,
                     destination_dir=destination_dir,
                     destination_filename=f"{endpoint}.jsonl",
                     
@@ -580,7 +588,7 @@ class EdFiResourceDAG:
 
             ### COPY FROM OBJECT STORAGE TO DATABASE
             copy_stage_to_database = BulkObjectStorageToDatabaseOperator(
-                task_id=f"copy_all_endpoints_into_database",
+                task_id=f"copy_all_endpoints_into_{self.database_type}",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
                 
@@ -590,6 +598,7 @@ class EdFiResourceDAG:
                 use_edfi_token_cache=self.use_edfi_token_cache,
               
                 database_conn_id=self.database_conn_id,
+                database_type=self.database_type,
                 destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
 
@@ -600,7 +609,7 @@ class EdFiResourceDAG:
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
-                    task_id=f"update_change_versions_in_database",
+                    task_id=f"update_change_versions_in_{self.database_type}",
                     endpoints=self.xcom_pull_template_map_idx(pull_operators_list, 0),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -654,7 +663,7 @@ class EdFiResourceDAG:
             # If change versions are enabled, dynamically expand the output of the CV operator task into the Ed-Fi partial.
             if self.use_change_version:
                 get_cv_operator = self.build_change_version_get_operator(
-                    task_id=f"get_last_change_versions_from_database",
+                    task_id=f"get_last_change_versions_from_{self.database_type}",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -683,13 +692,14 @@ class EdFiResourceDAG:
             ### EDFI TO OBJECT STORAGE: Output Tuple[endpoint, filename] per successful task
             pull_edfi_to_object_storage = (EdFiToObjectStorageOperator
                 .partial(
-                    task_id=f"pull_dynamic_endpoints_to_data_lake",
+                    task_id=f"pull_dynamic_endpoints_to_{self.object_storage_type}",
                     map_index_template="""{{ task.resource }}""",
                     edfi_conn_id=self.edfi_conn_id,
                     use_edfi_token_cache=self.use_edfi_token_cache,
 
                     tmp_dir= self.tmp_dir,
                     object_storage_conn_id=self.object_storage_conn_id,
+                    object_storage_type=self.object_storage_type,
                     destination_dir=destination_dir,
 
                     get_deletes=get_deletes,
@@ -710,7 +720,7 @@ class EdFiResourceDAG:
 
             ### COPY FROM OBJECT STORAGE TO DATABASE
             copy_stage_to_database = BulkObjectStorageToDatabaseOperator(
-                task_id=f"copy_all_endpoints_into_database",
+                task_id=f"copy_all_endpoints_into_{self.database_type}",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
 
@@ -720,6 +730,7 @@ class EdFiResourceDAG:
                 use_edfi_token_cache=self.use_edfi_token_cache,
 
                 database_conn_id=self.database_conn_id,
+                database_type=self.database_type,
                 destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
 
@@ -730,7 +741,7 @@ class EdFiResourceDAG:
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
-                    task_id=f"update_change_versions_in_database",
+                    task_id=f"update_change_versions_in_{self.database_type}",
                     endpoints=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -810,12 +821,13 @@ class EdFiResourceDAG:
             }
 
             pull_edfi_to_object_storage = BulkEdFiToObjectStorageOperator(
-                task_id=f"pull_all_endpoints_to_data_lake",
+                task_id=f"pull_all_endpoints_to_{self.object_storage_type}",
                 edfi_conn_id=self.edfi_conn_id,
                 use_edfi_token_cache=self.use_edfi_token_cache,
 
                 tmp_dir=self.tmp_dir,
                 object_storage_conn_id=self.object_storage_conn_id,
+                object_storage_type=self.object_storage_type,
                 destination_dir=destination_dir,
                 
                 get_deletes=get_deletes,
@@ -841,7 +853,7 @@ class EdFiResourceDAG:
 
             ### COPY FROM OBJECT STORAGE TO DATABASE
             copy_stage_to_database = BulkObjectStorageToDatabaseOperator(
-                task_id=f"copy_all_endpoints_into_database",
+                task_id=f"copy_all_endpoints_into_{self.database_type}",
                 tenant_code=self.tenant_code,
                 api_year=self.api_year,
 
@@ -851,6 +863,7 @@ class EdFiResourceDAG:
                 use_edfi_token_cache=self.use_edfi_token_cache,
 
                 database_conn_id=self.database_conn_id,
+                database_type=self.database_type,
                 destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
                 full_refresh=(get_deletes and self.pull_all_deletes),
 
@@ -861,7 +874,7 @@ class EdFiResourceDAG:
             ### UPDATE SNOWFLAKE CHANGE VERSIONS
             if self.use_change_version:
                 update_cv_operator = self.build_change_version_update_operator(
-                    task_id=f"update_change_versions_in_database",
+                    task_id=f"update_change_versions_in_{self.database_type}",
                     endpoints=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 0),
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
@@ -909,24 +922,26 @@ class EdFiResourceDAG:
 
             # Clear the database total counts table (if a full-refresh).
             delete_total_counts = PythonOperator(
-                task_id="delete_previous_total_counts_in_database",
+                task_id=f"delete_previous_total_counts_in_{self.database_type}",
                 python_callable=total_counts.delete_total_counts,
                 op_kwargs={
                     'tenant_code': self.tenant_code,
                     'api_year': self.api_year,
                     'database_conn_id': self.database_conn_id,
+                    'database_type': self.database_type,
                     'total_counts_table': self.total_counts_table,
                 },
                 dag=self.dag
             )
 
             load_total_counts = PythonOperator(
-                task_id="load_total_counts_to_database", 
+                task_id=f"load_total_counts_to_{self.database_type}", 
                 python_callable=total_counts.insert_total_counts,
                 op_kwargs={
                     'tenant_code': self.tenant_code,
                     'api_year': self.api_year,
                     'database_conn_id': self.database_conn_id,
+                    'database_type': self.database_type,
                     'total_counts_table': self.total_counts_table,
                     'endpoint_counts': airflow_util.xcom_pull_template(get_total_counts),
                 },

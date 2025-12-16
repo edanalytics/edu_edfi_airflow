@@ -24,6 +24,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
         table_name: str,
 
         database_conn_id: str,
+        database_type: Optional[str] = None,
         object_storage: Optional['ObjectStoragePath'] = None,
         destination_key: Optional[str] = None,  # Alternative to object_storage
 
@@ -38,6 +39,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
     ) -> None:
         super(ObjectStorageToDatabaseOperator, self).__init__(**kwargs)
         self.database_conn_id = database_conn_id
+        self.database_type = database_type
 
         # Store both parameters - will be resolved in execute()
         self.object_storage = object_storage
@@ -70,7 +72,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
 
         ### Commit the update queries to database.
         # Build and run the SQL queries to database. Delete first if EdFi2 or a full-refresh.
-        with DatabaseInterface(self.database_conn_id) as db:
+        with DatabaseInterface(self.database_conn_id, database_type=self.database_type) as db:
 
             # Incremental runs are only available in EdFi 3+.
             if self.full_refresh or airflow_util.is_full_refresh(context):
@@ -146,7 +148,7 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
         self.set_edfi_attributes()
         
         # Build and run the SQL queries to database. Delete first if EdFi2 or a full-refresh.
-        with DatabaseInterface(self.database_conn_id) as db:
+        with DatabaseInterface(self.database_conn_id, database_type=self.database_type) as db:
 
             # If all data is sent to the same table, use a single massive SQL query to copy the data from the directory.
             if isinstance(self.table_name, str):

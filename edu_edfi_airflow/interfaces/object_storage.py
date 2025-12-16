@@ -11,12 +11,12 @@ class ObjectStorageInterface(abc.ABC):
     """
     Abstract class for creating generic Airflow ObjectStoragePath objects for Ed-Fi copies.
     """
-    def __new__(cls, object_storage_conn_id: str, **kwargs):
+    def __new__(cls, object_storage_conn_id: str, object_storage_type: Optional[str] = None, **kwargs):
         conn = BaseHook.get_connection(object_storage_conn_id)
-        
-        if conn.conn_type == 'adls':
+
+        if object_storage_type.lower() == 'adls' or conn.conn_type == 'adls':
             return object.__new__(ADLSObjectStorageInterface)
-        elif conn.conn_type == 'http':
+        elif object_storage_type.lower() == 's3' or conn.conn_type == 'http':
             return object.__new__(S3ObjectStorageInterface)
         else:
             raise ValueError(f"ObjectStorageInterface type {conn.conn_type} is not defined!")
