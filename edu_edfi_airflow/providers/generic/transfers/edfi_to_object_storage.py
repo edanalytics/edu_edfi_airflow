@@ -62,6 +62,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id
+        self.use_edfi_token_cache = use_edfi_token_cache
         self.resource = resource
 
         self.get_deletes = get_deletes
@@ -87,7 +88,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
         self.enabled_endpoints = enabled_endpoints
 
-        self.use_edfi_token_cache = use_edfi_token_cache
         self.kwargs = kwargs
 
 

@@ -60,6 +60,8 @@ class EdFiResourceDAG:
         api_year   : int,
 
         edfi_conn_id     : str,
+        use_edfi_token_cache: bool = True,
+
         s3_conn_id       : Optional[str] = None, # Deprecated, use storage_conn_id
         object_storage_conn_id  : Optional[str] = None,
         snowflake_conn_id: Optional[str] = None,  # Deprecated, use database_conn_id
@@ -87,7 +89,6 @@ class EdFiResourceDAG:
 
         dbt_incrementer_var: Optional[str] = None,
 
-        use_edfi_token_cache: bool = True,
 
         **kwargs
     ) -> None:
@@ -99,6 +100,8 @@ class EdFiResourceDAG:
         self.api_year = api_year
 
         self.edfi_conn_id = edfi_conn_id
+        self.use_edfi_token_cache = use_edfi_token_cache
+        
         self.object_storage_conn_id = object_storage_conn_id or s3_conn_id
         self.database_conn_id = database_conn_id or snowflake_conn_id
         
@@ -121,7 +124,6 @@ class EdFiResourceDAG:
 
         self.dbt_incrementer_var = dbt_incrementer_var
 
-        self.use_edfi_token_cache = use_edfi_token_cache
         
         ### Parse optional config objects (improved performance over adding resources manually).
         resource_configs, resource_deletes, resource_key_changes = self.parse_endpoint_configs(resource_configs)

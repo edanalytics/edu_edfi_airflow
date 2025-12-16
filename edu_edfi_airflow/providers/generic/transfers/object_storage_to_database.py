@@ -28,6 +28,8 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
         destination_key: Optional[str] = None,  # Alternative to object_storage
 
         edfi_conn_id: Optional[str] = None,  # Optional: only used to retrieve unspecified version metadata
+        use_edfi_token_cache: bool = False,
+        
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
 
@@ -47,6 +49,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
         self.table_name = table_name
 
         self.edfi_conn_id = edfi_conn_id
+        self.use_edfi_token_cache = use_edfi_token_cache
         self.ods_version = ods_version
         self.data_model_version = data_model_version
 
@@ -87,7 +90,7 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
         This needs to occur in execute to not call the API at every Airflow synchronize.
         """
         if self.edfi_conn_id:
-            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id).get_conn()
+            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
             if is_edfi2 := edfi_conn.is_edfi2():
                 self.full_refresh = True
 
