@@ -70,6 +70,7 @@ class EdFiResourceDAG:
         use_change_version: bool = True,
         get_key_changes: bool = False,
         get_deletes_cv_with_deltas: bool = True,
+        pull_all_deletes: bool = False,  # Deprecated in 0.5.0
         pull_total_counts: bool = False,
         run_type: str = "default",
         resource_configs: Optional[List[dict]] = None,
