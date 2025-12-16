@@ -1,5 +1,3 @@
-# providers/edfi/operators/validate_edfi_connections.py
-
 import json
 import logging
 from typing import Any, Dict, List
@@ -14,8 +12,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
     Airflow operator to validate all EdFi connections whose conn_id matches `edfi_{tenant}_{year}`.
 
     tenant_lea_mapping_json : str
-        JSON string mapping tenant codes to LEA IDs. This is templated, so you
-        can pull from Airflow Variables (e.g. {{ var.value.edfi_tenant_lea_mapping }}).
+        JSON string mapping tenant codes to LEA IDs.
     quiet : bool
         If True, suppress individual connection result output
     fail_on_any_issue : bool
