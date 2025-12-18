@@ -45,7 +45,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         # Parse tenant mapping
         tenant_lea_mapping: Dict[str, str] = json.loads(self.tenant_lea_mapping_json)
 
-        self.log.info("Starting EdFi connection validation")
+        self.log.info("Starting EdFi connection validation (This task will fail on: %s)", ", ".join(self.fail_on) if self.fail_on else "nothing")
 
         # run validate
         results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=self.conn_prefix)
@@ -95,4 +95,5 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
                 f"{len(errors)} errors."
             )
 
+        self.log.info("Validation complete. No issues in fail_on list (%s)", ", ".join(self.fail_on) if self.fail_on else "nothing")
         return results
