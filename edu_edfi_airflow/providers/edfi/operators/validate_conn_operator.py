@@ -45,10 +45,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         # Parse tenant mapping
         tenant_lea_mapping: Dict[str, str] = json.loads(self.tenant_lea_mapping_json)
 
-        self.log.info(
-            "Starting EdFi connection validation for %d tenants",
-            len(tenant_lea_mapping),
-        )
+        self.log.info("Starting EdFi connection validation")
 
         # run validate
         results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=self.conn_prefix)
