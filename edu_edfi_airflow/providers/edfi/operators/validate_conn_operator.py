@@ -16,6 +16,8 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         can pull from Airflow Variables (e.g. {{ var.value.edfi_tenant_lea_mapping }}).
     conn_prefix : str
         Connection ID prefix (default: "edfi"). Connections must match pattern: {conn_prefix}_{tenant}_{year}
+    exclude_conns : list[str], optional
+        List of connection IDs to skip during validation.
     fail_on : list[str], optional
         List of statuses that should cause task failure. Valid values: MISMATCH, NO_MAPPING, NO_ORG_ID, ERROR.
         Defaults to all four if not specified. Pass empty list to never fail.
@@ -28,6 +30,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         *,
         tenant_lea_mapping_json: str,
         conn_prefix: str = "edfi",
+        exclude_conns: Optional[List[str]] = None,
         fail_on: Optional[List[str]] = ["MISMATCH", "NO_MAPPING", "NO_ORG_ID", "ERROR"],
         **kwargs: Any,
     ) -> None:
@@ -35,6 +38,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
 
         self.tenant_lea_mapping_json = tenant_lea_mapping_json
         self.conn_prefix = conn_prefix
+        self.exclude_conns = exclude_conns or []
         self.fail_on = fail_on
 
     def execute(self, context: Context) -> List[Dict[str, Any]]:
@@ -48,7 +52,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         self.log.info("Starting EdFi connection validation (This task will fail on: %s)", ", ".join(self.fail_on) if self.fail_on else "nothing")
 
         # run validate
-        results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=self.conn_prefix)
+        results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=self.conn_prefix, exclude_conns=self.exclude_conns)
 
         # Detailed summary by type
         total = len(results)

@@ -99,25 +99,27 @@ def try_calendars_schools(client: EdFiClient, expected_lea_id: str) -> Tuple[Lis
         return [], f"error: {str(e)}"
 
 
-def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], conn_prefix: str = "edfi") -> List[Dict]:
+def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], conn_prefix: str = "edfi", exclude_conns: Optional[List[str]] = None) -> List[Dict]:
     """
     Validate EdFi connections against tenant LEA ID mappings.
     
     Args:
         tenant_lea_mapping: Dict mapping tenant codes to LEA IDs
         conn_prefix: Connection ID prefix (default: "edfi"). Pattern: {prefix}_{tenant}_{year}
+        exclude_conns: List of connection IDs to skip
         
     Returns:
         List of validation results
     """
+    exclude_conns = exclude_conns or []
     pattern = re.compile(rf'{re.escape(conn_prefix)}_(\w+)_(\d{{4}})')
     results = []
     
     # Get all connections matching the prefix using ea_airflow_util
     all_edfi_conn_ids = list_conn(f'{conn_prefix}_')
     
-    # Filter to only connections that match the full pattern
-    matching_conn_ids = [conn_id for conn_id in all_edfi_conn_ids if pattern.match(conn_id)]
+    # Filter to only connections that match the full pattern and are not excluded
+    matching_conn_ids = [conn_id for conn_id in all_edfi_conn_ids if pattern.match(conn_id) and conn_id not in exclude_conns]
     
     for conn_id in matching_conn_ids:
         match = pattern.match(conn_id)
