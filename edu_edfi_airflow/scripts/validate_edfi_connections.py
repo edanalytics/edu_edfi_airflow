@@ -20,11 +20,11 @@ def get_lea_id_with_fallback(client: EdFiClient, expected_lea_id: str) -> Tuple[
         Tuple of (lea_id, method_used)
     """
     # Step 1: Try token_info
-    lea_ids, method = try_token_info(client)
+    lea_ids, token_method = try_token_info(client)
     if len(lea_ids) == 1:
         # Only one LEA returned, check if it matches expected
         if str(expected_lea_id) == lea_ids[0]:
-            return lea_ids[0], f"token_info ({method})"
+            return lea_ids[0], f"token_info ({token_method})"
         else:
             return None, f"token_info_mismatch (returned: {lea_ids}, expected: {expected_lea_id})"
     elif len(lea_ids) > 1:
@@ -32,14 +32,16 @@ def get_lea_id_with_fallback(client: EdFiClient, expected_lea_id: str) -> Tuple[
         return None, f"token_info_multiple_leas (returned: {lea_ids})"
     
     # Step 2: Try LEAs endpoint
-    lea_ids, method = try_leas_endpoint(client, expected_lea_id)
+    lea_ids, leas_method = try_leas_endpoint(client, expected_lea_id)
     if len(lea_ids) == 1:
-        return lea_ids[0], f"leas_endpoint ({method})"
+        return lea_ids[0], f"leas_endpoint ({leas_method})"
+    
     # Step 3: Try calendars -> schools
-    lea_ids, method = try_calendars_schools(client, expected_lea_id)
+    lea_ids, calendars_method = try_calendars_schools(client, expected_lea_id)
     if len(lea_ids) == 1:
-        return lea_ids[0], f"calendars_schools ({method})"
-    return None, "all_methods_failed"
+        return lea_ids[0], f"calendars_schools ({calendars_method})"
+    
+    return None, f"all_methods_failed (token_info: {token_method}, leas: {leas_method}, calendars: {calendars_method})"
 
 
 def try_token_info(client: EdFiClient) -> Tuple[List[str], str]:
