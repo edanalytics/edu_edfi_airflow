@@ -99,28 +99,25 @@ def try_calendars_schools(client: EdFiClient, expected_lea_id: str) -> Tuple[Lis
         return [], f"error: {str(e)}"
 
 
-def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], quiet: bool = False) -> List[Dict]:
+def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], conn_prefix: str = "edfi") -> List[Dict]:
     """
     Validate EdFi connections against tenant LEA ID mappings.
     
     Args:
         tenant_lea_mapping: Dict mapping tenant codes to LEA IDs
-        quiet: If True, suppress individual connection result output
+        conn_prefix: Connection ID prefix (default: "edfi"). Pattern: {prefix}_{tenant}_{year}
         
     Returns:
         List of validation results
     """
-    pattern = re.compile(r'edfi_(\w+)_(\d{4})')
+    pattern = re.compile(rf'{re.escape(conn_prefix)}_(\w+)_(\d{{4}})')
     results = []
     
-    # Get all connections matching the edfi pattern using ea_airflow_util
-    all_edfi_conn_ids = list_conn('edfi_')
+    # Get all connections matching the prefix using ea_airflow_util
+    all_edfi_conn_ids = list_conn(f'{conn_prefix}_')
     
     # Filter to only connections that match the full pattern
     matching_conn_ids = [conn_id for conn_id in all_edfi_conn_ids if pattern.match(conn_id)]
-    
-    if not quiet:
-        print(f"Found {len(matching_conn_ids)} matching connections")
     
     for conn_id in matching_conn_ids:
         match = pattern.match(conn_id)
@@ -180,15 +177,13 @@ def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], quiet: bool = 
             }
         
         results.append(result)
-        if not quiet:
-            print(f"{result['status']}: {conn_id} - {result['message']}")
     
     return results
 
 
 def main(tenant_lea_mapping: Dict[str, str], quiet: bool = False):
     """
-    Main function that validates EdFi connections.
+    Main function that validates EdFi connections (CLI entry point).
     
     Args:
         tenant_lea_mapping: Dict mapping tenant codes to LEA IDs (required)
@@ -198,7 +193,12 @@ def main(tenant_lea_mapping: Dict[str, str], quiet: bool = False):
         print("EdFi Connection Validation")
         print("=" * 30)
     
-    results = validate_edfi_connections(tenant_lea_mapping, quiet)
+    results = validate_edfi_connections(tenant_lea_mapping)
+    
+    if not quiet:
+        print(f"Found {len(results)} matching connections")
+        for r in results:
+            print(f"{r['status']}: {r['connection_id']} - {r['message']}")
     
     # Check for multiple LEA IDs per tenant
     tenant_orgs = {}
