@@ -2,6 +2,7 @@
 ## New features
 - Add Ed-Fi token caching (new in `edfi_api_client` 0.3.0), enabled by default.
 - Add support for Azure Data Lake Storage (ADLS) and Databricks Delta Lake in `EdFiResourceDAG`.
+- Add `ValidateEdFiConnectionsOperator` to validate that Ed-Fi connection permissions align with the tenant to which they are labeled. 
 
 ## Under the hood
 - Genericize `EdFiResourceDAG` to use abstract interfaces for data lakes and databases, instead of hard coding "S3" and "Snowflake".
