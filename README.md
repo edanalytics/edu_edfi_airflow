@@ -1,15 +1,15 @@
 # Overview
 `edu_edfi_airflow` provides Airflow hooks and operators for transforming and posting data into Ed-Fi ODS using Earthmover and Lightbeam,
-and for transferring data from an Ed-Fi ODS to a Snowflake data warehouse.
+and for transferring data from an Ed-Fi ODS to a data warehouse.
 
 This package is part of Enable Data Union (EDU).
 Please visit the [EDU docs site](https://enabledataunion.org/) for more information.
 
 
 # EdFiResourceDAG
-`EdFiResourceDAG` is an Airflow DAG that pulls a specified selection of Ed-Fi endpoints to disk, then copies them into Snowflake.
-The `EdFiToS3Operator` pulls JSON rows for a specified Ed-Fi resource and writes them locally before copying the files to S3.
-The `S3ToSnowflakeOperator` copies the transferred files into the data warehouse using a Snowflake stage.
+`EdFiResourceDAG` is an Airflow DAG that pulls a specified selection of Ed-Fi endpoints to disk, then copies them into the database.
+The `EdFiToObjectStorage` pulls JSON rows for a specified Ed-Fi resource and writes them locally before copying the files to the object storage backend.
+The `ObjectStorageToDatabaseOperator` copies the transferred files into the data warehouse.
 
 This implementation takes advantage of Ed-Fi3 change-version logic, allowing daily ingestion of ODS deltas and incorporation of resource deletes.
 Although the DAG-implementation is designed for Ed-Fi3, it will work for Ed-Fi2 ODS instances, although without incremental ingestion.
@@ -33,7 +33,7 @@ To trigger a subset-ingestion of endpoints, populate the `endpoints` DAG-level c
 The names of the endpoints can be in any casing and will be forced to snake_case before being processed.
 
 Set `full_refresh` to `True` in DAG-level configs to reset the change-version table for the specified (tenant, year).
-This forces a full drop-replace of a given endpoint's data in Snowflake.
+This forces a full drop-replace of a given endpoint's data in the database.
 This functionality can be paired with the `endpoints` DAG-level config to run a full-refresh on a subset of endpoints.
 Alternatively, use argument `schedule_interval_full_refresh` to set an automatic refresh cadence.
 
@@ -43,12 +43,14 @@ Alternatively, use argument `schedule_interval_full_refresh` to set an automatic
 
 | Argument                       | Description                                                                                                                                        |
 |:-------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------|
-| tenant_code                    | ODS-tenant representation to be saved in Snowflake tables                                                                                          |
-| api_year                       | ODS API-year to be saved in Snowflake tables                                                                                                       |
+| tenant_code                    | ODS-tenant representation to be saved in the database tables                                                                                          |
+| api_year                       | ODS API-year to be saved in the database tables                                                                                                       |
 | edfi_conn_id                   | Airflow connection with Ed-Fi ODS credentials and metadata defined for a specific tenant                                                           |
-| s3_conn_id                     | Airflow connection with S3 bucket defined under `schema`                                                                                           |
-| snowflake_conn_id              | Airflow connection with Snowflake credentials, database, and schema defined                                                                        |
-| pool                           | Airflow pool to assign EdFi-to-S3 pulls for this DAG (designed to prevent the ODS from being overwhelmed)                                          |
+| object_storage_conn_id                     | Airflow connection with object storage credentials                                                                                           |
+| database_conn_id              | Airflow connection with database credentials, database, and schema defined                                                                        |
+| object_storage_type                     | Object storage connection type (used in task naming and connection disambiguation)                                                                                      |
+| database_type             | Database connection type (used in task naming and connection disambiguation)                                                                        |
+| pool                           | Airflow pool to assign EdFi-to-ObjectStorage pulls for this DAG (designed to prevent the ODS from being overwhelmed)                                          |
 | tmp_dir                        | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3                                            |
 | multiyear                      | Boolean flag for whether the ODS has multiple years of data within one API year (defaults to `False`; dispreferred implementation)                 |
 | schedule_interval_full_refresh | CRON schedule that automatically triggers a full-refresh, instead of the default delta run (default `None`)                                        |
@@ -59,11 +61,11 @@ Alternatively, use argument `schedule_interval_full_refresh` to set an automatic
 | run_type                       | Specifies the run-type for the Ed-Fi task groups in the DAG (default `'default'`)                                                                  |
 | resource_configs               | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_resource()` and `add_resource_deletes()` methods; default `None`) |
 | descriptor_configs             | An {endpoint: metadata} dictionary to populate the DAG (replaces deprecated `add_descriptor()` method; default `None`)                             |
-| change_version_table           | Name of the table to record resource change versions on Snowflake (defaults to `'_meta_change_versions'`)                                          |
-| deletes_table                  | Name of the table to record resource deletes on Snowflake (defaults to `'_deletes'`)                                                               |
-| key_changes_table              | Name of the table to record resource keyChanges on Snowflake (defaults to `'_key_changes'`)                                                        |
-| descriptors_table              | Name of the table to record descriptors on Snowflake (defaults to `'_descriptors'`)                                                                |
-| total_counts_table             | Name of the table to record resource total counts on Snowflake (defaults to `'_meta_total_counts'`; only needed if `pull_total_counts` = `True`)   |
+| change_version_table           | Name of the table to record resource change versions in the database (defaults to `'_meta_change_versions'`)                                          |
+| deletes_table                  | Name of the table to record resource deletes in the database (defaults to `'_deletes'`)                                                               |
+| key_changes_table              | Name of the table to record resource keyChanges in the database (defaults to `'_key_changes'`)                                                        |
+| descriptors_table              | Name of the table to record descriptors in the database (defaults to `'_descriptors'`)                                                                |
+| total_counts_table             | Name of the table to record resource total counts in the database (defaults to `'_meta_total_counts'`; only needed if `pull_total_counts` = `True`)   |
 | dbt_incrementer_var            | Optional Airflow variable to increment upon a finished run                                                                                         |
 
 Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, `default_args`, etc.) can be passed as kwargs.
@@ -76,13 +78,13 @@ Additional `EACustomDAG` parameters (e.g. `slack_conn_id`, `schedule_interval`, 
 <details>
 <summary>Run-Type Overview:</summary>
 
-The `run_type` argument determines the task-logic used when ingesting data from Ed-Fi to S3.
+The `run_type` argument determines the task-logic used when ingesting data from Ed-Fi to the object storage backend.
 
 - `default`: one task is created for each endpoint (default behavior)
 - `bulk`: one task is created, and each endpoint is looped-over within this task
 - `dynamic`: one dynamically-mapped task is created for each endpoint **with new data to ingest**
 
-No matter the approach, copies from S3 to Snowflake always occur in bulk to reduce Snowflake connection-time. Dynamic runs can only be used when `use_change_version` is true.
+No matter the approach, copies from object storage to the database always occur in bulk to reduce database connection-time. Dynamic runs can only be used when `use_change_version` is true.
 
 Dynamic and bulk task groups trade visibility for performance: both drastically reduce the number of tasks run each day, but more digging in the Airflow UI is required to identify failures.
 Here are some recommendations for when to use each run-type:
@@ -112,14 +114,16 @@ edfi_resource_dags__default_args: &default_dag_args
 
   # Airflow Connection IDs
   edfi_conn_id: ~
-  s3_conn_id: 'data_lake'
-  snowflake_conn_id: 'snowflake'
+  object_storage_conn_id: 'data_lake'
+  object_storage_type: 's3'
+  database_conn_id: 'snowflake'
+  database_type: 'snowflake'
 
   # Variables for pulling from EdFi
   tmp_dir: '/efs/tmp_storage'
   pool: ~
 
-  # Variables for interacting with Snowflake
+  # Variables for interacting with the database
   change_version_table: '_meta_change_versions'
 
 
@@ -177,7 +181,7 @@ If `api_version` or `api_mode` are undefined in `Extra`, these will be inferred 
 
 ### AWS S3 Connection
 
-This connection outlines the S3 datalake bucket to which Ed-Fi data is staged before transferring to Snowflake.
+This connection outlines the S3 datalake bucket to which Ed-Fi data is staged before transferring to the database.
 
 <details>
 <summary>Arguments:</summary>
@@ -185,8 +189,8 @@ This connection outlines the S3 datalake bucket to which Ed-Fi data is staged be
 | Argument        | Description                                                                   |
 |:----------------|:------------------------------------------------------------------------------|
 | Connection Id   | Name of connection to reference in config files and across operators          |
-| Connection Type | `S3`                                                                          |
-| Schema          | S3 bucket name used to store data transferred from the Ed-Fi ODS to Snowflake |
+| Connection Type | `http`                                                                          |
+| Schema          | S3 bucket name used to store data transferred from the Ed-Fi ODS to the database |
 | Login           | [Empty]; Must be defined if EC2 IAM role is not scoped                        |
 | Password        | [Empty]; Must be defined if EC2 IAM role is not scoped                        |
 
@@ -201,7 +205,7 @@ If done correctly, `login` and `password` can be left blank and inferred automat
 
 ### Snowflake Connection
 
-This connection outlines the Snowflake account to which the S3 stage and subsequent raw tables are defined.
+This connection outlines the Snowflake account to which the object storage stage and subsequent raw tables are defined.
 
 <details>
 <summary>Arguments:</summary>
@@ -216,10 +220,10 @@ This connection outlines the Snowflake account to which the S3 stage and subsequ
 | Password        | Snowflake loader password                                                                       |
 | Extra           | JSON structure with Snowflake-specific fields (also defined below)                              |
  | Account         | Snowflake account associated with instance (`extra__snowflake__account`)                        |
-| AWS Access Key  | Access key to AWS account associated with S3 bucket (`extra__snowflake__aws_access_key_id`)     |
-| AWS Secret Key  | Secret key to AWS account associated with S3 bucket (`extra__snowflake__aws_secret_access_key`) |
+| AWS Access Key  | Access key to AWS account associated with object storage bucket (`extra__snowflake__aws_access_key_id`)     |
+| AWS Secret Key  | Secret key to AWS account associated with object storage bucket (`extra__snowflake__aws_secret_access_key`) |
 | Database        | Snowflake database destination for raw Ed-Fi data (`extra__snowflake__database`)                |
-| Region          | (Optional) AWS region associated with S3 bucket (`extra__snowflake__region`)                    |
+| Region          | (Optional) AWS region associated with object storage bucket (`extra__snowflake__region`)                    |
 | Role            | Snowflake loader role (`extra__snowflake__role`)                                                |
 | Warehouse       | Snowflake warehouse destination for raw Ed-Fi data (`extra__snowflake__warehouse`)              |
 
@@ -274,8 +278,8 @@ This Airflow Hook connects to the Ed-Fi ODS using an `EdFiClient`.
 
 
 
-### EdFiToS3Operator
-Transfers a specific resource (or resource deletes) from the Ed-Fi ODS to S3. 
+### EdFiToObjectStorageOperator
+Transfers a specific resource (or resource deletes) from the Ed-Fi ODS to an object storage backend. 
 
 <details>
 <summary>Arguments:</summary>
@@ -284,13 +288,14 @@ Transfers a specific resource (or resource deletes) from the Ed-Fi ODS to S3.
 |:-------------------------|:--------------------------------------------------------------------------------------------------------|
 | edfi_conn_id             | Name of the Airflow connection where Ed-Fi ODS connection metadata has been defined                     |
 | resource                 | Name of Ed-Fi resource/descriptor to pull from the ODS                                                  |
-| tmp_dir                  | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to S3 |
-| s3_conn_id               | Name of the Airflow connection where S3 connection metadata has been defined                            |
-| s3_destination_key       | Destination key where Ed-Fi resource data should be written on S3                                       |
+| tmp_dir                  | Path to the temporary directory on the EC2 server where ODS data is written before their transfer to object storage |
+| object_storage_conn_id               | Name of the Airflow connection where object storage connection metadata has been defined                            |
+| object_storage_type               | Object storage connection type (used in connection disambiguation)                            |
+| destination_key       | Destination key where Ed-Fi resource data should be written in object storage                                       |
 | query_parameters         | Custom parameters to apply to the pull (default `None`)                                                 |
 | min_change_version       | Minimum change version to pull for the resource (default `None`)                                        |
 | max_change_version       | Maximum change version to pull for the resource (default `None`)                                        |
-| change_version_step_size | Window size to apply during change-version stepping (default `50000`                                    |
+| change_version_step_size | Window size to apply during change-version stepping (default `50000`)                                    |
 | api_namespace            | Namespace under which the resource is assigned (default `"ed-fi"`)                                      |
 | api_get_deletes          | Boolean flag for whether to retrieve the resource's associated deletes (default `False`)                |
 | api_retries              | Number of attempts the pull should make before giving up (default `5`)                                  |
@@ -307,8 +312,8 @@ If either `min_change_version` or `max_change_version` are undefined, change ver
 
 
 
-### S3ToSnowflakeOperator
-Copies a specific S3 key to the specified table in Snowflake.
+### ObjectStorageToDatabaseOperator
+Copies a specific file in object storage to the specified database object.
 First completes a `DELETE FROM` statement if `full_refresh` is set to True in the DAG configs.
 
 <details>
@@ -316,12 +321,13 @@ First completes a `DELETE FROM` statement if `full_refresh` is set to True in th
 
 | Argument           | Description                                                                           |
 |:-------------------|:--------------------------------------------------------------------------------------|
-| tenant_code        | ODS-tenant representation to be saved in Snowflake tables                             | 
-| api_year           | ODS API-year to be saved in Snowflake tables                                          |  
+| tenant_code        | ODS-tenant representation to be saved in the database table                             | 
+| api_year           | ODS API-year to be saved in the database table                                          |  
 | resource           | Static name of Ed-Fi resource, placed in the `name` column of the destination table   |
-| table_name         | Name of the raw Snowflake table to copy into on Snowflake                             |
-| s3_destination_key | Source key where JSON data is saved on S3                                             |
-| snowflake_conn_id  | Name of the Airflow connection where Snowflake connection metadata has been defined   | 
+| table_name         | Name of the raw database table to copy into                             |
+| destination_key | Source key where JSON data is saved in the object storage backend                                             |
+| database_conn_id  | Name of the Airflow connection where database connection metadata has been defined   | 
+| database_type  | Database connection type (used in connection disambiguation)   | 
 | edfi_conn_id       | Name of the Airflow connection where Ed-Fi ODS connection metadata has been defined   |
 | ods_version        | Optional Ed-Fi ODS version to save as metadata if `edfi_conn_id` is undefined         |
 | data_model_version | Optional Ed-Fi data model version to save as metadata if `edfi_conn_id` is undefined  |
@@ -353,7 +359,7 @@ Returns `None` if an Ed-Fi2 ODS, as change versions are unimplemented.
 
 
 ### get_previous_change_versions
-Pushes and XCom of the most recent change version for each resource of a given (tenant, year) grain saved in the Snowflake `change_version_table`.
+Pushes and XCom of the most recent change version for each resource of a given (tenant, year) grain saved in the database `change_version_table`.
 Pushes `None` if Ed-Fi2 or if no records for this resource are found (signifying full-refresh).
 
 Combining `get_newest_edfi_change_version` with `get_previous_change_versions` allows a `min_change_version` to `max_change_version` window to be defined for the pull.
@@ -365,10 +371,11 @@ Because Ed-Fi2 lacks change versions, all Ed-Fi2 pulls are full-refreshes.
 
 | Argument             | Description                                                                                                           |
 |:---------------------|:----------------------------------------------------------------------------------------------------------------------|
-| tenant_code          | ODS-tenant representation to be saved in Snowflake tables                                                             | 
-| api_year             | ODS API-year to be saved in Snowflake tables                                                                          |
-| snowflake_conn_id    | Name of the Airflow connection where Snowflake connection metadata has been defined                                   |
-| change_version_table | Name of the table to record resource change versions on Snowflake                                                     |
+| tenant_code          | ODS-tenant representation to be saved in the database tables                                                             | 
+| api_year             | ODS API-year to be saved in the database tables                                                                          |
+| database_conn_id    | Name of the Airflow connection where database connection metadata has been defined                                   |
+| database_type | Database connection type (used in connection disambiguation) |
+| change_version_table | Name of the table to record resource change versions in the database                                                     |
 
 -----
 
@@ -376,17 +383,18 @@ Because Ed-Fi2 lacks change versions, all Ed-Fi2 pulls are full-refreshes.
 
 
 ### update_change_versions
-Updates the change version table in Snowflake with the most recent change version for all endpoints in which data was ingested, as specified by the (tenant, year) grain.
+Updates the change version table in the database with the most recent change version for all endpoints in which data was ingested, as specified by the (tenant, year) grain.
 
 <details>
 <summary>Arguments:</summary>
 
 | Argument             | Description                                                                                            |
 |:---------------------|:-------------------------------------------------------------------------------------------------------|
-| tenant_code          | ODS-tenant representation to be saved in Snowflake tables                                              | 
-| api_year             | ODS API-year to be saved in Snowflake tables                                                           |
-| snowflake_conn_id    | Name of the Airflow connection where Snowflake connection metadata has been defined                    |
-| change_version_table | Name of the table to record resource change versions on Snowflake                                      |
+| tenant_code          | ODS-tenant representation to be saved in the database tables                                              | 
+| api_year             | ODS API-year to be saved in the database tables                                                           |
+| database_conn_id    | Name of the Airflow connection where database connection metadata has been defined                    |
+| database_type | Database connection type (used in connection disambiguation) |
+| change_version_table | Name of the table to record resource change versions in the database                                      |
 | edfi_change_version  | The most recent change version present in the ODS (as retrieved from `get_newest_edfi_change_version`) |
 
 -----
@@ -396,17 +404,18 @@ Updates the change version table in Snowflake with the most recent change versio
 
 
 ### reset_change_versions
-Marks all rows in the Snowflake `change_version_table` for the specified (tenant, year) grain as inactive.
+Marks all rows in the database `change_version_table` for the specified (tenant, year) grain as inactive.
 
 <details>
 <summary>Arguments:</summary>
 
 | Argument             | Description                                                                                            |
 |:---------------------|:-------------------------------------------------------------------------------------------------------|
-| tenant_code          | ODS-tenant representation to be saved in Snowflake tables                                              | 
-| api_year             | ODS API-year to be saved in Snowflake tables                                                           |
-| snowflake_conn_id    | Name of the Airflow connection where Snowflake connection metadata has been defined                    |
-| change_version_table | Name of the table to record resource change versions on Snowflake                                      |
+| tenant_code          | ODS-tenant representation to be saved in the database tables                                              | 
+| api_year             | ODS API-year to be saved in the database tables                                                           |
+| database_conn_id    | Name of the Airflow connection where  database connection metadata has been defined                    |
+| database_type | Database connection type (used in connection disambiguation) |
+| change_version_table | Name of the table to record resource change versions in the database                                      |
 
 -----
 
