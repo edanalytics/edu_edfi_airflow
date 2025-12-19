@@ -2,8 +2,7 @@ from edu_edfi_airflow.dags.earthbeam_dag import EarthbeamDAG
 from edu_edfi_airflow.dags.edfi_resource_dag import EdFiResourceDAG
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
-# Lazy import to avoid circular dependency
-# from edu_edfi_airflow.providers.edfi.transfers.edfi_to_s3 import EdFiToS3Operator
+from edu_edfi_airflow.providers.edfi.operators.validate_conn_operator import ValidateEdFiConnectionsOperator
 
 from edu_edfi_airflow.callables import airflow_util as util
 
