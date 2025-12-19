@@ -70,6 +70,7 @@ def delete_total_counts(
 
     *,
     database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
     total_counts_table: str,
 
     **kwargs
@@ -79,7 +80,7 @@ def delete_total_counts(
         raise AirflowSkipException(f"Full refresh not specified. Total counts table `{total_counts_table}` unchanged.")
 
     ### Prepare the SQL query.
-    db = DatabaseInterface(database_conn_id)
+    db = DatabaseInterface(database_conn_id, database_type=database_type)
 
     # Retrieve the database and schema from the database connection
     qry_delete = f"""
@@ -99,6 +100,7 @@ def insert_total_counts(
 
     *,
     database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
     total_counts_table: str,
     endpoint_counts: List[Tuple[str, int]],
 
@@ -128,7 +130,8 @@ def insert_total_counts(
         ]
         rows_to_insert.append(row)
 
-    DatabaseInterface(database_conn_id).insert_into_database(
+    db_interface = DatabaseInterface(database_conn_id, database_type=database_type)
+    db_interface.insert_into_database(
         table=total_counts_table,
         columns=columns,
         values=rows_to_insert,

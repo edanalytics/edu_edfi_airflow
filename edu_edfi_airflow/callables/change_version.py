@@ -36,6 +36,7 @@ def reset_change_versions(
     *,
     change_version_table: str,
     database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
 
     **kwargs
 ) -> None:
@@ -45,7 +46,7 @@ def reset_change_versions(
 
 
     ### Prepare the SQL query.
-    db = DatabaseInterface(database_conn_id)
+    db = DatabaseInterface(database_conn_id, database_type=database_type)
 
     # Retrieve the database and schema from the database connection
     # Reset all resources in this tenant-year.
@@ -74,6 +75,7 @@ def get_previous_change_versions(
     *,
     change_version_table: str,
     database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
@@ -103,7 +105,7 @@ def get_previous_change_versions(
     logging.info("Retrieving max previously-ingested change versions from database.")
 
     ### Prepare the SQL query.
-    db = DatabaseInterface(database_conn_id)
+    db = DatabaseInterface(database_conn_id, database_type=database_type)
     
     # Retrieve the previous max change versions for this tenant-year.
     if get_deletes:
@@ -242,6 +244,7 @@ def update_change_versions(
     *,
     change_version_table: str,
     database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
     
     edfi_change_version: int,
     endpoints: List[str],
@@ -304,7 +307,8 @@ def update_change_versions(
 
             rows_to_insert.append(row)
 
-    DatabaseInterface(database_conn_id).insert_into_database(
+    db_interface = DatabaseInterface(database_conn_id, database_type=database_type)
+    db_interface.insert_into_database(
         table=change_version_table,
         columns=columns,
         values=rows_to_insert,

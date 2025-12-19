@@ -5,19 +5,19 @@ import os
 from airflow.hooks.base import BaseHook
 from airflow.models import Connection
 
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 
 class DatabaseInterface(abc.ABC):
     """
     
     """
-    def __new__(cls, database_conn_id: str, **kwargs):
+    def __new__(cls, database_conn_id: str, database_type: Optional[str] = None, **kwargs):
         conn = BaseHook.get_connection(database_conn_id)
         
-        if conn.conn_type == 'snowflake':
+        if database_type.lower() == 'snowflake' or conn.conn_type == 'snowflake':
             return object.__new__(SnowflakeDatabaseInterface)
-        elif conn.conn_type == 'databricks':
+        elif database_type.lower() == 'databricks' or conn.conn_type == 'databricks':
             return object.__new__(DatabricksDatabaseInterface)
         else:
             raise ValueError(f"DatabaseInterface type {conn.conn_type} is not defined!")
