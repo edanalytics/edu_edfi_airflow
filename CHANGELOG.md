@@ -1,3 +1,15 @@
+# edu_edfi_airflow v0.5.0
+## New features
+- Add Ed-Fi token caching (new in `edfi_api_client` 0.3.0), enabled by default.
+- Add support for Azure Data Lake Storage (ADLS) and Databricks Delta Lake in `EdFiResourceDAG`.
+
+## Under the hood
+- Genericize `EdFiResourceDAG` to use abstract interfaces for data lakes and databases, instead of hard coding "S3" and "Snowflake".
+  - Note that all task names have been updated to reflect this genericization.
+- Deprecate `pull_all_deletes` functionality in `EdFiResourceDAG` (behaviour resolved in dbt).
+- Update `EarthbeamDAG.get_filename()` to not strip extensions from directories, fixing downstream duplicates in Earthmover results sent to S3 and in Lightbeam logs send to Snowflake.
+- Skip copy tasks if empty `input_filepaths` passed to `EarthbeamDAG`.
+
 # edu_edfi_airflow v0.4.10
 ## New features
 - Add map index ID and name to logs sent to Snowflake in `EarthbeamDAG`
