@@ -106,8 +106,8 @@ class EdFiResourceDAG:
         
         self.object_storage_conn_id = object_storage_conn_id or s3_conn_id
         self.database_conn_id = database_conn_id or snowflake_conn_id
-        self.object_storage_type = object_storage_type
-        self.database_type = database_type
+        self.object_storage_type = 's3' if s3_conn_id else object_storage_type
+        self.database_type = 'snowflake' if snowflake_conn_id else database_type
         
         # Store additional kwargs for flexible database/storage connections
         self.additional_kwargs = kwargs
