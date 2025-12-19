@@ -15,12 +15,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         JSON string mapping tenant codes to LEA IDs. This is templated, so you
         can pull from Airflow Variables (e.g. {{ var.value.edfi_tenant_lea_mapping }}).
     conn_prefix : str
-        Connection ID prefix (default: "edfi").
-    conn_suffix : str
-        Connection ID suffix (default: "").
-        Pattern: {prefix}_{tenant}_{year}{suffix}
-        Example: conn_prefix="edfi", conn_suffix="_assessment_load" 
-                 matches "edfi_abbeville_2023_assessment_load"
+        Connection ID prefix (default: "edfi"). Matches pattern: {conn_prefix}_{tenant}_{year}
     exclude_conns : list[str], optional
         List of connection IDs to skip during validation.
     fail_on : list[str], optional
@@ -28,14 +23,13 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         Defaults to all four if not specified. Pass empty list to never fail.
     """
 
-    template_fields = ("tenant_lea_mapping_json", "conn_prefix", "conn_suffix")
+    template_fields = ("tenant_lea_mapping_json", "conn_prefix")
 
     def __init__(
         self,
         *,
         tenant_lea_mapping_json: str,
         conn_prefix: str = "edfi",
-        conn_suffix: str = "",
         exclude_conns: Optional[List[str]] = None,
         fail_on: Optional[List[str]] = ["MISMATCH", "NO_MAPPING", "NO_ORG_ID", "ERROR"],
         **kwargs: Any,
@@ -44,7 +38,6 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
 
         self.tenant_lea_mapping_json = tenant_lea_mapping_json
         self.conn_prefix = conn_prefix
-        self.conn_suffix = conn_suffix
         self.exclude_conns = exclude_conns or []
         self.fail_on = fail_on
 
@@ -59,7 +52,7 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         self.log.info("Starting EdFi connection validation (This task will fail on: %s)", ", ".join(self.fail_on or "nothing"))
 
         # run validate
-        results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=self.conn_prefix, conn_suffix=self.conn_suffix, exclude_conns=self.exclude_conns)
+        results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=self.conn_prefix, exclude_conns=self.exclude_conns)
 
         # Detailed summary by type
         total = len(results)
