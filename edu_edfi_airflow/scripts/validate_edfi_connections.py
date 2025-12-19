@@ -64,7 +64,7 @@ def try_leas_endpoint(client: EdFiClient, expected_lea_id: str) -> Tuple[List[st
         leas_resource = client.resource('leas')
         
         # Get all LEAs
-        leas = leas_resource.get()
+        leas = list(leas_resource.get_rows())
         lea_ids = [str(lea['localEducationAgencyId']) for lea in leas if 'localEducationAgencyId' in lea]
         
         return lea_ids, f"found_{len(lea_ids)}_leas"
@@ -76,7 +76,7 @@ def try_calendars_schools(client: EdFiClient, expected_lea_id: str) -> Tuple[Lis
     """Try to get LEA IDs through calendars -> schools relationship."""
     try:
         # Get school IDs from calendars
-        calendars = client.resource('calendars').get()
+        calendars = list(client.resource('calendars').get_rows())
         school_ids = {cal['schoolReference']['schoolId'] for cal in calendars 
                      if 'schoolReference' in cal and 'schoolId' in cal['schoolReference']}
         
@@ -88,33 +88,43 @@ def try_calendars_schools(client: EdFiClient, expected_lea_id: str) -> Tuple[Lis
         lea_ids = set()
         
         # Get all schools and filter by the school IDs we found
-        schools = schools_resource.get()
+        schools = list(schools_resource.get_rows())
         for school in schools:
-            if 'schoolId' in school and school['schoolId'] in school_ids:
-                if 'localEducationAgencyReference' in school:
-                    lea_ref = school['localEducationAgencyReference']
-                    if 'localEducationAgencyId' in lea_ref:
-                        lea_ids.add(str(lea_ref['localEducationAgencyId']))
+            if not ('schoolId' in school and school['schoolId'] in school_ids):
+                continue
+
+            lea_ref = school.get('localEducationAgencyReference', {})
+            if 'localEducationAgencyId' in lea_ref:
+                lea_ids.add(str(lea_ref['localEducationAgencyId']))
         
         return list(lea_ids), f"found_{len(lea_ids)}_leas_via_schools"
     except Exception as e:
         return [], f"error: {str(e)}"
 
 
-def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], conn_prefix: str = "edfi", exclude_conns: Optional[List[str]] = None) -> List[Dict]:
+def validate_edfi_connections(
+    tenant_lea_mapping: Dict[str, str], 
+    conn_prefix: str = "edfi",
+    conn_suffix: str = "",
+    exclude_conns: Optional[List[str]] = None
+) -> List[Dict]:
     """
     Validate EdFi connections against tenant LEA ID mappings.
     
     Args:
         tenant_lea_mapping: Dict mapping tenant codes to LEA IDs
-        conn_prefix: Connection ID prefix (default: "edfi"). Pattern: {prefix}_{tenant}_{year}
+        conn_prefix: Connection ID prefix (default: "edfi"). 
+        conn_suffix: Connection ID suffix (default: ""). 
+                     Pattern: {prefix}_{tenant}_{year}{suffix}
+                     Example: conn_prefix="edfi", conn_suffix="_assessment_load" 
+                              matches "edfi_abbeville_2023_assessment_load"
         exclude_conns: List of connection IDs to skip
         
     Returns:
         List of validation results
     """
     exclude_conns = exclude_conns or []
-    pattern = re.compile(rf'{re.escape(conn_prefix)}_(\w+)_(\d{{4}})')
+    pattern = re.compile(rf'{re.escape(conn_prefix)}_(\w+)_(\d{{4}}){re.escape(conn_suffix)}')
     results = []
     
     # Get all connections matching the prefix using ea_airflow_util
@@ -185,19 +195,23 @@ def validate_edfi_connections(tenant_lea_mapping: Dict[str, str], conn_prefix: s
     return results
 
 
-def main(tenant_lea_mapping: Dict[str, str], quiet: bool = False):
+def main(tenant_lea_mapping: Dict[str, str], conn_prefix: str = "edfi", conn_suffix: str = "", quiet: bool = False):
     """
     Main function that validates EdFi connections (CLI entry point).
     
     Args:
         tenant_lea_mapping: Dict mapping tenant codes to LEA IDs (required)
+        conn_prefix: Connection ID prefix (default: "edfi")
+        conn_suffix: Connection ID suffix (default: "")
         quiet: If True, suppress individual connection result output
     """
     if not quiet:
         print("EdFi Connection Validation")
         print("=" * 30)
+        pattern_display = f"{conn_prefix}_{{tenant}}_{{year}}{conn_suffix}"
+        print(f"Connection pattern: {pattern_display}")
     
-    results = validate_edfi_connections(tenant_lea_mapping)
+    results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=conn_prefix, conn_suffix=conn_suffix)
     
     if not quiet:
         print(f"Found {len(results)} matching connections")
@@ -207,11 +221,13 @@ def main(tenant_lea_mapping: Dict[str, str], quiet: bool = False):
     # Check for multiple LEA IDs per tenant
     tenant_orgs = {}
     for result in results:
-        if result['actual_org_id'] and result['status'] in ['MATCH', 'MISMATCH']:
-            tenant = result['tenant']
-            if tenant not in tenant_orgs:
-                tenant_orgs[tenant] = set()
-            tenant_orgs[tenant].add(result['actual_org_id'])
+        if not (result['actual_org_id'] and result['status'] in ['MATCH', 'MISMATCH']):
+            continue
+
+        tenant = result['tenant']
+        if tenant not in tenant_orgs:
+            tenant_orgs[tenant] = set()
+        tenant_orgs[tenant].add(result['actual_org_id'])
     
     multiple_orgs = {tenant: list(orgs) for tenant, orgs in tenant_orgs.items() if len(orgs) > 1}
     if multiple_orgs and not quiet:
@@ -257,6 +273,11 @@ if __name__ == "__main__":
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--mapping-file', '-f', help='JSON or YAML file containing tenant to LEA ID mapping')
     group.add_argument('--mapping', '-m', help='JSON string containing tenant to LEA ID mapping')
+    parser.add_argument('--conn-prefix', '-p', default='edfi',
+                        help='Connection ID prefix (default: edfi)')
+    parser.add_argument('--conn-suffix', '-s', default='',
+                        help='Connection ID suffix (default: none). '
+                             'Example: --conn-suffix="_assessment_load" matches edfi_tenant_2023_assessment_load')
     parser.add_argument('--quiet', '-q', action='store_true', help='Suppress individual connection output, show only summary')
     
     args = parser.parse_args()
@@ -272,4 +293,4 @@ if __name__ == "__main__":
     else:  # args.mapping
         tenant_lea_mapping = json.loads(args.mapping)
     
-    main(tenant_lea_mapping, quiet=args.quiet)
+    main(tenant_lea_mapping, conn_prefix=args.conn_prefix, conn_suffix=args.conn_suffix, quiet=args.quiet)
