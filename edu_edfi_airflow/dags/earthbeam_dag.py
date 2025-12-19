@@ -687,7 +687,16 @@ class EarthbeamDAG:
     
     @staticmethod
     def get_filename(filepath: str) -> str:
-        return os.path.splitext(os.path.basename(filepath))[0]
+        """ 
+        Helper for getting base names. If filepath is an existing
+        directory, will strip away parent directories ('/foo/bar/baz' ->
+        'baz'). Otherwise, will strip parent directories AND strip away any
+        file extension marked by a period ('/foo/bar/baz.csv' -> 'baz').
+        """
+        if os.path.isdir(filepath):
+            return os.path.basename(filepath)
+        else:
+            return os.path.splitext(os.path.basename(filepath))[0]
     
     @staticmethod
     def get_match_rates_query(student_id_match_rates_table: str, tenant_code: str, api_year: str, assessment_bundle: str, required_id_match_rate: int) -> str:
@@ -819,8 +828,13 @@ class EarthbeamDAG:
                 input_file_envs = [input_file_envs] if isinstance(input_file_envs, str) else input_file_envs
                 input_filepaths = [input_filepaths] if isinstance(input_filepaths, str) else input_filepaths
             
-                file_basename = self.get_filename(input_filepaths[0])
-                env_mapping = dict(zip(input_file_envs, input_filepaths))
+                # Handle empty input_filepaths
+                if input_filepaths:
+                    file_basename = self.get_filename(input_filepaths[0])
+                    env_mapping = dict(zip(input_file_envs, input_filepaths))
+                else:
+                    file_basename = 'non_file_source'
+                    env_mapping = {}
 
                 # Add params needed for the student ID bundle
                 if student_id_match_rates_table is not None:
@@ -1098,7 +1112,7 @@ class EarthbeamDAG:
 
             # (RAW-TO-S3) -> Earthmover -> () -> Remove Files
             # One subfolder per input file environment variable
-            if s3_conn_id:
+            if s3_conn_id and input_filepaths:
                 raw_to_s3 = upload_to_s3.override(task_id=f"upload_raw_to_s3")(input_filepaths, "raw", s3_file_subdirs=input_file_envs)
                 main_tasks.append(raw_to_s3)
             

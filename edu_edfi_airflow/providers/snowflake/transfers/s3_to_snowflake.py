@@ -35,12 +35,15 @@ class S3ToSnowflakeOperator(BaseOperator):
         edfi_conn_id: Optional[str] = None,
         ods_version: Optional[str] = None,
         data_model_version: Optional[str] = None,
+        use_edfi_token_cache: bool = False,
 
         full_refresh: bool = False,
         xcom_return: Optional[Any] = None,
         **kwargs
     ) -> None:
         super(S3ToSnowflakeOperator, self).__init__(**kwargs)
+
+        logging.warning("Operators defined in `edu_edfi_airflow.providers.transfers.s3_to_snowflake` are deprecated.")
 
         self.edfi_conn_id = edfi_conn_id
         self.snowflake_conn_id = snowflake_conn_id
@@ -59,6 +62,8 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         self.full_refresh = full_refresh
         self.xcom_return = xcom_return
+
+        self.use_edfi_token_cache = use_edfi_token_cache
 
 
     def execute(self, context):
@@ -92,7 +97,7 @@ class S3ToSnowflakeOperator(BaseOperator):
         This needs to occur in execute to not call the API at every Airflow synchronize.
         """
         if self.edfi_conn_id:
-            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id).get_conn()
+            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
             if is_edfi2 := edfi_conn.is_edfi2():
                 self.full_refresh = True
 
@@ -257,7 +262,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # This is used to clear deletes and keyChanges during a full refresh.
         if delete_all:
             if len(names):
-                names_string = f"AND name in ('{"', '".join(names)}')"
+                names_string = f"""AND name in ('{"', '".join(names)}')"""
             else:
                 names_string = ''
 

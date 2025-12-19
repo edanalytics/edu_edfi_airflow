@@ -198,3 +198,21 @@ def test_partition_invalid_col(tmp_path, basic_data):
         EarthbeamDAG.partition_on_tenant_and_year(
             data_path, tmp_path, tenant_col="not_found"
         )
+
+def test_get_filename_preserves_dir_with_periods(tmp_path):
+    """Tests that get_filename doesn't try to strip extensions from directories"""
+    data_dir = tmp_path / "dirname.with.periods"
+    data_dir.mkdir()
+
+    data_dir_basename = EarthbeamDAG.get_filename(str(data_dir))
+
+    assert data_dir_basename == data_dir.name
+
+def test_get_filename_strips_extension_from_file():
+    """Tests that get_filename still strips extensions from non-directories"""
+    data_file = '/grandparent/parent/file.with.periods.csv'
+
+    data_file_basename = EarthbeamDAG.get_filename(data_file)
+
+    assert data_file_basename == 'file.with.periods'
+   
