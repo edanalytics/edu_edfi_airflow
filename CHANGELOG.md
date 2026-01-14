@@ -1,3 +1,51 @@
+# edu_edfi_airflow v0.5.0
+## New features
+- Add Ed-Fi token caching (new in `edfi_api_client` 0.3.0), enabled by default.
+- Add support for Azure Data Lake Storage (ADLS) and Databricks Delta Lake in `EdFiResourceDAG`.
+- Add `ValidateEdFiConnectionsOperator` to validate that Ed-Fi connection permissions align with the tenant to which they are labeled. 
+
+## Under the hood
+- Genericize `EdFiResourceDAG` to use abstract interfaces for data lakes and databases, instead of hard coding "S3" and "Snowflake".
+  - Note that all task names have been updated to reflect this genericization.
+- Deprecate `pull_all_deletes` functionality in `EdFiResourceDAG` (behaviour resolved in dbt).
+- Update `EarthbeamDAG.get_filename()` to not strip extensions from directories, fixing downstream duplicates in Earthmover results sent to S3 and in Lightbeam logs send to Snowflake.
+- Skip copy tasks if empty `input_filepaths` passed to `EarthbeamDAG`.
+
+# edu_edfi_airflow v0.4.10
+## New features
+- Add map index ID and name to logs sent to Snowflake in `EarthbeamDAG`
+## Under the hood
+- Add `has_key_changes` argument to `EdFiResourceDAG` to selectively enable key-changes logic (default `False`)
+
+# edu_edfi_airflow v0.4.9
+## Under the hood
+- Run Total-Counts taskgroup earlier in `EdFiResourceDAG` to minimize time between latest change-version and total-counts pulls
+## Fixes
+- Update helpers in `EdFiResourceDAG` to reset all records in `deletes` and `keyChanges` tables during a full-refresh
+
+# edu_edfi_airflow v0.4.8
+## New features
+- Add error-logging to Snowflake in Earthmover tasks in `EarthbeamDAG`
+- Label tasks in dynamic taskgroups with filename in `EarthbeamDAG`
+## Under the hood
+- Update match-rates table query in `EarthbeamDAG` to return match rates greater than required threshold and sort competing matches by name descending
+- Add gate in `EarthbeamDAG` to not post or sideload Ed-Fi if match-rate was not met
+
+# edu_edfi_airflow v0.4.7
+## Under the hood
+- Revert default of `pull_all_deletes` to false in preparation for deprecation. (Behavior resolved in dbt)
+
+# edu_edfi_airflow v0.4.6
+## New features
+- Add functionality to store total counts from the ODS, for data quality checks
+## Under the hood
+- Consistency fix in earthbeam dag
+
+# edu_edfi_airflow v0.4.5
+## New features
+- Update Resources DAG UI for compatibility with Airflow 2.9.x (backwards compatibility with prior versions is retained)
+
+
 # edu_edfi_airflow v0.4.4
 ## Under the hood
 - Allow CSV files to optionally enclose fields in quotes when copying in `EarthbeamDAG`.
@@ -12,7 +60,7 @@
 
 ## Fixes
 - Add dependency between S3 and file removal in `EarthbeamDAG` to avoid race condition where files are removed prematurely.
-
+- 
 
 # edu_edfi_airflow v0.4.2
 ## New features

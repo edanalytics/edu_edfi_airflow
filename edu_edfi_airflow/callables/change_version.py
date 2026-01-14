@@ -2,21 +2,20 @@ import logging
 
 from typing import Dict, List, Tuple, Optional
 
-from airflow.exceptions import AirflowSkipException, AirflowFailException
-from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from airflow.exceptions import AirflowSkipException
 
-from edu_edfi_airflow.callables.snowflake import insert_into_snowflake
 from edu_edfi_airflow.callables import airflow_util
+from edu_edfi_airflow.interfaces.database import DatabaseInterface
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
-def get_newest_edfi_change_version(edfi_conn_id: str, **kwargs) -> int:
+def get_newest_edfi_change_version(edfi_conn_id: str, use_edfi_token_cache: bool = False, **kwargs) -> int:
     """
 
     :return:
     """
     ### Connect to EdFi ODS and verify EdFi3.
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
+    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, use_token_cache=use_edfi_token_cache).get_conn()
 
     # Break off prematurely if change versions not supported.
     if edfi_conn.is_edfi2():
@@ -35,8 +34,9 @@ def reset_change_versions(
     api_year    : int,
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
 
     **kwargs
 ) -> None:
@@ -44,13 +44,14 @@ def reset_change_versions(
     if not airflow_util.is_full_refresh(kwargs):
         raise AirflowSkipException(f"Full refresh not specified. Change version table `{change_version_table}` unchanged.")
 
-    ### Prepare the SQL query.
-    # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
 
+    ### Prepare the SQL query.
+    db = DatabaseInterface(database_conn_id, database_type=database_type)
+
+    # Retrieve the database and schema from the database connection
     # Reset all resources in this tenant-year.
     qry_mark_inactive = f"""
-        update {database}.{schema}.{change_version_table}
+        update {db.database}.{db.schema}.{change_version_table}
             set is_active = FALSE
         where tenant_code = '{tenant_code}'
         and api_year = {api_year}
@@ -61,9 +62,9 @@ def reset_change_versions(
     if config_endpoints := airflow_util.get_config_endpoints(kwargs):
         qry_mark_inactive += "    and name in ('{}')".format("', '".join(config_endpoints))
 
-    ### Connect to Snowflake and execute the query.
+    ### Connect to database and execute the query.
     logging.info("Full refresh: marking previous pulls inactive.")
-    SnowflakeHook(snowflake_conn_id).run(qry_mark_inactive)
+    db.query_database(qry_mark_inactive, **kwargs)
 
 
 def get_previous_change_versions(
@@ -72,11 +73,13 @@ def get_previous_change_versions(
     endpoints: List[Tuple[str, str]],
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
+    has_key_changes: bool = False,
 
     **context
 ) -> None:
@@ -98,23 +101,26 @@ def get_previous_change_versions(
     if airflow_util.is_full_refresh(context) and (get_deletes or get_key_changes):
         raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
 
-    logging.info("Retrieving max previously-ingested change versions from Snowflake.")
+
+    logging.info("Retrieving max previously-ingested change versions from database.")
 
     ### Prepare the SQL query.
-    # Retrieve the database and schema from the Snowflake hook, and raise an exception if undefined.
-    database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
-
+    db = DatabaseInterface(database_conn_id, database_type=database_type)
+    
     # Retrieve the previous max change versions for this tenant-year.
     if get_deletes:
         filter_clause = "is_deletes"
     elif get_key_changes:
         filter_clause = "is_key_changes"
+    elif has_key_changes:  # Handles optionality of `is_key_changes` column
+        filter_clause = "not coalesce(is_deletes, false) and not coalesce(is_key_changes, false)"
     else:
-        filter_clause = "TRUE"
+        filter_clause = "not coalesce(is_deletes, false)"
 
+    # Retrieve the database and schema from the database connection
     qry_prior_max = f"""
         select name, max(max_version) as max_version
-        from {database}.{schema}.{change_version_table}
+        from {db.database}.{db.schema}.{change_version_table}
         where tenant_code = '{tenant_code}'
             and api_year = {api_year}
             and is_active
@@ -123,7 +129,9 @@ def get_previous_change_versions(
     """
 
     ### Retrieve previous endpoint-level change versions and push as an XCom.
-    prior_change_versions = dict(SnowflakeHook(snowflake_conn_id).get_records(qry_prior_max))
+    prior_change_versions = db.query_database(qry_prior_max, **context)
+    prior_change_versions = dict(prior_change_versions)
+    
     logging.info(
         f"Collected prior change versions for {len(prior_change_versions)} endpoints."
     )
@@ -145,14 +153,17 @@ def get_previous_change_versions_with_deltas(
     endpoints: List[Tuple[str, str]],
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
 
     edfi_conn_id: Optional[str],
     max_change_version: Optional[int],
 
     get_deletes: bool = False,
     get_key_changes: bool = False,
+    has_key_changes: bool = False,
+
+    use_edfi_token_cache: bool = False,
 
     **context
 ) -> None:
@@ -161,12 +172,12 @@ def get_previous_change_versions_with_deltas(
     """
     return_tuples = get_previous_change_versions(
         tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
-        snowflake_conn_id=snowflake_conn_id, change_version_table=change_version_table,
-        get_deletes=get_deletes, get_key_changes=get_key_changes,
+        database_conn_id=database_conn_id, change_version_table=change_version_table,
+        get_deletes=get_deletes, get_key_changes=get_key_changes, has_key_changes=has_key_changes,
         **context
     )
 
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id).get_conn()
+    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, use_token_cache=use_edfi_token_cache).get_conn()
 
     # Only ping the API if the endpoint is specified in the run.
     config_endpoints = airflow_util.get_config_endpoints(context)
@@ -231,15 +242,17 @@ def update_change_versions(
     api_year   : int,
 
     *,
-    snowflake_conn_id: str,
     change_version_table: str,
+    database_conn_id: Optional[str] = None,
+    database_type: Optional[str] = None,
     
     edfi_change_version: int,
     endpoints: List[str],
     get_deletes: bool,
     get_key_changes: bool,
+    has_key_changes: bool,
 
-    **kwargs
+    **context
 ):
     """
 
@@ -250,6 +263,10 @@ def update_change_versions(
             "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
         )
     
+    # we have to do this for the time being because the XCom that produces this list
+    # actually returns a lazily-evaluated object with no len() property
+    endpoints = list(endpoints)
+
     logging.info(f"Collected updated change versions for {len(endpoints)} endpoints.")
     
     # Deletes and KeyChanges are mutually-exclusive. Delete-status is original and required to output.
@@ -267,24 +284,35 @@ def update_change_versions(
     # Build and insert row tuples for each endpoint.
     rows_to_insert = []
 
-    for endpoint in endpoints:
-        row = [
-            tenant_code, api_year, endpoint,
-            kwargs["ds"], kwargs["ts"],
-            edfi_change_version, True,
-            get_deletes,
-        ]
+    row_sets = [{"get_deletes": get_deletes, "get_key_changes": get_key_changes}]
 
-        if get_key_changes:
-            row.append(get_key_changes)
+    # If a full-refresh is being run, also insert records for deletes and key changes (if enabled).
+    # This prevents all deletes and key changes from being pulled in the next run.
+    if airflow_util.is_full_refresh(context):
+        row_sets.append({"get_deletes": True, "get_key_changes": False})
+        if has_key_changes:
+            row_sets.append({"get_deletes": False, "get_key_changes": True})
 
-        rows_to_insert.append(row)
+    for row_set in row_sets:
+        for endpoint in endpoints:
+            row = [
+                tenant_code, api_year, endpoint,
+                context["ds"], context["ts"],
+                edfi_change_version, True,
+                row_set["get_deletes"],
+            ]
 
-    insert_into_snowflake(
-        snowflake_conn_id=snowflake_conn_id,
-        table_name=change_version_table,
+            if get_key_changes:
+                row.append(row_set["get_key_changes"])
+
+            rows_to_insert.append(row)
+
+    db_interface = DatabaseInterface(database_conn_id, database_type=database_type)
+    db_interface.insert_into_database(
+        table=change_version_table,
         columns=columns,
-        values=rows_to_insert
+        values=rows_to_insert,
+        **context
     )
 
     return True
