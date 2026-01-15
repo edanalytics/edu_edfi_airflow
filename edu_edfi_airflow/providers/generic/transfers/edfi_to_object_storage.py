@@ -50,8 +50,9 @@ class EdFiToObjectStorageOperator(BaseOperator):
         namespace: str = 'ed-fi',
         page_size: int = 500,
         num_retries: int = 5,
-        change_version_step_size: int = 50000,
-        reverse_paging: bool = True,
+        change_version_step_size: int,
+        cursor_paging: bool = True,
+        reverse_paging: bool = False,
         query_parameters  : Optional[dict] = None,
 
         enabled_endpoints: Optional[List[str]] = None,
@@ -122,7 +123,9 @@ class EdFiToObjectStorageOperator(BaseOperator):
             resource=self.resource, namespace=self.namespace, page_size=self.page_size,
             num_retries=self.num_retries, change_version_step_size=self.change_version_step_size,
             min_change_version=self.min_change_version, max_change_version=self.max_change_version,
-            query_parameters=self.query_parameters, object_storage=object_storage
+            query_parameters=self.query_parameters, object_storage=object_storage,
+            cursor_paging = self.cursor_paging
+
         )
 
         # Return the clean URL string (not ObjectStoragePath) for downstream operators
