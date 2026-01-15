@@ -50,9 +50,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         namespace: str = 'ed-fi',
         page_size: int = 500,
         num_retries: int = 5,
-        # change_version_step_size: int = 50000,
-        # reverse_paging: bool = True,
-        cursor_paging: bool = True,
+        change_version_step_size: int = 50000,
+        reverse_paging: bool = True,
         query_parameters  : Optional[dict] = None,
 
         enabled_endpoints: Optional[List[str]] = None,
@@ -84,9 +83,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         self.namespace = namespace
         self.page_size = page_size
         self.num_retries = num_retries
-        self.cursor_paging = cursor_paging
-        # self.change_version_step_size = change_version_step_size
-        # self.reverse_paging = reverse_paging
+        self.change_version_step_size = change_version_step_size
+        self.reverse_paging = reverse_paging
         self.query_parameters = query_parameters
 
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
@@ -108,7 +106,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
             raise AirflowSkipException
 
         # Check the validity of min and max change-versions.
-        # self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
+        self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
 
         # Build the object storage based on passed arguments, using the custom interface implementation.
         object_interface = ObjectStorageInterface(self.object_storage_conn_id, object_storage_type=self.object_storage_type)
@@ -122,10 +120,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         self.pull_edfi_to_object_storage(
             edfi_conn=edfi_conn,
             resource=self.resource, namespace=self.namespace, page_size=self.page_size,
-            num_retries=self.num_retries, 
-            cursor_paging = self.cursor_paging,
-            # change_version_step_size=self.change_version_step_size,
-            # min_change_version=self.min_change_version, max_change_version=self.max_change_version,
+            num_retries=self.num_retries, change_version_step_size=self.change_version_step_size,
+            min_change_version=self.min_change_version, max_change_version=self.max_change_version,
             query_parameters=self.query_parameters, object_storage=object_storage
         )
 
@@ -174,9 +170,9 @@ class EdFiToObjectStorageOperator(BaseOperator):
         namespace: str,
         page_size: int,
         num_retries: int,
-        # change_version_step_size: int,
-        # min_change_version: Optional[int],
-        # max_change_version: Optional[int],
+        change_version_step_size: int,
+        min_change_version: Optional[int],
+        max_change_version: Optional[int],
         query_parameters: dict,
         object_storage: 'ObjectStoragePath'
     ):
@@ -193,17 +189,16 @@ class EdFiToObjectStorageOperator(BaseOperator):
         resource_endpoint = edfi_conn.resource(
             resource, namespace=namespace, params=query_parameters,
             get_deletes=self.get_deletes, get_key_changes=self.get_key_changes,
-            # min_change_version=min_change_version, max_change_version=max_change_version
+            min_change_version=min_change_version, max_change_version=max_change_version
         )
 
         # Turn off change version stepping if min and max change versions have not been defined.
-        # step_change_version = (min_change_version is not None and max_change_version is not None)
+        step_change_version = (min_change_version is not None and max_change_version is not None)
 
         paged_iter = resource_endpoint.get_pages(
             page_size=page_size,
-            # step_change_version=step_change_version, change_version_step_size=change_version_step_size,
-            # reverse_paging=self.reverse_paging,
-            cursor_paging = self.cursor_paging,
+            step_change_version=step_change_version, change_version_step_size=change_version_step_size,
+            reverse_paging=self.reverse_paging,
             retry_on_failure=True, max_retries=num_retries
         )
 
