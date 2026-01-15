@@ -698,7 +698,7 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
-                    reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
+                    # reverse_paging=self.get_deletes_cv_with_deltas if get_deletes else True,
                     cursor_paging = True,
 
                     # Only run endpoints specified at DAG or delta-level.
