@@ -176,9 +176,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         min_change_version: Optional[int],
         max_change_version: Optional[int],
         query_parameters: dict,
-        object_storage: 'ObjectStoragePath',
-        cursor_paging: bool
-    ):
+        object_storage: 'ObjectStoragePath'
+                ):
         """
         Break out load logic to allow code-duplication in bulk version of operator.
         """
