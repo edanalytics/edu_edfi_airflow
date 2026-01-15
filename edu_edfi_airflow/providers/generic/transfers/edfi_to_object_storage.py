@@ -86,6 +86,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         self.num_retries = num_retries
         self.change_version_step_size = change_version_step_size
         self.reverse_paging = reverse_paging
+        self.cursor_paging = cursor_paging
         self.query_parameters = query_parameters
 
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
