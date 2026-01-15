@@ -124,9 +124,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
             resource=self.resource, namespace=self.namespace, page_size=self.page_size,
             num_retries=self.num_retries, change_version_step_size=self.change_version_step_size,
             min_change_version=self.min_change_version, max_change_version=self.max_change_version,
-            query_parameters=self.query_parameters, object_storage=object_storage,
-            cursor_paging = self.cursor_paging
-
+            query_parameters=self.query_parameters, object_storage=object_storage
         )
 
         # Return the clean URL string (not ObjectStoragePath) for downstream operators
@@ -178,7 +176,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         min_change_version: Optional[int],
         max_change_version: Optional[int],
         query_parameters: dict,
-        object_storage: 'ObjectStoragePath'
+        object_storage: 'ObjectStoragePath',
+        cursor_paging: bool
     ):
         """
         Break out load logic to allow code-duplication in bulk version of operator.
@@ -200,6 +199,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         step_change_version = (min_change_version is not None and max_change_version is not None)
 
         paged_iter = resource_endpoint.get_pages(
+            cursor_paging=self.cursor_paging,
             page_size=page_size,
             step_change_version=step_change_version, change_version_step_size=change_version_step_size,
             reverse_paging=self.reverse_paging,
