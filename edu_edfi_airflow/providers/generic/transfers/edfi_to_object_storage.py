@@ -52,6 +52,9 @@ class EdFiToObjectStorageOperator(BaseOperator):
         num_retries: int = 5,
         change_version_step_size: int,
         cursor_paging: bool = True,
+        partitioning: bool = False,
+        number: int = 5,
+
         reverse_paging: bool = False,
         query_parameters  : Optional[dict] = None,
 
@@ -87,6 +90,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         self.change_version_step_size = change_version_step_size
         self.reverse_paging = reverse_paging
         self.cursor_paging = cursor_paging
+        self.number = number
+        self.partitioning = partitioning
         self.query_parameters = query_parameters
 
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
@@ -195,10 +200,14 @@ class EdFiToObjectStorageOperator(BaseOperator):
         )
 
         # Turn off change version stepping if min and max change versions have not been defined.
-        step_change_version = (min_change_version is not None and max_change_version is not None) or self.cursor_paging is False
+        step_change_version = (
+            ( min_change_version is not None and max_change_version is not None ) 
+            and self.cursor_paging is False
+        ) 
 
         paged_iter = resource_endpoint.get_pages(
             cursor_paging=self.cursor_paging,
+            partitioning = self.partitioning
             page_size=page_size,
             step_change_version=step_change_version, change_version_step_size=change_version_step_size,
             reverse_paging=self.reverse_paging,
