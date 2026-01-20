@@ -1,5 +1,7 @@
 import copy
 import os
+import logging
+
 from functools import partial
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -547,7 +549,7 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
-
+                logging.info()
                 pull_edfi_to_object_storage = EdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
@@ -563,7 +565,7 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     min_change_version=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else None,
-                    max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                    max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id) if get_cv_operator else None,
                     reverse_paging=False,
                     cursor_paging = True,
                     partitioning = True,
