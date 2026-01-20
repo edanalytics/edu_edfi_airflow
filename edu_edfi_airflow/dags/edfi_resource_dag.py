@@ -74,7 +74,7 @@ class EdFiResourceDAG:
         multiyear: bool = False,
         schedule_interval_full_refresh: Optional[str] = None,
 
-        use_change_version: bool = True,
+        use_change_version: bool = False,
         get_key_changes: bool = False,
         get_deletes_cv_with_deltas: bool = True,
         pull_all_deletes: bool = False,  # Deprecated in 0.5.0
