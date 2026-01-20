@@ -549,7 +549,6 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
-                logging.info()
                 pull_edfi_to_object_storage = EdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
