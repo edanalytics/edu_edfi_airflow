@@ -225,6 +225,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
             # Output each page of results as JSONL strings to the output file.
             for page_result in paged_iter:
                 tmp_file.write(self.to_jsonl_string(page_result))
+                logging.info(f"{len(page_result)}")
                 total_rows += len(page_result)
 
             # Connect to object storage and copy file

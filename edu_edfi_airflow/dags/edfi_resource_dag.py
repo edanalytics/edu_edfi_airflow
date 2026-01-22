@@ -76,7 +76,7 @@ class EdFiResourceDAG:
         multiyear: bool = False,
         schedule_interval_full_refresh: Optional[str] = None,
 
-        use_change_version: bool = False,
+        use_change_version: bool = True,
         get_key_changes: bool = False,
         get_deletes_cv_with_deltas: bool = True,
         pull_all_deletes: bool = False,  # Deprecated in 0.5.0
@@ -564,7 +564,7 @@ class EdFiResourceDAG:
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     min_change_version=self.xcom_pull_template_get_key(get_cv_operator, endpoint) if get_cv_operator else None,
-                    max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id) if get_cv_operator else None,
+                    max_change_version=airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
                     reverse_paging=False,
                     cursor_paging = True,
                     partitioning = True,
