@@ -205,9 +205,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
             and self.cursor_paging is False
         ) 
 
-        paged_iter = resource_endpoint.get_pages(
-            cursor_paging=self.cursor_paging,
-            partitioning = self.partitioning,
+        paged_iter = resource_endpoint.get_pages_cursor(
             page_size=page_size,
             step_change_version=step_change_version, change_version_step_size=change_version_step_size,
             reverse_paging=self.reverse_paging,
