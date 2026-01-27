@@ -51,9 +51,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         page_size: int = 500,
         num_retries: int = 5,
         change_version_step_size: int,
-        cursor_paging: bool = True,
-        partitioning: bool = False,
-        number: int = 5,
 
         reverse_paging: bool = False,
         query_parameters  : Optional[dict] = None,
@@ -89,9 +86,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         self.num_retries = num_retries
         self.change_version_step_size = change_version_step_size
         self.reverse_paging = reverse_paging
-        self.cursor_paging = cursor_paging
-        self.number = number
-        self.partitioning = partitioning
         self.query_parameters = query_parameters
 
         # Optional variable to allow immediate skips when endpoint not specified in dynamic get-change-version output.
@@ -200,10 +194,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         )
 
         # Turn off change version stepping if min and max change versions have not been defined.
-        step_change_version = (
-            ( min_change_version is not None and max_change_version is not None ) 
-            and self.cursor_paging is False
-        ) 
+        step_change_version = ( min_change_version is not None and max_change_version is not None ) 
+
 
         paged_iter = resource_endpoint.get_pages_cursor(
             page_size=page_size,
@@ -223,7 +215,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
             # Output each page of results as JSONL strings to the output file.
             for page_result in paged_iter:
                 tmp_file.write(self.to_jsonl_string(page_result))
-                logging.info(f"{len(page_result)}")
                 total_rows += len(page_result)
 
             # Connect to object storage and copy file
