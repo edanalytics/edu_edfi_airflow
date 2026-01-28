@@ -51,7 +51,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
         page_size: int = 500,
         num_retries: int = 5,
         change_version_step_size: int,
-
         reverse_paging: bool = False,
         query_parameters  : Optional[dict] = None,
 
