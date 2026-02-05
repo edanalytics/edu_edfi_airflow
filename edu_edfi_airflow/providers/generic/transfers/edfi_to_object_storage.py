@@ -195,19 +195,12 @@ class EdFiToObjectStorageOperator(BaseOperator):
         # Turn off change version stepping if min and max change versions have not been defined.
         step_change_version = ( min_change_version is not None and max_change_version is not None ) 
 
-
-        if resource_endpoint.get_deletes or resource_endpoint.get_key_changes:
-            paged_iter = resource_endpoint.get_pages(
+        paged_iter = resource_endpoint.get_rows(
             page_size=page_size,
-            step_change_version=step_change_version, change_version_step_size=change_version_step_size,
-            reverse_paging=self.reverse_paging,
+            reverse_paging = self.reverse_paging,
+            step_change_version = step_change_version,
             retry_on_failure=True, max_retries=num_retries
         )
-        else: 
-            paged_iter = resource_endpoint.get_pages_cursor(
-                page_size=page_size,
-                retry_on_failure=True, max_retries=num_retries
-            )
 
         ### Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
