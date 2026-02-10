@@ -3,7 +3,7 @@ import logging
 import os
 import tempfile
 
-from typing import Iterator, List, Optional
+from typing import List, Optional
 
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
@@ -210,10 +210,10 @@ class EdFiToObjectStorageOperator(BaseOperator):
         
         with tempfile.NamedTemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
 
-            # Output each page of results as JSONL strings to the output file.
-            for page_result in paged_iter:
-                tmp_file.write(self.to_jsonl_string(page_result))
-                total_rows += len(page_result)
+            # Output each row as a JSONL string to the output file.
+            for row in paged_iter:
+                tmp_file.write(json.dumps(row).encode('utf8') + b'\n')
+                total_rows += 1
 
             # Connect to object storage and copy file
             tmp_file.seek(0)  # Go back to the start of the file before copying to object storage.
@@ -239,17 +239,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
             logging.info(f"Skipping downstream copy to database...")
             raise AirflowSkipException
                 
-
-    @staticmethod
-    def to_jsonl_string(rows: Iterator[dict]) -> bytes:
-        """
-        :return:
-        """
-        return b''.join(
-            json.dumps(row).encode('utf8') + b'\n'
-            for row in rows
-        )
-
 
 class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
     """
