@@ -1,6 +1,6 @@
 from airflow.decorators import task
 
-from ..hooks import RunwayHook
+from edu_edfi_airflow.providers.runway.hooks.runway import RunwayHook
 
 
 @task
