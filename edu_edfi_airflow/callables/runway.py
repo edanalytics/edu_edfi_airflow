@@ -12,12 +12,10 @@ def send_to_runway(
     hook = RunwayHook(runway_conn_id)
     client = hook.get_runway_client()
 
-    job = client.request_runway_job(
+    client.load_files(
         tenant_code=tenant_code,
         bundle_name=bundle_name,
-        input_files=input_files,
         bundle_params=bundle_params,
+        input_files=input_files,
         school_year=school_year,
     )
-    client.upload_to_s3(job, input_files)
-    client.start_job(job)
