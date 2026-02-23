@@ -684,22 +684,24 @@ remains the same across job requests.
 
 See [runway_python_client](https://github.com/edanalytics/runway_python_client)
 for documentation on using `RunwayClient`, which is a slim wrapper over Runway's
-Job Request API. One task is provided that executes all steps in the workflow, `send_to_runway`:
+Job Request API. One callable is provided that executes all steps in the workflow, `send_to_runway`:
 
 ```python
-from airflow.decorators import dag
+from airflow.decorators import dag, task
 
-from edu_edfi_airflow.providers.runway.tasks import send_to_runway
+from edu_edfi_airflow.callables.runway import send_to_runway
 
 @dag
 def test_runway():
-  send_to_runway(
+  runway_task = task(send_to_runway)
+
+  runway_task(
       runway_conn_id="runway",
       tenant_code="ea",
       bundle_name="assessments/PSAT_SAT",
       input_files={"INPUT_FILE": "/tmp/sat.csv"},
       bundle_params={"TEST_TYPE": "SAT"},
-      school_year="2526",
+      school_year="2026",
   )
 
 test_runway()
@@ -709,19 +711,20 @@ Here's an example of using Dynamic Task Mapping to run multiple input files
 against the same year and bundle params:
 
 ```python
-from airflow.decorators import dag
+from airflow.decorators import dag, task
 
-from edu_edfi_airflow.providers.runway.tasks import send_to_runway
+from edu_edfi_airflow.callables.runway import send_to_runway
 
 @dag
 def test_runway():
+    runway_task = task(send_to_runway)
 
-    send_to_runway.partial(
+    runway_task.partial(
         runway_conn_id="runway",
         tenant_code="ea",
         bundle_name="assessments/PSAT_SAT",
         bundle_params={"TEST_TYPE": "SAT"},
-        school_year="2526",
+        school_year="2026",
     ).expand(
         input_files=[
           {"INPUT_FILE": "/tmp/sat_1.csv"},
@@ -733,6 +736,6 @@ def test_runway():
 test_runway()
 ```
 
-You are welcome to wrap `RunwayClient`'s methods into Tasks to suite your own
-workflows. If it would be generally useful across projects, consider creating an
+You are welcome to write your own methods/tasks to suite your own Runway
+workflows. If it would be useful across projects, consider creating an
 Issue or submitting a PR.

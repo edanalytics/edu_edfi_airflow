@@ -1,9 +1,6 @@
-from airflow.decorators import task
-
 from edu_edfi_airflow.providers.runway.hooks.runway import RunwayHook
 
 
-@task
 def send_to_runway(
     runway_conn_id: str,
     tenant_code: str,
