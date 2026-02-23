@@ -6,7 +6,6 @@ from typing import Any, List, Optional
 from airflow.exceptions import AirflowSkipException
 from airflow.models import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-from airflow.utils.decorators import apply_defaults
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
@@ -18,7 +17,6 @@ class S3ToSnowflakeOperator(BaseOperator):
     """
     template_fields = ('resource', 'table_name', 's3_destination_key', 's3_destination_dir', 's3_destination_filename', 'xcom_return',)
 
-    @apply_defaults
     def __init__(self,
         *,
         tenant_code: str,
