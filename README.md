@@ -637,3 +637,90 @@ Shards data to parquet on disk. This is useful when a single input file contains
 -----
 
 </details>
+
+# Runway
+
+To use Runway objects, you must first install
+[runway_python_client](https://github.com/edanalytics/runway_python_client).
+
+The `RunwayHook` creates and wraps `RunwayClient`:
+
+```python
+from edu_edfi_airflow.providers.runway.hooks import RunwayHook
+
+hook = RunwayHook(runway_conn_id="runway")
+client = hook.get_runway_client()
+```
+
+Your `"runway"` Connection will look like this:
+
+* `conn_type`: http
+* `host`: https://api.\<env\>.runwayloader.org/api/v1
+* `login`: \<client key\>
+* `password`: \<client secret\>
+* extra
+  * `extra__runway__auth_base_url`: \<EA's Auth0 URL for authenticating requests\>
+  * `extra__runway__partner_code`: \<Partner code\>
+
+The Partner code is set in the Connection, because it's expected that one
+Airflow instance is operating with one Partner. Runway requests are
+authenticated at the Partner level, so token caching is simpler if the Partner
+remains the same across job requests.
+
+See [runway_python_client](https://github.com/edanalytics/runway_python_client)
+for documentation on using `RunwayClient`, which is a slim wrapper over Runway's
+Job Request API. One callable is provided that executes all steps in the workflow, `send_to_runway`:
+
+```python
+from airflow.decorators import dag, task
+
+from edu_edfi_airflow.callables.runway import send_to_runway
+
+@dag
+def test_runway():
+  runway_task = task(send_to_runway)
+
+  runway_task(
+      runway_conn_id="runway",
+      tenant_code="ea",
+      bundle_name="assessments/PSAT_SAT",
+      input_files={"INPUT_FILE": "/tmp/sat.csv"},
+      bundle_params={"TEST_TYPE": "SAT"},
+      school_year="2026",
+  )
+
+test_runway()
+```
+
+Here's an example of using Dynamic Task Mapping to run multiple input files
+against the same year and bundle params:
+
+```python
+from airflow.decorators import dag, task
+
+from edu_edfi_airflow.callables.runway import send_to_runway
+
+@dag
+def test_runway():
+    runway_task = task(send_to_runway)
+
+    runway_task.partial(
+        runway_conn_id="runway",
+        tenant_code="ea",
+        bundle_name="assessments/PSAT_SAT",
+        bundle_params={"TEST_TYPE": "SAT"},
+        school_year="2026",
+    ).expand(
+        input_files=[
+          {"INPUT_FILE": "/tmp/sat_1.csv"},
+          {"INPUT_FILE": "/tmp/sat_2.csv"},
+          {"INPUT_FILE": "/tmp/sat_3.csv"},
+        ],
+    )
+
+test_runway()
+```
+
+You are welcome to write your own methods/tasks to suite your own Runway
+workflows. If it would be useful across projects, consider creating an
+Issue or submitting a PR.
