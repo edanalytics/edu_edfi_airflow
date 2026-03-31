@@ -22,7 +22,7 @@ setuptools.setup(
       packages=setuptools.find_namespace_packages(include=['edu_edfi_airflow', 'edu_edfi_airflow.*']),
       install_requires=[
           'ea_airflow_util',
-          'edfi_api_client~=0.3.0',
+          'edfi_api_client~=0.3.1',
           'croniter',
       ],
       zip_safe=False,
