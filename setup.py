@@ -24,6 +24,7 @@ setuptools.setup(
           'ea_airflow_util',
           'edfi_api_client~=0.3.1',
           'croniter',
+          'apache-airflow-providers-amazon[s3fs]',  # Required for ObjectStorage
       ],
       zip_safe=False,
 )
