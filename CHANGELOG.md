@@ -1,3 +1,11 @@
+# edu_edfi_airflow v0.5.1
+## New features
+- Add `RunwayHook` for Airflow connection to Runway.
+- Add `send_to_runway` callable to trigger a Runway load of an assessment bundle via Airflow.
+
+## Under the hood
+- Force latest `edfi_api_client` minor version in package setup.
+
 # edu_edfi_airflow v0.5.0
 ## New features
 - Add Ed-Fi token caching (new in `edfi_api_client` 0.3.0), enabled by default.

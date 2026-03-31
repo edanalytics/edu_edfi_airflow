@@ -6,7 +6,7 @@ README = (HERE / "README.md").read_text()
 
 setuptools.setup(
       name='edu_edfi_airflow',
-      version='0.5.0',
+      version='0.5.1',
 
       description='EDU Airflow tools for Ed-Fi',
       license_files=['LICENSE.md'],
@@ -22,8 +22,9 @@ setuptools.setup(
       packages=setuptools.find_namespace_packages(include=['edu_edfi_airflow', 'edu_edfi_airflow.*']),
       install_requires=[
           'ea_airflow_util',
-          'edfi_api_client',
+          'edfi_api_client~=0.3.1',
           'croniter',
+          'apache-airflow-providers-amazon[s3fs]',  # Required for ObjectStorage
       ],
       zip_safe=False,
 )
