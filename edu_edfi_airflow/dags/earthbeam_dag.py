@@ -216,7 +216,6 @@ class EarthbeamDAG:
             task_id=task_id,
             python_callable=python_callable,
             op_kwargs=kwargs,
-            provide_context=True,
             pool=self.pool,
             dag=self.dag
         )
@@ -372,7 +371,6 @@ class EarthbeamDAG:
                     task_id=f"preprocess_python_callable__{callable_name}",
                     python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
-                    provide_context=True,
                     pool=self.pool,
                     dag=self.dag
                 )
@@ -514,7 +512,6 @@ class EarthbeamDAG:
                     task_id=f"preprocess_python_callable__{callable_name}",
                     python_callable=wrapped_callable,
                     op_kwargs=python_kwargs or {},
-                    provide_context=True,
                     pool=self.pool,
                     dag=self.dag
                 )
@@ -529,8 +526,7 @@ class EarthbeamDAG:
                 op_kwargs={
                     'raw_dir': airflow_util.xcom_pull_template(python_preprocess.task_id) if python_callable else raw_dir,
                     'file_pattern': file_pattern,
-                },
-                provide_context=True
+                }
             )
             task_order.append(list_files_task)
 

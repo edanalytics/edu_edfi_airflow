@@ -469,7 +469,6 @@ class EdFiResourceDAG:
                 'get_key_changes': get_key_changes,
                 'has_key_changes': self.get_key_changes # Indicates whether to add keyChanges records on full refresh, since this column is not yet required
             },
-            provide_context=True,
             dag=self.dag,
             **kwargs
         )
@@ -936,7 +935,6 @@ class EdFiResourceDAG:
                     'endpoint_counts': airflow_util.xcom_pull_template(get_total_counts),
                 },
                 trigger_rule='none_failed',
-                provide_context=True,
                 dag=self.dag,
                 **kwargs
             )
