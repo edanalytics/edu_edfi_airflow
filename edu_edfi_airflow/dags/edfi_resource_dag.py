@@ -1,5 +1,6 @@
 import copy
 import os
+
 from functools import partial
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -547,7 +548,6 @@ class EdFiResourceDAG:
             pull_operators_list = []
 
             for endpoint in endpoints:
-
                 pull_edfi_to_object_storage = EdFiToObjectStorageOperator(
                     task_id=endpoint,
                     edfi_conn_id=self.edfi_conn_id,
