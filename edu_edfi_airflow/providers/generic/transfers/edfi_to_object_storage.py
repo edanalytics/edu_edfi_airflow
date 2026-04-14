@@ -3,7 +3,7 @@ import logging
 import os
 import tempfile
 
-from typing import List, Optional
+from typing import Iterator, List, Optional, Union
 
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
@@ -50,8 +50,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         namespace: str = 'ed-fi',
         page_size: int = 500,
         num_retries: int = 5,
-        change_version_step_size: int,
-        reverse_paging: bool = False,
+        change_version_step_size: int = 50000,
+        reverse_paging: bool = True,
         query_parameters  : Optional[dict] = None,
 
         enabled_endpoints: Optional[List[str]] = None,
@@ -175,7 +175,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         max_change_version: Optional[int],
         query_parameters: dict,
         object_storage: 'ObjectStoragePath'
-                ):
+    ):
         """
         Break out load logic to allow code-duplication in bulk version of operator.
         """
@@ -193,12 +193,12 @@ class EdFiToObjectStorageOperator(BaseOperator):
         )
 
         # Turn off change version stepping if min and max change versions have not been defined.
-        step_change_version = ( min_change_version is not None and max_change_version is not None ) 
+        step_change_version = (min_change_version is not None and max_change_version is not None) 
 
         paged_iter = resource_endpoint.get_rows(
             page_size=page_size,
-            reverse_paging = self.reverse_paging,
-            step_change_version = step_change_version,
+            step_change_version=step_change_version,
+            reverse_paging=self.reverse_paging,
             retry_on_failure=True, max_retries=num_retries
         )
 
@@ -211,8 +211,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
         with tempfile.NamedTemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
 
             # Output each row as a JSONL string to the output file.
-            for row in paged_iter:
-                tmp_file.write(json.dumps(row).encode('utf8') + b'\n')
+            for page_result in paged_iter:
+                tmp_file.write(self.to_jsonl_string(page_result))
                 total_rows += 1
 
             # Connect to object storage and copy file
@@ -238,6 +238,21 @@ class EdFiToObjectStorageOperator(BaseOperator):
         if total_rows == 0:
             logging.info(f"Skipping downstream copy to database...")
             raise AirflowSkipException
+
+
+    @staticmethod
+    def to_jsonl_string(rows: Union[dict, Iterator[dict]]) -> bytes:
+        """
+        :return:
+        """
+        # Support either singletons or pages of payloads
+        if isinstance(rows, dict):
+            rows = [rows]
+
+        return b''.join(
+            json.dumps(row).encode('utf8') + b'\n'
+            for row in rows
+        )
                 
 
 class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
