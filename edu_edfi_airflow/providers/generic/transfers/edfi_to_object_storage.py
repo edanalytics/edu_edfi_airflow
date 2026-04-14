@@ -3,7 +3,7 @@ import logging
 import os
 import tempfile
 
-from typing import Iterator, List, Optional
+from typing import Iterator, List, Optional, Union
 
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
@@ -195,9 +195,10 @@ class EdFiToObjectStorageOperator(BaseOperator):
         # Turn off change version stepping if min and max change versions have not been defined.
         step_change_version = (min_change_version is not None and max_change_version is not None)
 
-        paged_iter = resource_endpoint.get_pages(
+        paged_iter = resource_endpoint.get_rows(
             page_size=page_size,
-            step_change_version=step_change_version, change_version_step_size=change_version_step_size,
+            step_change_version=step_change_version,
+            change_version_step_size=change_version_step_size,
             reverse_paging=self.reverse_paging,
             retry_on_failure=True, max_retries=num_retries
         )
@@ -210,10 +211,10 @@ class EdFiToObjectStorageOperator(BaseOperator):
         
         with tempfile.NamedTemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
 
-            # Output each page of results as JSONL strings to the output file.
+            # Output each row as a JSONL string to the output file.
             for page_result in paged_iter:
                 tmp_file.write(self.to_jsonl_string(page_result))
-                total_rows += len(page_result)
+                total_rows += 1
 
             # Connect to object storage and copy file
             tmp_file.seek(0)  # Go back to the start of the file before copying to object storage.
@@ -238,13 +239,17 @@ class EdFiToObjectStorageOperator(BaseOperator):
         if total_rows == 0:
             logging.info(f"Skipping downstream copy to database...")
             raise AirflowSkipException
-                
+
 
     @staticmethod
-    def to_jsonl_string(rows: Iterator[dict]) -> bytes:
+    def to_jsonl_string(rows: Union[dict, Iterator[dict]]) -> bytes:
         """
         :return:
         """
+        # Support either singletons or pages of payloads
+        if isinstance(rows, dict):
+            rows = [rows]
+
         return b''.join(
             json.dumps(row).encode('utf8') + b'\n'
             for row in rows
