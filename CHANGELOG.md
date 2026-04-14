@@ -1,3 +1,10 @@
+# edu_edfi_airflow v0.6.0
+## New features
+- Support cursor-pagination as implemented in edfi_api_client v0.4.0
+
+## Under the hood
+- Add support for Airflow 2.11
+
 # edu_edfi_airflow v0.5.1
 ## New features
 - Add `RunwayHook` for Airflow connection to Runway.
