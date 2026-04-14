@@ -193,11 +193,12 @@ class EdFiToObjectStorageOperator(BaseOperator):
         )
 
         # Turn off change version stepping if min and max change versions have not been defined.
-        step_change_version = (min_change_version is not None and max_change_version is not None) 
+        step_change_version = (min_change_version is not None and max_change_version is not None)s
 
         paged_iter = resource_endpoint.get_rows(
             page_size=page_size,
             step_change_version=step_change_version,
+            change_version_step_size=change_version_step_size,
             reverse_paging=self.reverse_paging,
             retry_on_failure=True, max_retries=num_retries
         )
@@ -253,7 +254,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
             json.dumps(row).encode('utf8') + b'\n'
             for row in rows
         )
-                
+
 
 class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
     """
