@@ -27,7 +27,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
     template_fields = (
         'resource', 'namespace', 'page_size', 'num_retries', 'change_version_step_size', 'query_parameters',
         'destination_key', 'destination_dir', 'destination_filename',
-        'min_change_version', 'max_change_version', 'enabled_endpoints',
+        'min_change_version', 'max_change_version', 'enabled_endpoints', 'full_refresh',
     )
 
     def __init__(self,
@@ -46,6 +46,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         get_key_changes: bool = False,
         min_change_version: Optional[int] = None,
         max_change_version: Optional[int] = None,
+        full_refresh: bool = False,
 
         namespace: str = 'ed-fi',
         page_size: int = 500,
@@ -70,6 +71,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         self.get_key_changes = get_key_changes
         self.min_change_version = min_change_version
         self.max_change_version = max_change_version
+        self.full_refresh = full_refresh
 
         # Storage variables
         self.tmp_dir = tmp_dir
@@ -300,9 +302,10 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
             self.change_version_step_size,
             self.query_parameters,
             self.destination_filename,
+            self.full_refresh if isinstance(self.full_refresh, list) else [self.full_refresh] * len(self.resource),
         ]
 
-        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, destination_filename) \
+        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, destination_filename, full_refresh) \
             in enumerate(zip(*zip_arguments), start=1):
 
             logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")

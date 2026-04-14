@@ -3,7 +3,7 @@ import logging
 from airflow.models import BaseOperator
 from airflow.exceptions import AirflowSkipException
 
-from typing import Optional
+from typing import List, Optional, Union
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.interfaces.database import DatabaseInterface
@@ -111,7 +111,19 @@ class ObjectStorageToDatabaseOperator(BaseOperator):
 class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
     """
     Copy the Ed-Fi files saved to S3 to database raw resource tables.
+    Supports per-resource full_refresh flags to allow selective resource-level refreshes.
     """
+    def __init__(self,
+        *,
+        full_refresh: Union[bool, List[bool]] = False,
+        **kwargs
+    ) -> None:
+        # Store per-resource full_refresh flags if provided as a list
+        # Otherwise, store as boolean for backward compatibility
+        self.per_resource_full_refresh = full_refresh if isinstance(full_refresh, list) else None
+        # Pass the boolean flag to parent for backward compatibility with single-resource case
+        super().__init__(full_refresh=full_refresh if isinstance(full_refresh, bool) else False, **kwargs)
+
     def execute(self, context):
         """
 
@@ -147,13 +159,17 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
         self.set_edfi_attributes()
         
+        # Get DAG-level full_refresh flag
+        dag_full_refresh = airflow_util.is_full_refresh(context)
+        
         # Build and run the SQL queries to database. Delete first if EdFi2 or a full-refresh.
         with DatabaseInterface(self.database_conn_id, database_type=self.database_type) as db:
 
             # If all data is sent to the same table, use a single massive SQL query to copy the data from the directory.
             if isinstance(self.table_name, str):
                 logging.info("Running bulk statements on a single table.")
-                if self.full_refresh or airflow_util.is_full_refresh(context):
+                # For bulk operations with single table, use DAG-level full_refresh or operator-level full_refresh
+                if self.full_refresh or dag_full_refresh:
                     db.delete_from_raw(
                         tenant_code=self.tenant_code, api_year=self.api_year, name=self.resource, table=self.table_name
                     )
@@ -165,8 +181,16 @@ class BulkObjectStorageToDatabaseOperator(ObjectStorageToDatabaseOperator):
                 return  # Break out of the context-manager.
             
             # Otherwise, loop over each destination and copy in sequence.
-            for resource, table, destination_key in zip(self.resource, self.table_name, self.destination_key):
-                if self.full_refresh or airflow_util.is_full_refresh(context):
+            for idx, (resource, table, destination_key) in enumerate(zip(self.resource, self.table_name, self.destination_key)):
+                # Determine if this resource should be full-refreshed
+                # Priority: per-resource flag > DAG-level flag > operator-level flag
+                should_full_refresh = dag_full_refresh or self.full_refresh
+                
+                # Check per-resource full_refresh flags if available
+                if self.per_resource_full_refresh is not None and idx < len(self.per_resource_full_refresh):
+                    should_full_refresh = self.per_resource_full_refresh[idx]
+                
+                if should_full_refresh:
                     db.delete_from_raw(
                         tenant_code=self.tenant_code, api_year=self.api_year, name=resource, table=table
                     )

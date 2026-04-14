@@ -80,6 +80,7 @@ def get_previous_change_versions(
     get_deletes: bool = False,
     get_key_changes: bool = False,
     has_key_changes: bool = False,
+    per_resource_full_refresh: Optional[Dict[str, bool]] = None,
 
     **context
 ) -> None:
@@ -96,10 +97,29 @@ def get_previous_change_versions(
     At the end of the ingest, the change version table is updated with the most recent version found in EdFi.
 
     If a full refresh is being completed, all change versions for this tenant-year have been set to inactive.
+    
+    :param per_resource_full_refresh: Optional dict mapping endpoint names to their full_refresh flags.
+                                     If provided and DAG-level full_refresh is true, only skip for resources with full_refresh=True.
     """
-    # Skip deletes/key-changes if a full-refresh.
+    # Check if we should skip deletes/key-changes
+    # Skip only if DAG-level full_refresh is set AND either:
+    # 1. per_resource_full_refresh is not provided (backward compatibility), OR
+    # 2. All endpoints have full_refresh=True
     if airflow_util.is_full_refresh(context) and (get_deletes or get_key_changes):
-        raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
+        # If per-resource full_refresh flags are provided, only skip if all endpoints have full_refresh=True
+        if per_resource_full_refresh:
+            # Extract endpoint names from the (namespace, endpoint) tuples
+            endpoint_names = [endpoint for _, endpoint in endpoints]
+            # Check if any endpoint has full_refresh=False
+            has_non_full_refresh_endpoint = any(
+                not per_resource_full_refresh.get(endpoint, False) for endpoint in endpoint_names
+            )
+            if not has_non_full_refresh_endpoint:
+                # All endpoints are doing full refresh, so skip deletes/key-changes
+                raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
+        else:
+            # Backward compatibility: skip if DAG-level full_refresh is set and no per-resource info is provided
+            raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
 
 
     logging.info("Retrieving max previously-ingested change versions from database.")
@@ -162,6 +182,7 @@ def get_previous_change_versions_with_deltas(
     get_deletes: bool = False,
     get_key_changes: bool = False,
     has_key_changes: bool = False,
+    per_resource_full_refresh: Optional[Dict[str, bool]] = None,
 
     use_edfi_token_cache: bool = False,
 
@@ -174,6 +195,7 @@ def get_previous_change_versions_with_deltas(
         tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
         database_conn_id=database_conn_id, change_version_table=change_version_table,
         get_deletes=get_deletes, get_key_changes=get_key_changes, has_key_changes=has_key_changes,
+        per_resource_full_refresh=per_resource_full_refresh,
         **context
     )
 

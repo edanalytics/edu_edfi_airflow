@@ -49,6 +49,7 @@ class EdFiResourceDAG:
         'change_version_step_size': 50000,
         'num_retries': 5,
         'query_parameters': {},
+        'full_refresh': False,
     }
 
     newest_edfi_cv_task_id = "get_latest_edfi_change_version"  # Original name for historic run compatibility
@@ -138,6 +139,12 @@ class EdFiResourceDAG:
         self.descriptors = set(descriptor_configs.keys())
         self.deletes_to_ingest = resource_deletes
         self.key_changes_to_ingest = resource_key_changes
+        
+        # Build list of endpoints with per-resource full_refresh=True
+        self.full_refresh_endpoints = {
+            endpoint for endpoint, config in self.endpoint_configs.items()
+            if config.get('full_refresh', False)
+        }
 
         # Populate DAG params with optionally-defined resources and descriptors; default to empty-list (i.e., run all).
         dag_params = {
@@ -268,6 +275,7 @@ class EdFiResourceDAG:
         resources_task_group: Optional[TaskGroup] = task_group_callable(
             group_id = "Ed-Fi_Resources",
             endpoints=sorted(list(self.resources)),
+            full_refresh_endpoints=self.full_refresh_endpoints,
             destination_dir=os.path.join(parent_directory, 'resources')
             # Tables are built dynamically from the names of the endpoints.
         )
@@ -276,6 +284,7 @@ class EdFiResourceDAG:
         descriptors_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Descriptors",
             endpoints=sorted(list(self.descriptors)),
+            full_refresh_endpoints=self.full_refresh_endpoints,
             table=self.descriptors_table,
             destination_dir=os.path.join(parent_directory, 'descriptors')
         )
@@ -284,6 +293,7 @@ class EdFiResourceDAG:
         resource_deletes_task_group: Optional[TaskGroup] = task_group_callable(
             group_id="Ed-Fi_Resource_Deletes",
             endpoints=sorted(list(self.deletes_to_ingest)),
+            full_refresh_endpoints=self.full_refresh_endpoints,
             table=self.deletes_table,
             destination_dir=os.path.join(parent_directory, 'resource_deletes'),
             get_deletes=True,
@@ -295,6 +305,7 @@ class EdFiResourceDAG:
             resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
                 group_id="Ed-Fi Resource Key Changes",
                 endpoints=sorted(list(self.key_changes_to_ingest)),
+                full_refresh_endpoints=self.full_refresh_endpoints,
                 table=self.key_changes_table,
                 destination_dir=os.path.join(parent_directory, 'resource_key_changes'),
                 get_key_changes=True
@@ -395,6 +406,7 @@ class EdFiResourceDAG:
     def build_change_version_get_operator(self,
         task_id: str,
         endpoints: List[Tuple[str, str]],
+        full_refresh_endpoints: Set[str],
         get_deletes: bool = False,
         get_key_changes: bool = False,
         get_with_deltas: bool = True
@@ -403,6 +415,13 @@ class EdFiResourceDAG:
 
         :return:
         """
+        # Extract endpoint names from (namespace, endpoint) tuples and build per-resource full_refresh dict
+        endpoint_names = [endpoint for _, endpoint in endpoints]
+        per_resource_full_refresh = {
+            endpoint: endpoint in full_refresh_endpoints
+            for endpoint in endpoint_names
+        }
+        
         get_cv_operator = PythonOperator(
             task_id=task_id,
             python_callable=change_version.get_previous_change_versions_with_deltas if get_with_deltas else change_version.get_previous_change_versions,
@@ -419,6 +438,7 @@ class EdFiResourceDAG:
                 'edfi_conn_id': self.edfi_conn_id,
                 'use_edfi_token_cache': self.use_edfi_token_cache,
                 'max_change_version': airflow_util.xcom_pull_template(self.newest_edfi_cv_task_id),
+                'per_resource_full_refresh': per_resource_full_refresh,
             },
             trigger_rule='none_failed',  # Run regardless of whether the CV table was reset.
             dag=self.dag
@@ -497,6 +517,7 @@ class EdFiResourceDAG:
     def build_default_edfi_to_database_task_group(self,
         endpoints: List[str],
         group_id: str,
+        full_refresh_endpoints: Set[str],
 
         *,
         destination_dir: str,
@@ -534,6 +555,7 @@ class EdFiResourceDAG:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_{self.database_type}",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
+                    full_refresh_endpoints=full_refresh_endpoints,
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     get_with_deltas=get_with_deltas
@@ -593,6 +615,9 @@ class EdFiResourceDAG:
                 database_conn_id=self.database_conn_id,
                 database_type=self.database_type,
                 destination_key=self.xcom_pull_template_map_idx(pull_operators_list, 1),
+                
+                # Pass per-resource full_refresh flags
+                full_refresh=[endpoint in full_refresh_endpoints for endpoint in endpoints],
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -619,6 +644,7 @@ class EdFiResourceDAG:
     def build_dynamic_edfi_to_database_task_group(self,
         endpoints: List[str],
         group_id: str,
+        full_refresh_endpoints: Set[str],
 
         *,
         destination_dir: str,
@@ -657,6 +683,7 @@ class EdFiResourceDAG:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions_from_{self.database_type}",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
+                    full_refresh_endpoints=full_refresh_endpoints,
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     get_with_deltas=get_with_deltas
@@ -724,6 +751,9 @@ class EdFiResourceDAG:
                 database_conn_id=self.database_conn_id,
                 database_type=self.database_type,
                 destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
+                
+                # Pass per-resource full_refresh flags
+                full_refresh=[endpoint in full_refresh_endpoints for endpoint in endpoints],
 
                 trigger_rule='all_done',
                 dag=self.dag
@@ -750,6 +780,7 @@ class EdFiResourceDAG:
     def build_bulk_edfi_to_database_task_group(self,
         endpoints: List[str],
         group_id: str,
+        full_refresh_endpoints: Set[str],
 
         *,
         destination_dir: str,
@@ -788,6 +819,7 @@ class EdFiResourceDAG:
                 get_cv_operator = self.build_change_version_get_operator(
                     task_id=f"get_last_change_versions",
                     endpoints=[(self.endpoint_configs[endpoint]['namespace'], endpoint) for endpoint in endpoints],
+                    full_refresh_endpoints=full_refresh_endpoints,
                     get_deletes=get_deletes,
                     get_key_changes=get_key_changes,
                     get_with_deltas=get_with_deltas
@@ -856,6 +888,9 @@ class EdFiResourceDAG:
                 database_conn_id=self.database_conn_id,
                 database_type=self.database_type,
                 destination_key=self.xcom_pull_template_map_idx(pull_edfi_to_object_storage, 1),
+                
+                # Pass per-resource full_refresh flags
+                full_refresh=[endpoint in full_refresh_endpoints for endpoint in endpoints],
 
                 trigger_rule='none_skipped',  # Different trigger rule than default.
                 dag=self.dag
