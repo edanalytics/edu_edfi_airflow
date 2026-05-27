@@ -110,7 +110,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                 f"Arguments `ods_version` and `data_model_version` could not be retrieved and must be provided."
             )
 
-    def run_sql_queries(self, name: str, table: str, s3_key: str, full_refresh: bool = False):
+    def run_sql_queries(self, name: str, table: str, s3_key: str, full_refresh: bool = False, is_sideloaded: bool = False):
         """
 
         """
@@ -137,6 +137,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                     '{name}' AS name,
                     '{self.ods_version}' AS ods_version,
                     '{self.data_model_version}' AS data_model_version,
+                    {is_sideloaded} AS is_sideloaded,
                     t.$1 AS v
                 FROM '@{database}.util.airflow_stage/{s3_key}'
                 (file_format => 'json_default') t
@@ -242,7 +243,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         else:
             return xcom_returns
 
-    def run_bulk_sql_queries(self, table: str, s3_dir: str = '', names: List[str] = [], delete_all: bool = False):
+    def run_bulk_sql_queries(self, table: str, s3_dir: str = '', names: List[str] = [], delete_all: bool = False, is_sideloaded: bool = False):
         """
         Alternative delete and copy queries to be run when all data is sent to the same table in Snowflake.
         
@@ -292,6 +293,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
                         REGEXP_SUBSTR(filename, '.+/(\\\\w+).jsonl?', 1, 1, 'c', 1) AS name,
                         '{self.ods_version}' AS ods_version,
                         '{self.data_model_version}' AS data_model_version,
+                        {is_sideloaded} AS is_sideloaded,
                         t.$1 AS v
                     FROM '@{database}.util.airflow_stage/{s3_dir}'
                     (file_format => 'json_default') t
