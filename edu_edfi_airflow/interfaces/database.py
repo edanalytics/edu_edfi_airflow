@@ -155,7 +155,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
 
         qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
-                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, is_sideloaded, v)
             FROM (
                 SELECT
                     '{tenant_code}' AS tenant_code,
@@ -191,7 +191,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
 
         qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
-                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, is_sideloaded, v)
             FROM (
                 SELECT
                     '{tenant_code}' AS tenant_code,
