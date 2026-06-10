@@ -125,7 +125,7 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         qry_copy_into = f"""
             COPY INTO {database}.{schema}.{table}
-                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, is_sideloaded, v)
             FROM (
                 SELECT
                     '{self.tenant_code}' AS tenant_code,
@@ -281,7 +281,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
 
             qry_copy_into = f"""
                 COPY INTO {database}.{schema}.{table}
-                    (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+                    (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, is_sideloaded, v)
                 FROM (
                     SELECT
                         '{self.tenant_code}' AS tenant_code,
