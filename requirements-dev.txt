@@ -13,3 +13,4 @@ dask[dataframe]
 apache-airflow-providers-postgres
 edfi_api_client
 ea_airflow_util
+pyjwt>=2.11.0 # not directly required, pinned by Snyk to avoid a vulnerability
