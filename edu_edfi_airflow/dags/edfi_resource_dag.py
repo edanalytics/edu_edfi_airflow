@@ -4,7 +4,6 @@ from functools import partial
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from airflow.exceptions import AirflowFailException, AirflowSkipException
-from airflow.models.param import Param
 from airflow.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
 
@@ -16,6 +15,7 @@ from edu_edfi_airflow.callables import airflow_util, change_version, total_count
 from edu_edfi_airflow.providers.generic.transfers.edfi_to_object_storage import EdFiToObjectStorageOperator, BulkEdFiToObjectStorageOperator
 # Generic database operator - will be determined by connection parameters
 from edu_edfi_airflow.providers.generic.transfers.object_storage_to_database import BulkObjectStorageToDatabaseOperator
+from airflow.sdk.definitions.param import Param
 
 
 class EdFiResourceDAG:

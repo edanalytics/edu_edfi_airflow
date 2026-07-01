@@ -4,12 +4,12 @@ import logging
 from typing import List, Optional, Tuple, Union
 
 from airflow.exceptions import AirflowFailException
-from airflow.models import Connection
-from airflow.models.baseoperator import chain
 
 from edfi_api_client import camel_to_snake
 
 from typing import TYPE_CHECKING
+from airflow.sdk import Connection
+from airflow.sdk import chain
 if TYPE_CHECKING:
     from airflow.models.operator import Operator
 

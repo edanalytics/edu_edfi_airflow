@@ -2,9 +2,9 @@ import abc
 import os
 
 from airflow.hooks.base import BaseHook
-from airflow.io.path import ObjectStoragePath
 
 from typing import Optional
+from airflow.sdk import ObjectStoragePath
 
 
 class ObjectStorageInterface(abc.ABC):

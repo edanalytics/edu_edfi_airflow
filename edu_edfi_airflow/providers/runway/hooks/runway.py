@@ -1,5 +1,5 @@
-from airflow.hooks.base_hook import BaseHook
 from runway_client import RunwayClient
+from airflow.hooks.base import BaseHook
 
 
 class RunwayHook(BaseHook):

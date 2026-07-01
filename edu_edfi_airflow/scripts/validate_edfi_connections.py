@@ -3,9 +3,9 @@ import json
 import yaml
 import argparse
 from typing import Dict, List, Tuple, Optional
-from airflow.models import Connection
 from edfi_api_client import EdFiClient
 from ea_airflow_util.callables.airflow_connection import list_conn
+from airflow.sdk import Connection
 
 
 def get_lea_id_with_fallback(client: EdFiClient, expected_lea_id: str) -> Tuple[Optional[str], str]:
