@@ -1,6 +1,6 @@
 # edu_edfi_airflow v0.7.0
 ## New features
-- Add `is_sideloaded` column to all operators that interface with the `raw.edfi3` columns in Snowflake.
+- Add `is_sideloaded` column to all operators that interface with the `raw.edfi3` tables in Snowflake.
   - Note: This is a breaking change! Add the `is_sideloaded BOOLEAN DEFAULT FALSE` column to all `raw.edfi3` tables before upgrading!
 
 # edu_edfi_airflow v0.6.0
