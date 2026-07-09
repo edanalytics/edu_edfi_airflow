@@ -139,13 +139,15 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
             WHERE tenant_code = '{tenant_code}'
             AND api_year = '{api_year}'
             AND name in ('{names_repr}')
+            AND not is_sideloaded
         """
         self.sql.append(qry)
         return qry
     
     def copy_into_raw(self,
         tenant_code: str, api_year: str, name: str, table: str,
-        ods_version: int, data_model_version: str, storage_path: str
+        ods_version: int, data_model_version: str, storage_path: str,
+        is_sideloaded: bool = False
     ) -> str:
         # Brackets in regex conflict with string formatting.
         date_regex = "\\\\d{8}"
@@ -153,7 +155,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
 
         qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
-                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, is_sideloaded, v)
             FROM (
                 SELECT
                     '{tenant_code}' AS tenant_code,
@@ -165,6 +167,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
                     '{name}' AS name,
                     '{ods_version}' AS ods_version,
                     '{data_model_version}' AS data_model_version,
+                    {is_sideloaded} AS is_sideloaded,
                     t.$1 AS v
                 FROM '@{self.database}.util.airflow_stage/{storage_path}'
                 (file_format => 'json_default') t
@@ -176,7 +179,8 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
 
     def bulk_copy_into_raw(self,
         tenant_code: str, api_year: str, name: List[str], table: str,
-        ods_version: int, data_model_version: str, storage_path: str
+        ods_version: int, data_model_version: str, storage_path: str,
+        is_sideloaded: bool = False
     ) -> str:
         # Always use the directory for bulk copies into Snowflake
         storage_dir = os.path.dirname(storage_path)
@@ -187,7 +191,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
 
         qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
-                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, v)
+                (tenant_code, api_year, pull_date, pull_timestamp, file_row_number, filename, name, ods_version, data_model_version, is_sideloaded, v)
             FROM (
                 SELECT
                     '{tenant_code}' AS tenant_code,
@@ -199,6 +203,7 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
                     REGEXP_SUBSTR(filename, '.+/(\\\\w+).jsonl?', 1, 1, 'c', 1) AS name,
                     '{ods_version}' AS ods_version,
                     '{data_model_version}' AS data_model_version,
+                    {is_sideloaded} AS is_sideloaded,
                     t.$1 AS v
                 FROM '@{self.database}.util.airflow_stage/{storage_dir}'
                 (file_format => 'json_default') t
@@ -279,13 +284,15 @@ class DatabricksDatabaseInterface(DatabaseInterface):
             WHERE tenant_code = '{tenant_code}'
             AND api_year = '{api_year}'
             AND name in ('{names_repr}')
+            AND not is_sideloaded
         """
         self.sql.append(qry)
         return qry
     
     def copy_into_raw(self,
         tenant_code: str, api_year: str, name: str, table: str,
-        ods_version: int, data_model_version: str, storage_path: str
+        ods_version: int, data_model_version: str, storage_path: str,
+        is_sideloaded: bool = False
     ) -> str:
         qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
@@ -301,6 +308,7 @@ class DatabricksDatabaseInterface(DatabaseInterface):
                     '{name}' AS name,
                     '{ods_version}' AS ods_version,
                     '{data_model_version}' AS data_model_version,
+                    {is_sideloaded} AS is_sideloaded,
                     v
                 FROM '{storage_path}'
             )
