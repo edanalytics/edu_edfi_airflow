@@ -94,9 +94,9 @@ def capture_logs_to_snowflake(
     def wrapper(*args, **kwargs):
         
         # Robustly extract the Airflow context
-        context = kwargs.get("context") or (kwargs if "dag_run" in kwargs else None)
+        context = kwargs.get("context") or (kwargs if {"ds", "ts"} <= kwargs.keys() else None)
         if not context:
-            raise ValueError("Airflow context not found. Cannot extract dag_run.start_datel.")
+            raise ValueError("Airflow context not found. Cannot extract ds/ts.")
         
         def flush_logs(log_records, context):
             structured = [json.loads(r) for r in log_records]
@@ -147,8 +147,8 @@ def capture_logs_to_snowflake(
                 api_year=api_year,
                 run_type=run_type,
                 grain_update=grain_update,
-                run_date=context['dag_run'].start_date.date(),
-                run_timestamp=context['dag_run'].start_date.isoformat(),
+                run_date=context.get("ds"),
+                run_timestamp=context.get("ts"),
             )
 
         with structured_log_capture(args, kwargs=context) as log_records:
