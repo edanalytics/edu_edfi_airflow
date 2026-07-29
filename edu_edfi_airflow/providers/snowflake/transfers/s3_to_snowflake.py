@@ -248,7 +248,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         Alternative delete and copy queries to be run when all data is sent to the same table in Snowflake.
         
         S3 Path Structure:
-            /{tenant_code}/{api_year}/{dag_run.start_date | ds_nodash}/{dag_run.start_date | ts_nodash}/{taskgroup_type}/{name}.jsonl
+            /{tenant_code}/{api_year}/{ds_nodash}/{ts_no_dash}/{taskgroup_type}/{name}.jsonl
 
         Use regex to capture name: ".+/(\\w+).jsonl?"
         Note optional args in REGEXP_SUBSTR(): position (1), occurrence (1), regex_parameters ('c'), group_num
