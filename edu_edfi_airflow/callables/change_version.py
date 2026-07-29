@@ -297,7 +297,7 @@ def update_change_versions(
         for endpoint in endpoints:
             row = [
                 tenant_code, api_year, endpoint,
-                context["dag_run"].start_date.date(), context['dag_run'].start_date.isoformat(),
+                context["dag_run"].start_date.date().iso_format(), context['dag_run'].start_date.isoformat(),
                 edfi_change_version, True,
                 row_set["get_deletes"],
             ]
