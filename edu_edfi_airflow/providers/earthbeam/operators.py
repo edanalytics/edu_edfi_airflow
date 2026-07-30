@@ -5,7 +5,7 @@ from typing import Iterable, Optional, Union
 import subprocess
 
 from airflow.sdk import Connection
-from airflow.operators.bash import BashOperator
+from airflow.providers.standard.operators.bash import BashOperator
 
 from edu_edfi_airflow.callables import airflow_util
 

@@ -8,8 +8,8 @@ import re
 from airflow.sdk import task, task_group
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.sdk import Param
-from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.bash import BashOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk.task_group import TaskGroup
 
 import edfi_api_client
