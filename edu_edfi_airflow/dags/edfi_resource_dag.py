@@ -4,9 +4,9 @@ from functools import partial
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from airflow.exceptions import AirflowFailException, AirflowSkipException
-from airflow.models.param import Param
+from airflow.sdk import Param
 from airflow.operators.python import PythonOperator
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk.task_group import TaskGroup
 
 from ea_airflow_util import EACustomDAG
 from ea_airflow_util import update_variable

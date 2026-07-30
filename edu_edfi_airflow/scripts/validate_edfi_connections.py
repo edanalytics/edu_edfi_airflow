@@ -3,7 +3,7 @@ import json
 import yaml
 import argparse
 from typing import Dict, List, Tuple, Optional
-from airflow.models import Connection
+from airflow.sdk import Connection
 from edfi_api_client import EdFiClient
 from ea_airflow_util.callables.airflow_connection import list_conn
 

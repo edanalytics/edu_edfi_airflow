@@ -5,7 +5,7 @@ import tempfile
 
 from typing import Iterator, List, Optional, Union
 
-from airflow.models import BaseOperator
+from airflow.sdk import BaseOperator
 from airflow.exceptions import AirflowSkipException, AirflowFailException
 
 from edu_edfi_airflow.callables import airflow_util

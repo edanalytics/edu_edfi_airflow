@@ -5,12 +5,12 @@ import os
 import re
 
 
-from airflow.decorators import task, task_group
+from airflow.sdk import task, task_group
 from airflow.exceptions import AirflowFailException, AirflowSkipException
-from airflow.models.param import Param
+from airflow.sdk import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk.task_group import TaskGroup
 
 import edfi_api_client
 from ea_airflow_util import EACustomDAG

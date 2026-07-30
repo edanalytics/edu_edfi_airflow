@@ -4,7 +4,7 @@ import os
 from typing import Any, List, Optional
 
 from airflow.exceptions import AirflowSkipException
-from airflow.models import BaseOperator
+from airflow.sdk import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
 from edu_edfi_airflow.callables import airflow_util

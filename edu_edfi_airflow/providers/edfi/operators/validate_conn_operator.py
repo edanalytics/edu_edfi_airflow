@@ -2,8 +2,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from airflow.models import BaseOperator
-from airflow.utils.context import Context
+from airflow.sdk import BaseOperator
+from airflow.sdk.context import Context
 
 from edu_edfi_airflow.scripts.validate_edfi_connections import validate_edfi_connections
 
