@@ -10,7 +10,6 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from airflow.utils.helpers import chain
 from airflow.utils.task_group import TaskGroup
 
 import edfi_api_client
@@ -22,6 +21,7 @@ from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, L
 from edu_edfi_airflow.providers.snowflake.transfers.s3_to_snowflake import S3ToSnowflakeOperator
 
 from edu_edfi_airflow.callables.log_util import capture_logs_to_snowflake
+from airflow.sdk import chain
 
 class EarthbeamDAG:
     """
