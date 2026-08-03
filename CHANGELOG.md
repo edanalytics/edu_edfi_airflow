@@ -1,3 +1,11 @@
+# edu_edfi_airflow v0.7.1
+## New features
+
+## Under the hood
+
+## Fixes
+
+
 # edu_edfi_airflow v0.7.0
 ## New features
 - Add `is_sideloaded` column to all operators that interface with the `raw.edfi3` tables in Snowflake.
