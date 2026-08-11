@@ -1,5 +1,6 @@
 from airflow.hooks.base_hook import BaseHook
 from runway_client import RunwayClient
+from runway_client.token_cache import AirflowTokenCache
 
 
 class RunwayHook(BaseHook):
@@ -20,6 +21,7 @@ class RunwayHook(BaseHook):
             client_id=conn.login,
             client_secret=conn.password,
             partner_code=extras["extra__runway__partner_code"],
+            token_cache=AirflowTokenCache(),
         )
 
         return self.runway_client
