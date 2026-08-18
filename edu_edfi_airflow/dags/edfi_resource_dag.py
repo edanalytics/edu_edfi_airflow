@@ -261,7 +261,7 @@ class EdFiResourceDAG:
 
         # Set parent directory and create subfolders for each task group.
         parent_directory = os.path.join(
-            self.tenant_code, str(self.api_year), "{{ ds_nodash }}", "{{ ts_nodash }}"
+            self.tenant_code, str(self.api_year), "{{ dag_run.start_date | ds_nodash }}", "{{ dag_run.start_date | ts_nodash }}"
         )
 
         # Resources

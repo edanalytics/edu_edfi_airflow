@@ -125,7 +125,7 @@ def insert_total_counts(
     for endpoint in endpoint_counts:
         row = [
             tenant_code, api_year, endpoint[0],
-            kwargs["ds"], kwargs["ts"],
+            kwargs["dag_run"].start_date.date().isoformat(), kwargs['dag_run'].start_date.isoformat(),
             endpoint[1]
         ]
         rows_to_insert.append(row)
