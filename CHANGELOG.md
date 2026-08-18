@@ -1,4 +1,9 @@
 # edu_edfi_airflow v0.7.0
+## Fixes
+- Update RunwayHook to use AirflowTokenCache in runway_python_client (to support token caching in DAGs)
+- Replace `logical_date` with `dag_run.start_date` for more meaningful pull dates & timstamps in `EdFiResourceDAG`
+
+# edu_edfi_airflow v0.7.0
 ## New features
 - Add `is_sideloaded` column to all operators that interface with the `raw.edfi3` tables in Snowflake.
   - Note: This is a breaking change! Add the `is_sideloaded BOOLEAN DEFAULT FALSE` column to all `raw.edfi3` tables before upgrading!
