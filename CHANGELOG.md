@@ -1,4 +1,4 @@
-# edu_edfi_airflow v0.7.0
+# edu_edfi_airflow v0.7.1
 ## Fixes
 - Update RunwayHook to use AirflowTokenCache in runway_python_client (to support token caching in DAGs)
 - Replace `logical_date` with `dag_run.start_date` for more meaningful pull dates & timstamps in `EdFiResourceDAG`
