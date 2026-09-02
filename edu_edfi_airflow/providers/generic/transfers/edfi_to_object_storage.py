@@ -200,7 +200,8 @@ class EdFiToObjectStorageOperator(BaseOperator):
             step_change_version=step_change_version,
             change_version_step_size=change_version_step_size,
             reverse_paging=self.reverse_paging,
-            retry_on_failure=True, max_retries=num_retries
+            retry_on_failure=True, max_retries=num_retries,
+            max_wait=1200
         )
 
         ### Iterate the ODS, paginating across offset and change version steps.
