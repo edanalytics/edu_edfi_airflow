@@ -1,3 +1,7 @@
+# edu_edfi_airflow v0.7.2
+## Fixes
+- Explicitly pass hard-coded `max_wait` value to `EdFiResource` call.
+
 # edu_edfi_airflow v0.7.1
 ## Fixes
 - Update RunwayHook to use AirflowTokenCache in runway_python_client (to support token caching in DAGs)
