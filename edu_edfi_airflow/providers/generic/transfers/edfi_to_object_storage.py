@@ -6,7 +6,7 @@ import tempfile
 from typing import Iterator, List, Optional, Union
 
 from airflow.sdk import BaseOperator
-from airflow.exceptions import AirflowSkipException, AirflowFailException
+from airflow.sdk.exceptions import AirflowSkipException, AirflowFailException
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.interfaces.object_storage import ObjectStorageInterface

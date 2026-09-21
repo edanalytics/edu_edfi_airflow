@@ -2,7 +2,7 @@ import logging
 
 from typing import Dict, List, Tuple, Optional
 
-from airflow.exceptions import AirflowSkipException
+from airflow.sdk.exceptions import AirflowSkipException
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.interfaces.database import DatabaseInterface

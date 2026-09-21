@@ -3,7 +3,7 @@ import logging
 
 from typing import List, Optional, Tuple, Union
 
-from airflow.exceptions import AirflowFailException
+from airflow.sdk.exceptions import AirflowFailException
 from airflow.sdk import Connection
 from airflow.sdk import chain
 

@@ -6,7 +6,7 @@ import re
 
 
 from airflow.sdk import task, task_group
-from airflow.exceptions import AirflowFailException, AirflowSkipException
+from airflow.sdk.exceptions import AirflowFailException, AirflowSkipException
 from airflow.sdk import Param
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator
@@ -629,7 +629,7 @@ class EarthbeamDAG:
                 "Snowflake connection required to copy logs into Snowflake."
             )
 
-        from airflow.exceptions import AirflowSkipException
+        from airflow.sdk.exceptions import AirflowSkipException
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
         if log_filepath:

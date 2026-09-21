@@ -3,7 +3,7 @@ import os
 
 from typing import Any, List, Optional
 
-from airflow.exceptions import AirflowSkipException
+from airflow.sdk.exceptions import AirflowSkipException
 from airflow.sdk import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 

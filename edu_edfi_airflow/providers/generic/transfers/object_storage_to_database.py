@@ -1,7 +1,7 @@
 import logging
 
 from airflow.sdk import BaseOperator
-from airflow.exceptions import AirflowSkipException
+from airflow.sdk.exceptions import AirflowSkipException
 
 from typing import Optional
 
