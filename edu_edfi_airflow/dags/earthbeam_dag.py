@@ -10,7 +10,7 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.sdk import Param
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator
-from airflow.sdk.task_group import TaskGroup
+from airflow.sdk import TaskGroup
 
 import edfi_api_client
 from ea_airflow_util import EACustomDAG

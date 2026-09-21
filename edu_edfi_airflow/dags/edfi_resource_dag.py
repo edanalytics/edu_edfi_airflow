@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.sdk import Param
 from airflow.providers.standard.operators.python import PythonOperator
-from airflow.sdk.task_group import TaskGroup
+from airflow.sdk import TaskGroup
 
 from ea_airflow_util import EACustomDAG
 from ea_airflow_util import update_variable
