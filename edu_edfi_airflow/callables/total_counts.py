@@ -42,7 +42,7 @@ def get_total_counts(
                 max_change_version=max_change_version
             )
 
-            if not (total_record_count := resource.total_count()):
+            if not (total_record_count := resource.get_total_count()):
                 continue
             successful_endpoints.append((endpoint, total_record_count))
         

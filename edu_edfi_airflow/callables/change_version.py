@@ -210,7 +210,7 @@ def get_previous_change_versions_with_deltas(
                 max_change_version=max_change_version
             )
 
-            if not (delta_record_count := resource.total_count()):
+            if not (delta_record_count := resource.get_total_count()):
                 continue
 
             logging.info(f"    {namespace}/{endpoint}: {delta_record_count} new records")
