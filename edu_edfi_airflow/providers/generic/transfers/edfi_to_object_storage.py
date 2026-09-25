@@ -227,7 +227,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         logging.info(f"    {total_rows} rows were returned for `{resource}`.")
 
         try:
-            expected_rows = resource_endpoint.total_count()
+            expected_rows = resource_endpoint.get_total_count()
             if total_rows != expected_rows:
                 logging.warning(f"    Expected {expected_rows} rows for `{resource}`.")
             else:
