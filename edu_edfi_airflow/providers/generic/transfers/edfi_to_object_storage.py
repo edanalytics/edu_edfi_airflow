@@ -218,9 +218,10 @@ class EdFiToObjectStorageOperator(BaseOperator):
                 total_rows += 1
 
             # Connect to object storage and copy file
-            tmp_file.seek(0)  # Go back to the start of the file before copying to object storage.
-            with object_storage.open("wb") as storage_file:
-                storage_file.write(tmp_file.read())
+            # put_file reads the temp file in chunks
+            # reading it all at once OOMs for large resources like studentAssessments
+            tmp_file.flush()
+            object_storage.fs.put_file(tmp_file.name, object_storage.path)
         
                 
         ### Check whether the number of rows returned matched the number expected.

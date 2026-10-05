@@ -1,3 +1,7 @@
+# Unreleased
+## Fixes
+- Upload Ed-Fi JSONL with `put_file` so large resources such as `studentAssessments` are not loaded fully into memory during the S3 copy
+
 # edu_edfi_airflow v0.7.1
 ## Fixes
 - Update RunwayHook to use AirflowTokenCache in runway_python_client (to support token caching in DAGs)
