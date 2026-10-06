@@ -1,6 +1,9 @@
-# Unreleased
+# edu_edfi_airflow v0.7.2
 ## Fixes
+- Explicitly pass hard-coded `max_wait` value to `EdFiResource` call.
 - Upload Ed-Fi JSONL with `put_file` so large resources such as `studentAssessments` are not loaded fully into memory during the S3 copy
+- Replace all calls to `EdFiClient.total_count()` with `get_total_count()` to avoid deprecation warnings.
+
 
 # edu_edfi_airflow v0.7.1
 ## Fixes
