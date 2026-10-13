@@ -293,7 +293,7 @@ class EdFiResourceDAG:
         # Resource Key-Changes (only applicable in Ed-Fi v6.x and up)
         if self.get_key_changes:
             resource_key_changes_task_group: Optional[TaskGroup] = task_group_callable(
-                group_id="Ed-Fi Resource Key Changes",
+                group_id="EdFiResourceKeyChanges",
                 endpoints=sorted(list(self.key_changes_to_ingest)),
                 table=self.key_changes_table,
                 destination_dir=os.path.join(parent_directory, 'resource_key_changes'),
@@ -356,7 +356,7 @@ class EdFiResourceDAG:
         :return:
         """
         with TaskGroup(
-            group_id="Ed-Fi3 Change Version Window",
+            group_id="EdFi3ChangeVersionWindow",
             prefix_group_id=False,
             parent_group=None,
             dag=self.dag
@@ -890,7 +890,7 @@ class EdFiResourceDAG:
             return None
 
         with TaskGroup(
-            group_id="Ed-Fi Total Counts",
+            group_id="Ed-FiTotalCounts",
             prefix_group_id=False,
             parent_group=None,
             dag=self.dag
