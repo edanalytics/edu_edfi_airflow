@@ -73,7 +73,7 @@ class DatabaseInterface(abc.ABC):
         """
         try:
             conn = Connection.get(self.database_conn_id)
-            database = conn.database or conn.extra_dejson[f'extra__{conn.conn_type}__database']
+            database = conn.extra_dejson[f'extra__{conn.conn_type}__database']
             schema   = conn.schema
 
             if database is None or schema is None:
