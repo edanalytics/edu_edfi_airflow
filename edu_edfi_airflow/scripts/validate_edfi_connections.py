@@ -136,7 +136,7 @@ def validate_edfi_connections(
         
         try:
             # Get connection and create EdFi client
-            conn = Connection.get_connection_from_secrets(conn_id)
+            conn = Connection.get(conn_id)
             client = EdFiClient(
                 base_url=conn.host,
                 client_key=conn.login,

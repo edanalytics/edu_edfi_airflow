@@ -91,7 +91,7 @@ class EarthmoverOperator(BashOperator):
         # Construct a Snowflake connection string and add as an environment variable. Currently only Snowflake is supported
         # (This must be done in execute to prevent extraction during DAG-parsing)
         if self.snowflake_read_conn_id:
-            db_conn = Connection.get_connection_from_secrets(self.snowflake_read_conn_id)
+            db_conn = Connection.get(self.snowflake_read_conn_id)
             database_conn_string = f"snowflake://{db_conn.login}:{db_conn.password}@{db_conn.extra_dejson['extra__snowflake__account']}"
             self.env['SNOWFLAKE_CONNECTION'] = database_conn_string
 
@@ -220,7 +220,7 @@ class LightbeamOperator(BashOperator):
         #  Extract EdFi connection parameters as environment variables if defined
         # (This must be done in execute to prevent extraction during DAG-parsing.
         if self.edfi_conn_id:
-            edfi_conn = Connection.get_connection_from_secrets(self.edfi_conn_id)
+            edfi_conn = Connection.get(self.edfi_conn_id)
 
             self.env['EDFI_API_BASE_URL'] = edfi_conn.host
             self.env['EDFI_API_CLIENT_ID'] = edfi_conn.login

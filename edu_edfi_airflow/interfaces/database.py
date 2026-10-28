@@ -72,8 +72,8 @@ class DatabaseInterface(abc.ABC):
         Extract database and schema parameters from an Airflow connection.
         """
         try:
-            conn = Connection.get_connection_from_secrets(self.database_conn_id)
-            database = conn.extra_dejson[f'extra__{conn.conn_type}__database']
+            conn = Connection.get(self.database_conn_id)
+            database = conn.database or conn.extra_dejson[f'extra__{conn.conn_type}__database']
             schema   = conn.schema
 
             if database is None or schema is None:
