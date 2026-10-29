@@ -701,7 +701,6 @@ class EdFiResourceDAG:
                     # Only run endpoints specified at DAG or delta-level.
                     enabled_endpoints=enabled_endpoints,
 
-                    sla=None,  # "SLAs are unsupported with mapped tasks."
                     pool=self.pool,
                     trigger_rule='none_skipped',
                     dag=self.dag
