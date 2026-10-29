@@ -2,7 +2,7 @@ import abc
 import logging
 import os
 
-from airflow.hooks.base import BaseHook
+from airflow.sdk.bases.hook import BaseHook
 from airflow.sdk import Connection
 
 from typing import List, Optional, Tuple, Union
@@ -72,7 +72,7 @@ class DatabaseInterface(abc.ABC):
         Extract database and schema parameters from an Airflow connection.
         """
         try:
-            conn = Connection.get_connection_from_secrets(self.database_conn_id)
+            conn = Connection.get(self.database_conn_id)
             database = conn.extra_dejson[f'extra__{conn.conn_type}__database']
             schema   = conn.schema
 

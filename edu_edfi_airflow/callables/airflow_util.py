@@ -120,7 +120,7 @@ def get_snowflake_params_from_conn(
     )
 
     try:
-        snowflake_conn = Connection.get_connection_from_secrets(snowflake_conn_id)
+        snowflake_conn = Connection.get(snowflake_conn_id)
 
         database = snowflake_conn.extra_dejson['extra__snowflake__database']
         schema   = snowflake_conn.schema

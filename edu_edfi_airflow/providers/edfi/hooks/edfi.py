@@ -1,6 +1,6 @@
 from typing import Optional
 
-from airflow.hooks.base import BaseHook
+from airflow.sdk.bases.hook import BaseHook
 
 from edfi_api_client import EdFiClient
 from edfi_api_client.token_cache import LockfileTokenCache
