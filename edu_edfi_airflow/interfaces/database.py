@@ -2,7 +2,7 @@ import abc
 import logging
 import os
 
-from airflow.hooks.base import BaseHook
+from airflow.sdk.bases.hook import BaseHook
 from airflow.sdk import Connection
 
 from typing import List, Optional, Tuple, Union

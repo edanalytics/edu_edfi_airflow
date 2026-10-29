@@ -1,7 +1,7 @@
 import abc
 import os
 
-from airflow.hooks.base import BaseHook
+from airflow.sdk.bases.hook import BaseHook
 from airflow.sdk.io.path import ObjectStoragePath
 
 from typing import Optional
