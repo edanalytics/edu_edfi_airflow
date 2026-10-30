@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_airflow_client_config() -> str:
-    url = "http://localhost/auth/token"
+    url = "http://localhost:8080/auth/token"
     payload = {
         "username": "admin-api",
         "password": Variable.get("ADMIN_API"),
