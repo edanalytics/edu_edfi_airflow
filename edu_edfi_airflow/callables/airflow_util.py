@@ -34,7 +34,9 @@ def get_airflow_client_config() -> str:
 
     access_token = response.json()["access_token"]
 
-    configuration = airflow_client.client.Configuration(access_token=access_token)
+    configuration = airflow_client.client.Configuration(
+        host="http://localhost:8080", access_token=access_token
+    )
     return configuration
 
 
