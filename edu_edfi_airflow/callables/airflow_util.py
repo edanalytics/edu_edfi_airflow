@@ -138,7 +138,7 @@ def fail_if_any_task_failed(**context):
     """
     Simple Python callable that raises an AirflowFailException if any task in the DAG has failed.
     """
-    for ti in context["dag_run"].get_task_instances():
+    for ti in context["dag_run"].fetch_task_instances():
         if ti.state == "failed":
             raise AirflowFailException("One or more tasks in the DAG failed.")
 
