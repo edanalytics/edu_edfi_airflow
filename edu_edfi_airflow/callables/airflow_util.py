@@ -8,6 +8,7 @@ from airflow.sdk import Connection
 from airflow.sdk import chain
 
 from edfi_api_client import camel_to_snake
+from airflow.models import DagRun
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -138,8 +139,10 @@ def fail_if_any_task_failed(**context):
     """
     Simple Python callable that raises an AirflowFailException if any task in the DAG has failed.
     """
-    for ti in context["dag_run"].fetch_task_instances():
-        if ti.state == "failed":
+    dr: DagRun = context["dag_run"]
+    print(f"dag_run is instance of {type(dr)}")
+    task_instances = dr.get_task_instances(state="failed")
+    if task_instances:
             raise AirflowFailException("One or more tasks in the DAG failed.")
 
 
