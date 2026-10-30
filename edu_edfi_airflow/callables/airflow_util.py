@@ -174,7 +174,7 @@ def fail_if_any_task_failed(**context):
         api_instance = airflow_client.client.TaskInstanceApi(api_client)
         try:
             response = api_instance.get_task_instances(
-                drp.dag_id, drp.run_id, state="failed"
+                drp.dag_id, drp.run_id, state=["failed"]
             )
             if len(response.task_instances) > 0:
                 raise AirflowFailException("One or more tasks in the DAG failed.")
