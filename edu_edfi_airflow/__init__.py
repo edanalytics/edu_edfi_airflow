@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Education Analytics
+# SPDX-License-Identifier: MPL-2.0
+
 from edu_edfi_airflow.dags.earthbeam_dag import EarthbeamDAG
 from edu_edfi_airflow.dags.edfi_resource_dag import EdFiResourceDAG
 from edu_edfi_airflow.providers.earthbeam.operators import EarthmoverOperator, LightbeamOperator

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Education Analytics
+# SPDX-License-Identifier: MPL-2.0
+
 from edu_edfi_airflow.providers.runway.hooks.runway import RunwayHook
 
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Education Analytics
+# SPDX-License-Identifier: MPL-2.0
+
 from airflow.hooks.base_hook import BaseHook
 from runway_client import RunwayClient
 from runway_client.token_cache import AirflowTokenCache

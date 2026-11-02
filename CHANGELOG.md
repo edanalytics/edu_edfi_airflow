@@ -1,3 +1,7 @@
+# edu_edfi_airflow v0.7.3
+## Under the hood
+- Update License to MPL 2.0
+
 # edu_edfi_airflow v0.7.2
 ## Fixes
 - Explicitly pass hard-coded `max_wait` value to `EdFiResource` call.
