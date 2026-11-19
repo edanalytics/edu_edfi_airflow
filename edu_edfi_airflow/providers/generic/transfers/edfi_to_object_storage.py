@@ -2,12 +2,10 @@ import json
 import logging
 import os
 import tempfile
-
-from typing import Iterator, List, Optional, Union
+from collections.abc import Iterator
 
 from airflow.sdk import BaseOperator
-from airflow.sdk.exceptions import AirflowSkipException, AirflowFailException
-
+from airflow.sdk.exceptions import AirflowFailException, AirflowSkipException
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.interfaces.object_storage import ObjectStorageInterface
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
@@ -24,42 +22,48 @@ class EdFiToObjectStorageOperator(BaseOperator):
 
     Deletes and keyChanges are only used in the bulk operator.
     """
+
     template_fields = (
-        'resource', 'namespace', 'page_size', 'num_retries', 'change_version_step_size', 'query_parameters',
-        'destination_key', 'destination_dir', 'destination_filename',
-        'min_change_version', 'max_change_version', 'enabled_endpoints',
+        "resource",
+        "namespace",
+        "page_size",
+        "num_retries",
+        "change_version_step_size",
+        "query_parameters",
+        "destination_key",
+        "destination_dir",
+        "destination_filename",
+        "min_change_version",
+        "max_change_version",
+        "enabled_endpoints",
     )
 
-    def __init__(self,
+    def __init__(
+        self,
         edfi_conn_id: str,
         resource: str,
-
         *,
         tmp_dir: str,
-        object_storage_conn_id: Optional[str] = None,
-        object_storage_type: Optional[str] = None,
-        destination_key: Optional[str] = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
-        destination_dir: Optional[str] = None,
-        destination_filename: Optional[str] = None,
-
+        object_storage_conn_id: str | None = None,
+        object_storage_type: str | None = None,
+        destination_key: str | None = None,  # Mutually-exclusive with `destination_dir` and `destination_filename`
+        destination_dir: str | None = None,
+        destination_filename: str | None = None,
         get_deletes: bool = False,
         get_key_changes: bool = False,
-        min_change_version: Optional[int] = None,
-        max_change_version: Optional[int] = None,
-
-        namespace: str = 'ed-fi',
+        min_change_version: int | None = None,
+        max_change_version: int | None = None,
+        namespace: str = "ed-fi",
         page_size: int = 500,
         num_retries: int = 5,
         change_version_step_size: int = 50000,
         reverse_paging: bool = True,
-        query_parameters  : Optional[dict] = None,
-
-        enabled_endpoints: Optional[List[str]] = None,
+        query_parameters: dict | None = None,
+        enabled_endpoints: list[str] | None = None,
         use_edfi_token_cache: bool = False,
-
-        **kwargs
+        **kwargs,
     ) -> None:
-        super(EdFiToObjectStorageOperator, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         # Top-level variables
         self.edfi_conn_id = edfi_conn_id
@@ -92,7 +96,6 @@ class EdFiToObjectStorageOperator(BaseOperator):
 
         self.kwargs = kwargs
 
-
     def execute(self, context) -> str:
         """
 
@@ -102,57 +105,79 @@ class EdFiToObjectStorageOperator(BaseOperator):
         # If doing a resource-specific run, confirm resource is in the list.
         # Also confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
         config_endpoints = airflow_util.get_config_endpoints(context)
-        if not self.is_endpoint_specified(self.resource, config_endpoints, self.enabled_endpoints):
+        if not self.is_endpoint_specified(
+            self.resource, config_endpoints, self.enabled_endpoints
+        ):
             raise AirflowSkipException
 
         # Check the validity of min and max change-versions.
-        self.check_change_version_window_validity(self.min_change_version, self.max_change_version)
-
-        # Build the object storage based on passed arguments, using the custom interface implementation.
-        object_interface = ObjectStorageInterface(self.object_storage_conn_id, object_storage_type=self.object_storage_type)
-        object_storage, clean_url = object_interface.get_object_storage(
-            destination_key=self.destination_key, destination_dir=self.destination_dir, destination_filename=self.destination_filename,
-            **self.kwargs
+        self.check_change_version_window_validity(
+            self.min_change_version, self.max_change_version
         )
 
-        edfi_conn = EdFiHook(self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
+        # Build the object storage based on passed arguments, using the custom interface implementation.
+        object_interface = ObjectStorageInterface(
+            self.object_storage_conn_id, object_storage_type=self.object_storage_type
+        )
+        object_storage, clean_url = object_interface.get_object_storage(
+            destination_key=self.destination_key,
+            destination_dir=self.destination_dir,
+            destination_filename=self.destination_filename,
+            **self.kwargs,
+        )
+
+        edfi_conn = EdFiHook(
+            self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache
+        ).get_conn()
 
         self.pull_edfi_to_object_storage(
             edfi_conn=edfi_conn,
-            resource=self.resource, namespace=self.namespace, page_size=self.page_size,
-            num_retries=self.num_retries, change_version_step_size=self.change_version_step_size,
-            min_change_version=self.min_change_version, max_change_version=self.max_change_version,
-            query_parameters=self.query_parameters, object_storage=object_storage
+            resource=self.resource,
+            namespace=self.namespace,
+            page_size=self.page_size,
+            num_retries=self.num_retries,
+            change_version_step_size=self.change_version_step_size,
+            min_change_version=self.min_change_version,
+            max_change_version=self.max_change_version,
+            query_parameters=self.query_parameters,
+            object_storage=object_storage,
         )
 
         # Return the clean URL string (not ObjectStoragePath) for downstream operators
         # ObjectStoragePath mangles the URL when conn_id is passed, so extract the original path
         return (self.resource, clean_url)
 
-
     @staticmethod
-    def is_endpoint_specified(endpoint: str, config_endpoints: List[str], enabled_endpoints: List[str]) -> bool:
+    def is_endpoint_specified(
+        endpoint: str, config_endpoints: list[str], enabled_endpoints: list[str]
+    ) -> bool:
         """
         Verify endpoint is enabled in the endpoints YAML and specified to run in the DAG configs.
         """
         if config_endpoints and endpoint not in config_endpoints:
-            logging.info(f"    Endpoint {endpoint} not specified in DAG config endpoints. Skipping...")
+            logging.info(
+                f"    Endpoint {endpoint} not specified in DAG config endpoints. Skipping..."
+            )
             return False
-        
+
         if enabled_endpoints and endpoint not in enabled_endpoints:
-            logging.info(f"    Endpoint {endpoint} not specified in run endpoints. Skipping...")
+            logging.info(
+                f"    Endpoint {endpoint} not specified in run endpoints. Skipping..."
+            )
             return False
 
         return True
 
     @staticmethod
-    def check_change_version_window_validity(min_change_version: Optional[int], max_change_version: Optional[int]):
+    def check_change_version_window_validity(
+        min_change_version: int | None, max_change_version: int | None
+    ):
         """
         Logic to pull the min-change version from its upstream operator and check its validity.
         """
         if min_change_version is None and max_change_version is None:
             return
-        
+
         # Run change-version sanity checks to make sure we aren't doing something wrong.
         if min_change_version == max_change_version:
             logging.info("    ODS is unchanged since previous pull.")
@@ -163,65 +188,74 @@ class EdFiToObjectStorageOperator(BaseOperator):
                 "    Apparent out-of-sequence run: current change version is smaller than previous! Run a full-refresh of this resource to resolve!"
             )
 
-    def pull_edfi_to_object_storage(self,
+    def pull_edfi_to_object_storage(
+        self,
         *,
-        edfi_conn: 'Connection',
+        edfi_conn: "Connection",
         resource: str,
         namespace: str,
         page_size: int,
         num_retries: int,
         change_version_step_size: int,
-        min_change_version: Optional[int],
-        max_change_version: Optional[int],
+        min_change_version: int | None,
+        max_change_version: int | None,
         query_parameters: dict,
-        object_storage: 'ObjectStoragePath'
+        object_storage: "ObjectStoragePath",
     ):
         """
         Break out load logic to allow code-duplication in bulk version of operator.
         """
         logging.info(
-            "    Pulling records for `{}/{}` for change versions `{}` to `{}`. (page_size: {}; CV step size: {})"\
-            .format(namespace, resource, min_change_version, max_change_version, page_size, change_version_step_size)
+            f"    Pulling records for `{namespace}/{resource}` for change versions `{min_change_version}` to `{max_change_version}`. (page_size: {page_size}; CV step size: {change_version_step_size})"
         )
 
         ### Connect to EdFi and write resource data to a temp file, then copy to object storage.
         # Prepare the EdFiEndpoint for the resource.
         resource_endpoint = edfi_conn.resource(
-            resource, namespace=namespace, params=query_parameters,
-            get_deletes=self.get_deletes, get_key_changes=self.get_key_changes,
-            min_change_version=min_change_version, max_change_version=max_change_version
+            resource,
+            namespace=namespace,
+            params=query_parameters,
+            get_deletes=self.get_deletes,
+            get_key_changes=self.get_key_changes,
+            min_change_version=min_change_version,
+            max_change_version=max_change_version,
         )
 
         # Turn off change version stepping if min and max change versions have not been defined.
-        step_change_version = (min_change_version is not None and max_change_version is not None)
+        step_change_version = (
+            min_change_version is not None and max_change_version is not None
+        )
 
         paged_iter = resource_endpoint.get_rows(
             page_size=page_size,
             step_change_version=step_change_version,
             change_version_step_size=change_version_step_size,
             reverse_paging=self.reverse_paging,
-            retry_on_failure=True, max_retries=num_retries
+            retry_on_failure=True,
+            max_retries=num_retries,
         )
 
         ### Iterate the ODS, paginating across offset and change version steps.
         # Write each result to the temp file.
         total_rows = 0
-        
-        os.makedirs(os.path.dirname(self.tmp_dir), exist_ok=True)  # Create its parent-directory if not extant.
-        
-        with tempfile.NamedTemporaryFile('w+b', dir=self.tmp_dir) as tmp_file:
 
+        os.makedirs(
+            os.path.dirname(self.tmp_dir), exist_ok=True
+        )  # Create its parent-directory if not extant.
+
+        with tempfile.NamedTemporaryFile("w+b", dir=self.tmp_dir) as tmp_file:
             # Output each row as a JSONL string to the output file.
             for page_result in paged_iter:
                 tmp_file.write(self.to_jsonl_string(page_result))
                 total_rows += 1
 
             # Connect to object storage and copy file
-            tmp_file.seek(0)  # Go back to the start of the file before copying to object storage.
+            tmp_file.seek(
+                0
+            )  # Go back to the start of the file before copying to object storage.
             with object_storage.open("wb") as storage_file:
                 storage_file.write(tmp_file.read())
-        
-                
+
         ### Check whether the number of rows returned matched the number expected.
         logging.info(f"    {total_rows} rows were returned for `{resource}`.")
 
@@ -230,19 +264,22 @@ class EdFiToObjectStorageOperator(BaseOperator):
             if total_rows != expected_rows:
                 logging.warning(f"    Expected {expected_rows} rows for `{resource}`.")
             else:
-                logging.info("    Number of collected rows matches expected count in the ODS.")
+                logging.info(
+                    "    Number of collected rows matches expected count in the ODS."
+                )
 
         except Exception:
-            logging.warning(f"    Unable to access expected number of rows for `{resource}`.")
+            logging.warning(
+                f"    Unable to access expected number of rows for `{resource}`."
+            )
 
         # Raise a Skip if no data was collected.
         if total_rows == 0:
-            logging.info(f"Skipping downstream copy to database...")
+            logging.info("Skipping downstream copy to database...")
             raise AirflowSkipException
 
-
     @staticmethod
-    def to_jsonl_string(rows: Union[dict, Iterator[dict]]) -> bytes:
+    def to_jsonl_string(rows: dict | Iterator[dict]) -> bytes:
         """
         :return:
         """
@@ -250,10 +287,7 @@ class EdFiToObjectStorageOperator(BaseOperator):
         if isinstance(rows, dict):
             rows = [rows]
 
-        return b''.join(
-            json.dumps(row).encode('utf8') + b'\n'
-            for row in rows
-        )
+        return b"".join(json.dumps(row).encode("utf8") + b"\n" for row in rows)
 
 
 class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
@@ -274,6 +308,7 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
     If at least one endpoint fails, push the XCom and raise an AirflowFailException.
     Otherwise, return a successful XCom.
     """
+
     def execute(self, context) -> str:
         """
 
@@ -281,13 +316,17 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
         :return:
         """
         # Force destination_dir and destination_filename arguments to be used.
-        if self.destination_key or not (self.destination_dir and self.destination_filename):
+        if self.destination_key or not (
+            self.destination_dir and self.destination_filename
+        ):
             raise ValueError(
                 "Bulk operators require arguments `destination_dir` and `destination_filename` to be passed."
             )
 
         # Make connection outside of loop to not re-authenticate at every resource.
-        edfi_conn = EdFiHook(self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
+        edfi_conn = EdFiHook(
+            self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache
+        ).get_conn()
 
         # Gather DAG-level endpoints outside of loop.
         config_endpoints = airflow_util.get_config_endpoints(context)
@@ -307,34 +346,54 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
             self.destination_filename,
         ]
 
-        for idx, (resource, min_change_version, namespace, page_size, num_retries, change_version_step_size, query_parameters, destination_filename) \
-            in enumerate(zip(*zip_arguments), start=1):
-
+        for idx, (
+            resource,
+            min_change_version,
+            namespace,
+            page_size,
+            num_retries,
+            change_version_step_size,
+            query_parameters,
+            destination_filename,
+        ) in enumerate(zip(*zip_arguments), start=1):
             logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
 
             # If doing a resource-specific run, confirm resource is in the list.
             # Also confirm resource is in XCom-list if passed (used for dynamic XComs retrieved from get-change-version operator).
-            if not self.is_endpoint_specified(resource, config_endpoints, self.enabled_endpoints):
+            if not self.is_endpoint_specified(
+                resource, config_endpoints, self.enabled_endpoints
+            ):
                 continue
 
             # Check the validity of min and max change-versions.
-            self.check_change_version_window_validity(min_change_version, self.max_change_version)
+            self.check_change_version_window_validity(
+                min_change_version, self.max_change_version
+            )
 
             # Build the object storage based on passed arguments, using the custom interface implementation.
-            object_interface = ObjectStorageInterface(self.object_storage_conn_id, object_storage_type=self.object_storage_type)
+            object_interface = ObjectStorageInterface(
+                self.object_storage_conn_id,
+                object_storage_type=self.object_storage_type,
+            )
             object_storage, clean_url = object_interface.get_object_storage(
-                destination_dir=self.destination_dir, destination_filename=destination_filename,
-                **self.kwargs
+                destination_dir=self.destination_dir,
+                destination_filename=destination_filename,
+                **self.kwargs,
             )
 
             # Wrap in a try-except to still attempt other endpoints in a skip or failure.
             try:
                 self.pull_edfi_to_object_storage(
                     edfi_conn=edfi_conn,
-                    resource=resource, namespace=namespace, page_size=page_size,
-                    num_retries=num_retries, change_version_step_size=change_version_step_size,
-                    min_change_version=min_change_version, max_change_version=self.max_change_version,
-                    query_parameters=query_parameters, object_storage=object_storage
+                    resource=resource,
+                    namespace=namespace,
+                    page_size=page_size,
+                    num_retries=num_retries,
+                    change_version_step_size=change_version_step_size,
+                    min_change_version=min_change_version,
+                    max_change_version=self.max_change_version,
+                    query_parameters=query_parameters,
+                    object_storage=object_storage,
                 )
                 # Return the clean URL string (not ObjectStoragePath) for downstream operators
                 return_tuples.append((resource, clean_url))
@@ -350,7 +409,7 @@ class BulkEdFiToObjectStorageOperator(EdFiToObjectStorageOperator):
                 continue
 
         if failed_endpoints:
-            context['ti'].xcom_push(key='return_value', value=return_tuples)
+            context["ti"].xcom_push(key="return_value", value=return_tuples)
             raise AirflowFailException(
                 f"Failed ingestion of one or more endpoints: {failed_endpoints}"
             )

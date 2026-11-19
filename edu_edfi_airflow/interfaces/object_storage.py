@@ -4,34 +4,39 @@ import os
 from airflow.sdk.bases.hook import BaseHook
 from airflow.sdk.io.path import ObjectStoragePath
 
-from typing import Optional
-
 
 class ObjectStorageInterface(abc.ABC):
     """
     Abstract class for creating generic Airflow ObjectStoragePath objects for Ed-Fi copies.
     """
-    def __new__(cls, object_storage_conn_id: str, object_storage_type: Optional[str] = None, **kwargs):
+
+    def __new__(
+        cls,
+        object_storage_conn_id: str,
+        object_storage_type: str | None = None,
+        **kwargs,
+    ):
         conn = BaseHook.get_connection(object_storage_conn_id)
 
-        if object_storage_type.lower() == 'adls' or conn.conn_type == 'adls':
+        if object_storage_type.lower() == "adls" or conn.conn_type == "adls":
             return object.__new__(ADLSObjectStorageInterface)
-        elif object_storage_type.lower() == 's3' or conn.conn_type == 'http':
+        elif object_storage_type.lower() == "s3" or conn.conn_type == "http":
             return object.__new__(S3ObjectStorageInterface)
         else:
-            raise ValueError(f"ObjectStorageInterface type {conn.conn_type} is not defined!")
-        
+            raise ValueError(
+                f"ObjectStorageInterface type {conn.conn_type} is not defined!"
+            )
 
     def __init__(self, object_storage_conn_id: str, **kwargs):
         self.object_storage_conn_id: str = object_storage_conn_id
 
-
     @abc.abstractmethod
-    def get_object_storage(self,
-        destination_key: Optional[str] = None,
-        destination_dir: Optional[str] = None,
-        destination_filename: Optional[str] = None,
-        **kwargs
+    def get_object_storage(
+        self,
+        destination_key: str | None = None,
+        destination_dir: str | None = None,
+        destination_filename: str | None = None,
+        **kwargs,
     ):
         raise NotImplementedError
 
@@ -41,30 +46,39 @@ class S3ObjectStorageInterface(ObjectStorageInterface):
     Updated S3 interface that creates ObjectStoragePath with conn_id.
     Returns tuple of (ObjectStoragePath, clean_url) for downstream operators.
     """
-    def get_object_storage(self,
-        destination_key: Optional[str] = None,
-        destination_dir: Optional[str] = None,
-        destination_filename: Optional[str] = None,
-        **kwargs
+
+    def get_object_storage(
+        self,
+        destination_key: str | None = None,
+        destination_dir: str | None = None,
+        destination_filename: str | None = None,
+        **kwargs,
     ):
         # Build destination_key if not provided
         if not destination_key:
             if not destination_dir or not destination_filename:
-                raise ValueError("Must provide destination_key or both destination_dir and destination_filename")
+                raise ValueError(
+                    "Must provide destination_key or both destination_dir and destination_filename"
+                )
             destination_key = os.path.join(destination_dir, destination_filename)
-        
+
         # Get connection to extract bucket
         conn = BaseHook.get_connection(self.object_storage_conn_id)
         bucket = conn.schema
-        
+
         if not bucket:
-            raise ValueError(f"Bucket name not found in connection {self.object_storage_conn_id}")
-        
+            raise ValueError(
+                f"Bucket name not found in connection {self.object_storage_conn_id}"
+            )
+
         # Internal format: embed conn_id in URL so Airflow can extract it
         # Clean format: S3 key without bucket for downstream operators
         storage_path = f"s3://{bucket}/{destination_key}"
-        
-        return (ObjectStoragePath(storage_path, conn_id=self.object_storage_conn_id), destination_key)
+
+        return (
+            ObjectStoragePath(storage_path, conn_id=self.object_storage_conn_id),
+            destination_key,
+        )
 
 
 class ADLSObjectStorageInterface(ObjectStorageInterface):
@@ -72,30 +86,45 @@ class ADLSObjectStorageInterface(ObjectStorageInterface):
     Updated ADLS interface that embeds conn_id in URL (Airflow pattern).
     Returns tuple of (ObjectStoragePath, clean_url) for downstream operators.
     """
-    def get_object_storage(self,
-        destination_key: Optional[str] = None,
-        destination_dir: Optional[str] = None,
-        destination_filename: Optional[str] = None,
-        **kwargs
+
+    def get_object_storage(
+        self,
+        destination_key: str | None = None,
+        destination_dir: str | None = None,
+        destination_filename: str | None = None,
+        **kwargs,
     ):
         # Build destination_key if not provided
         if not destination_key:
             if not destination_dir or not destination_filename:
-                raise ValueError("Must provide destination_key or both destination_dir and destination_filename")
+                raise ValueError(
+                    "Must provide destination_key or both destination_dir and destination_filename"
+                )
             destination_key = os.path.join(destination_dir, destination_filename)
-        
+
         # Get connection to extract container and storage account
         conn = BaseHook.get_connection(self.object_storage_conn_id)
         container = conn.schema
         account_name = conn.host
-        
+
         if not container:
-            raise ValueError(f"Container name not found in connection {self.object_storage_conn_id}")
-        
+            raise ValueError(
+                f"Container name not found in connection {self.object_storage_conn_id}"
+            )
+
         # Internal format: embed conn_id in URL so Airflow can extract it
-        internal_storage_path = f"abfs://{self.object_storage_conn_id}@{container}/{destination_key}"
-        
+        internal_storage_path = (
+            f"abfs://{self.object_storage_conn_id}@{container}/{destination_key}"
+        )
+
         # Clean format: full Azure URL for downstream operators
-        clean_storage_path = f"abfs://{container}@{account_name}.dfs.core.windows.net/{destination_key}"
-        
-        return (ObjectStoragePath(internal_storage_path, conn_id=self.object_storage_conn_id), clean_storage_path)
+        clean_storage_path = (
+            f"abfs://{container}@{account_name}.dfs.core.windows.net/{destination_key}"
+        )
+
+        return (
+            ObjectStoragePath(
+                internal_storage_path, conn_id=self.object_storage_conn_id
+            ),
+            clean_storage_path,
+        )

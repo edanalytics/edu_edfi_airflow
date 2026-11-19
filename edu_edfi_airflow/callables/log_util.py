@@ -1,12 +1,13 @@
 # log_util.py
 
-import logging
 import json
-from datetime import datetime, timezone
-from typing import Callable, Optional
+import logging
+from collections.abc import Callable
 from contextlib import contextmanager
+from datetime import UTC, datetime
 
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
 from edu_edfi_airflow.callables import airflow_util
 
 
@@ -16,16 +17,17 @@ def serialize_argument(arg):
     except TypeError:
         return str(arg)
 
+
 def format_log_record(record, args, kwargs):
     log_record = {
-        'timestamp': datetime.now(timezone.utc).isoformat(),
-        'name': record.name,
-        'level': record.levelname,
-        'message': record.getMessage(),
-        'pathname': record.pathname,
-        'lineno': record.lineno,
-        'args': {k: serialize_argument(v) for k, v in enumerate(args)},
-        'kwargs': {k: serialize_argument(v) for k, v in kwargs.items()},
+        "timestamp": datetime.now(UTC).isoformat(),
+        "name": record.name,
+        "level": record.levelname,
+        "message": record.getMessage(),
+        "pathname": record.pathname,
+        "lineno": record.lineno,
+        "args": {k: serialize_argument(v) for k, v in enumerate(args)},
+        "kwargs": {k: serialize_argument(v) for k, v in kwargs.items()},
     }
     return json.dumps(log_record)
 
@@ -59,7 +61,7 @@ def log_to_snowflake(
     run_type: str,
     run_date: str,
     run_timestamp: str,
-    grain_update: Optional[str] = None
+    grain_update: str | None = None,
 ):
     database, schema = airflow_util.get_snowflake_params_from_conn(snowflake_conn_id)
     grain_update_str = f"'{grain_update}'" if grain_update else "NULL"
@@ -88,19 +90,25 @@ def capture_logs_to_snowflake(
     tenant_code: str,
     api_year: int,
     run_type: str,
-    grain_update: Optional[str] = None,
-    map_index_source_task_id: Optional[str] = None,
+    grain_update: str | None = None,
+    map_index_source_task_id: str | None = None,
 ):
     def wrapper(*args, **kwargs):
-        
+
         # Robustly extract the Airflow context
-        context = kwargs.get("context") or (kwargs if {"ds", "ts"} <= kwargs.keys() else None)
+        context = kwargs.get("context") or (
+            kwargs if {"ds", "ts"} <= kwargs.keys() else None
+        )
         if not context:
             raise ValueError("Airflow context not found. Cannot extract ds/ts.")
-        
+
         def flush_logs(log_records, context):
             structured = [json.loads(r) for r in log_records]
-            errors = [r for r in structured if r.get("level") == "ERROR" or "ERROR" in r.get("message", "")]
+            errors = [
+                r
+                for r in structured
+                if r.get("level") == "ERROR" or "ERROR" in r.get("message", "")
+            ]
             if not errors:
                 return
             last_error = errors[-1]
@@ -119,10 +127,16 @@ def capture_logs_to_snowflake(
             if map_index is not None and map_index_source_task_id:
                 try:
                     file_list = ti.xcom_pull(task_ids=map_index_source_task_id)
-                    if file_list and isinstance(file_list, list) and len(file_list) > map_index:
+                    if (
+                        file_list
+                        and isinstance(file_list, list)
+                        and len(file_list) > map_index
+                    ):
                         map_index_name = file_list[map_index].split("/")[-1]
                 except Exception as e:
-                    logging.getLogger("airflow.task").warning(f"[log_util] Unable to extract map_index_name: {e}")
+                    logging.getLogger("airflow.task").warning(
+                        f"[log_util] Unable to extract map_index_name: {e}"
+                    )
 
             # Combine: args/kwargs/timestamp from last error, all other context in nested errors{} object
             # (this is to avoid duplicating args/kwargs/timestamp in each error log, while preserving error-specific context)
@@ -136,8 +150,10 @@ def capture_logs_to_snowflake(
             if map_index is not None:
                 merged["map_index"] = map_index
                 merged["map_index_name"] = map_index_name
-                
-            logging.getLogger("airflow.task").info(f"[DEBUG] flushing error log record to Snowflake")
+
+            logging.getLogger("airflow.task").info(
+                "[DEBUG] flushing error log record to Snowflake"
+            )
 
             log_to_snowflake(
                 snowflake_conn_id=snowflake_conn_id,
@@ -155,7 +171,9 @@ def capture_logs_to_snowflake(
             try:
                 return run_callable(*args, **kwargs)
             except Exception as err:
-                logging.getLogger("airflow.task").exception(f"{type(err).__name__} raised during task execution: {err}")
+                logging.getLogger("airflow.task").exception(
+                    f"{type(err).__name__} raised during task execution: {err}"
+                )
                 raise
             finally:
                 flush_logs(log_records, context)

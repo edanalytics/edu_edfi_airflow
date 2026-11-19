@@ -1,15 +1,13 @@
 import logging
 import os
 import shutil
-
-from typing import Iterator, List, Tuple, Union
-
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+from collections.abc import Iterator
 
 import edfi_api_client
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
 
-def walk_directory(directory: str) -> Iterator[Tuple[str, str]]:
+def walk_directory(directory: str) -> Iterator[tuple[str, str]]:
     """
     Recursively walk a directory, returning subfolders and filenames off of `root`.
 
@@ -17,12 +15,14 @@ def walk_directory(directory: str) -> Iterator[Tuple[str, str]]:
     :return:
     """
     for root, _, files in os.walk(directory):
-        subdir = root.replace(directory, '').strip('/') or None  # Force to None if an empty string
+        subdir = (
+            root.replace(directory, "").strip("/") or None
+        )  # Force to None if an empty string
         for file in files:
             yield subdir, file
 
 
-def remove_filepaths(filepaths: Union[str, List[str]]):
+def remove_filepaths(filepaths: str | list[str]):
     """
 
     :param filepaths:
@@ -51,7 +51,7 @@ def local_filepath_to_s3(
     local_filepath: str,
     s3_destination_key: str,
     s3_conn_id: str,
-    remove_local_filepath: bool = False
+    remove_local_filepath: bool = False,
 ):
     """
 
@@ -69,14 +69,16 @@ def local_filepath_to_s3(
         if os.path.isdir(local_filepath):
             for subdir, file in walk_directory(local_filepath):
                 full_path = edfi_api_client.url_join(local_filepath, subdir, file)
-                s3_full_path = edfi_api_client.url_join(s3_destination_key, subdir, file)
+                s3_full_path = edfi_api_client.url_join(
+                    s3_destination_key, subdir, file
+                )
 
                 s3_hook.load_file(
                     filename=full_path,
                     bucket_name=s3_bucket,
                     key=s3_full_path,
                     encrypt=True,
-                    replace=True
+                    replace=True,
                 )
 
         # Otherwise, upload the single file
@@ -86,7 +88,7 @@ def local_filepath_to_s3(
                 bucket_name=s3_bucket,
                 key=s3_destination_key,
                 encrypt=True,
-                replace=True
+                replace=True,
             )
 
     # Regardless, delete the local files if specified.
@@ -99,7 +101,7 @@ def local_filepath_to_s3(
 
 def check_for_key(
     s3_key: str,
-    s3_conn_id: str,     
+    s3_conn_id: str,
 ):
     """
     Check if a key exists in a bucket.
@@ -111,9 +113,6 @@ def check_for_key(
     s3_hook = S3Hook(aws_conn_id=s3_conn_id)
     s3_bucket = s3_hook.get_connection(s3_conn_id).schema
 
-    key_found = s3_hook.check_for_key(
-        key=s3_key,
-        bucket_name=s3_bucket
-    )
+    key_found = s3_hook.check_for_key(key=s3_key, bucket_name=s3_bucket)
 
     return key_found

@@ -1,40 +1,42 @@
 import json
 import logging
 import os
-from typing import Iterable, Optional, Union
-import subprocess
+from collections.abc import Iterable
 
-from airflow.sdk import Connection
 from airflow.providers.standard.operators.bash import BashOperator
+from airflow.sdk import Connection
 
 from edu_edfi_airflow.callables import airflow_util
 
 
 class EarthmoverOperator(BashOperator):
-    """
+    """ """
 
-    """
-    template_fields = ('output_dir', 'state_file', 'arguments', 'bash_command', 'env',)
+    template_fields = (
+        "output_dir",
+        "state_file",
+        "arguments",
+        "bash_command",
+        "env",
+    )
 
-    def __init__(self,
+    def __init__(
+        self,
         *,
-        earthmover_path: Optional[str] = "earthmover",
-
-        output_dir : Optional[str] = None,
-        state_file : Optional[str] = None,
-        config_file: Optional[str] = None,
-        selector   : Optional[Union[str, Iterable[str]]] = None,
-        parameters : Optional[Union[str, dict]] = None,
-        results_file: Optional[str] = None,
-        snowflake_read_conn_id: Optional[str] = None,
-
-        force          : bool = False,
-        skip_hashing   : bool = False,
-        show_graph     : bool = False,
+        earthmover_path: str | None = "earthmover",
+        output_dir: str | None = None,
+        state_file: str | None = None,
+        config_file: str | None = None,
+        selector: str | Iterable[str] | None = None,
+        parameters: str | dict | None = None,
+        results_file: str | None = None,
+        snowflake_read_conn_id: str | None = None,
+        force: bool = False,
+        skip_hashing: bool = False,
+        show_graph: bool = False,
         show_stacktrace: bool = False,
         return_exit_code: bool = False,
-
-        **kwargs
+        **kwargs,
     ):
         self.earthmover_path = earthmover_path
         self.output_dir = output_dir
@@ -47,40 +49,48 @@ class EarthmoverOperator(BashOperator):
 
         # Dynamic arguments
         if config_file:
-            self.arguments['--config-file'] = config_file
+            self.arguments["--config-file"] = config_file
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            self.arguments['--selector'] = selector
+            self.arguments["--selector"] = selector
 
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = {key: str(val) for key, val in parameters.items()}  # Force all params to strings.
+            self.arguments["--params"] = {
+                key: str(val) for key, val in parameters.items()
+            }  # Force all params to strings.
 
         if results_file:
-            self.arguments['--results-file'] = results_file
+            self.arguments["--results-file"] = results_file
 
         # Boolean arguments
         if force:
-            self.arguments['--force'] = ""
+            self.arguments["--force"] = ""
         if skip_hashing:
-            self.arguments['--skip-hashing'] = ""
+            self.arguments["--skip-hashing"] = ""
         if show_graph:
-            self.arguments['--show-graph'] = ""
+            self.arguments["--show-graph"] = ""
         if show_stacktrace:
-            self.arguments['--show-stacktrace'] = ""
+            self.arguments["--show-stacktrace"] = ""
 
         ### Environment variables
         # Pass required `output_dir` parameter as environment variables
         env_vars = {
-            'OUTPUT_DIR': self.output_dir,
-            'STATE_FILE': self.state_file,
+            "OUTPUT_DIR": self.output_dir,
+            "STATE_FILE": self.state_file,
         }
 
         bash_command_prefix = f"{self.earthmover_path} run "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, do_xcom_push=True, **kwargs)
+        super().__init__(
+            bash_command=bash_command_prefix,
+            env=env_vars,
+            append_env=True,
+            do_xcom_push=True,
+            **kwargs,
+        )
 
     def execute(self, conf=None, **context) -> str:
         """
@@ -93,7 +103,7 @@ class EarthmoverOperator(BashOperator):
         if self.snowflake_read_conn_id:
             db_conn = Connection.get(self.snowflake_read_conn_id)
             database_conn_string = f"snowflake://{db_conn.login}:{db_conn.password}@{db_conn.extra_dejson['extra__snowflake__account']}"
-            self.env['SNOWFLAKE_CONNECTION'] = database_conn_string
+            self.env["SNOWFLAKE_CONNECTION"] = database_conn_string
 
         # Format values before adding to the bash command.
         cli_arguments = []
@@ -104,7 +114,7 @@ class EarthmoverOperator(BashOperator):
                 cli_arguments.append(f"{key} '{json.dumps(val)}'")
             else:
                 cli_arguments.append(f"{key} '{val}'")
-        
+
         self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Earthmover CLI command: {self.bash_command}")
 
@@ -121,37 +131,36 @@ class EarthmoverOperator(BashOperator):
             return self.output_dir
 
 
-
 class LightbeamOperator(BashOperator):
-    """
+    """ """
 
-    """
-    template_fields = ('data_dir', 'state_dir', 'arguments', 'bash_command', 'env',)
-    valid_commands = ('validate', 'send', 'validate+send')
+    template_fields = (
+        "data_dir",
+        "state_dir",
+        "arguments",
+        "bash_command",
+        "env",
+    )
+    valid_commands = ("validate", "send", "validate+send")
 
-    def __init__(self,
+    def __init__(
+        self,
         *,
-        lightbeam_path: Optional[str] = "lightbeam",
-        command: str = 'send',
-
-        data_dir: Optional[str] = None,
-        state_dir: Optional[str] = None,
-
-        edfi_conn_id: Optional[str] = None,
-
-        config_file: Optional[str] = None,
-        selector: Optional[Union[str, Iterable[str]]] = None,
-        parameters: Optional[Union[str, dict]] = None,
-        results_file: Optional[str] = None,
-
+        lightbeam_path: str | None = "lightbeam",
+        command: str = "send",
+        data_dir: str | None = None,
+        state_dir: str | None = None,
+        edfi_conn_id: str | None = None,
+        config_file: str | None = None,
+        selector: str | Iterable[str] | None = None,
+        parameters: str | dict | None = None,
+        results_file: str | None = None,
         wipe: bool = False,
         force: bool = False,
-
-        older_than: Optional[str] = None,
-        newer_than: Optional[str] = None,
-        resend_status_codes: Optional[Union[str, Iterable[str]]] = None,
-
-        **kwargs
+        older_than: str | None = None,
+        newer_than: str | None = None,
+        resend_status_codes: str | Iterable[str] | None = None,
+        **kwargs,
     ):
         self.lightbeam_path = lightbeam_path
         self.data_dir = data_dir
@@ -169,47 +178,51 @@ class LightbeamOperator(BashOperator):
 
         # Dynamic arguments
         if config_file:
-            self.arguments['--config-file'] = config_file
+            self.arguments["--config-file"] = config_file
 
         if selector:  # Pre-built selector string or list of node names
             if not isinstance(selector, str):
                 selector = ",".join(selector)
-            self.arguments['--selector'] = selector
+            self.arguments["--selector"] = selector
 
         if parameters:  # JSON string or dictionary
             if isinstance(parameters, str):
                 parameters = json.loads(parameters)
-            self.arguments['--params'] = {key: str(val) for key, val in parameters.items()}  # Force all params to strings.
+            self.arguments["--params"] = {
+                key: str(val) for key, val in parameters.items()
+            }  # Force all params to strings.
 
         if results_file:
-            self.arguments['--results-file'] = results_file
+            self.arguments["--results-file"] = results_file
 
         if resend_status_codes:
             if not isinstance(resend_status_codes, str):
                 resend_status_codes = ",".join(resend_status_codes)
-            self.arguments['--resend-status-codes'] = resend_status_codes
+            self.arguments["--resend-status-codes"] = resend_status_codes
 
         # Boolean arguments
         if wipe:
-            self.arguments['--wipe'] = ""
+            self.arguments["--wipe"] = ""
         if force:
-            self.arguments['--force'] = ""
+            self.arguments["--force"] = ""
 
         # Optional string arguments
         if older_than:
-            self.arguments['--older-than'] = older_than
+            self.arguments["--older-than"] = older_than
         if newer_than:
-            self.arguments['--newer-than'] = newer_than
+            self.arguments["--newer-than"] = newer_than
 
         ### Environment variables
         # Pass required `data_dir`
         env_vars = {
-            'DATA_DIR' : self.data_dir,
-            'STATE_DIR': self.state_dir,
+            "DATA_DIR": self.data_dir,
+            "STATE_DIR": self.state_dir,
         }
 
         bash_command_prefix = f"{self.lightbeam_path} {command} "
-        super().__init__(bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs)
+        super().__init__(
+            bash_command=bash_command_prefix, env=env_vars, append_env=True, **kwargs
+        )
 
     def execute(self, conf=None, **context) -> str:
         """
@@ -222,26 +235,28 @@ class LightbeamOperator(BashOperator):
         if self.edfi_conn_id:
             edfi_conn = Connection.get(self.edfi_conn_id)
 
-            self.env['EDFI_API_BASE_URL'] = edfi_conn.host
-            self.env['EDFI_API_CLIENT_ID'] = edfi_conn.login
-            self.env['EDFI_API_CLIENT_SECRET'] = edfi_conn.password
+            self.env["EDFI_API_BASE_URL"] = edfi_conn.host
+            self.env["EDFI_API_CLIENT_ID"] = edfi_conn.login
+            self.env["EDFI_API_CLIENT_SECRET"] = edfi_conn.password
 
-            _api_year = edfi_conn.extra_dejson.get('api_year')
+            _api_year = edfi_conn.extra_dejson.get("api_year")
             if _api_year:
-                self.env['EDFI_API_YEAR'] = _api_year
+                self.env["EDFI_API_YEAR"] = _api_year
 
-            _api_version = edfi_conn.extra_dejson.get('api_version')
+            _api_version = edfi_conn.extra_dejson.get("api_version")
             if _api_version:
-                self.env['EDFI_API_VERSION'] = _api_version
+                self.env["EDFI_API_VERSION"] = _api_version
 
-            _api_mode = edfi_conn.extra_dejson.get('api_mode')
+            _api_mode = edfi_conn.extra_dejson.get("api_mode")
             if _api_mode:
-                self.env['EDFI_API_MODE'] = _api_mode
+                self.env["EDFI_API_MODE"] = _api_mode
 
         # Overwrite `force` if defined in DAG configs.
-        if airflow_util.get_context_variable(context, 'force', default=False):
-            logging.info("Parameter `force` provided in context will overwrite defined operator argument.")
-            self.arguments['--force'] = ""
+        if airflow_util.get_context_variable(context, "force", default=False):
+            logging.info(
+                "Parameter `force` provided in context will overwrite defined operator argument."
+            )
+            self.arguments["--force"] = ""
 
         # Create state_dir if not already defined in filespace
         os.makedirs(self.state_dir, exist_ok=True)
@@ -255,7 +270,7 @@ class LightbeamOperator(BashOperator):
                 cli_arguments.append(f"{key} '{json.dumps(val)}'")
             else:
                 cli_arguments.append(f"{key} '{val}'")
-        
+
         self.bash_command += " ".join(cli_arguments)
         logging.info(f"Complete Lightbeam CLI command: {self.bash_command}")
 

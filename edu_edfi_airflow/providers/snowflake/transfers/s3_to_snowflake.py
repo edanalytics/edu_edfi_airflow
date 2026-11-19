@@ -1,11 +1,10 @@
 import logging
 import os
+from typing import Any
 
-from typing import Any, List, Optional
-
-from airflow.sdk.exceptions import AirflowSkipException
-from airflow.sdk import BaseOperator
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+from airflow.sdk import BaseOperator
+from airflow.sdk.exceptions import AirflowSkipException
 
 from edu_edfi_airflow.callables import airflow_util
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
@@ -15,33 +14,40 @@ class S3ToSnowflakeOperator(BaseOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
-    template_fields = ('resource', 'table_name', 's3_destination_key', 's3_destination_dir', 's3_destination_filename', 'xcom_return',)
 
-    def __init__(self,
+    template_fields = (
+        "resource",
+        "table_name",
+        "s3_destination_key",
+        "s3_destination_dir",
+        "s3_destination_filename",
+        "xcom_return",
+    )
+
+    def __init__(
+        self,
         *,
         tenant_code: str,
         api_year: int,
         resource: str,
         table_name: str,
-
-        s3_destination_key: Optional[str] = None,
-        s3_destination_dir: Optional[str] = None,
-        s3_destination_filename: Optional[str] = None,
-
+        s3_destination_key: str | None = None,
+        s3_destination_dir: str | None = None,
+        s3_destination_filename: str | None = None,
         snowflake_conn_id: str,
-
-        edfi_conn_id: Optional[str] = None,
-        ods_version: Optional[str] = None,
-        data_model_version: Optional[str] = None,
+        edfi_conn_id: str | None = None,
+        ods_version: str | None = None,
+        data_model_version: str | None = None,
         use_edfi_token_cache: bool = False,
-
         full_refresh: bool = False,
-        xcom_return: Optional[Any] = None,
-        **kwargs
+        xcom_return: Any | None = None,
+        **kwargs,
     ) -> None:
-        super(S3ToSnowflakeOperator, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
-        logging.warning("Operators defined in `edu_edfi_airflow.providers.transfers.s3_to_snowflake` are deprecated.")
+        logging.warning(
+            "Operators defined in `edu_edfi_airflow.providers.transfers.s3_to_snowflake` are deprecated."
+        )
 
         self.edfi_conn_id = edfi_conn_id
         self.snowflake_conn_id = snowflake_conn_id
@@ -63,7 +69,6 @@ class S3ToSnowflakeOperator(BaseOperator):
 
         self.use_edfi_token_cache = use_edfi_token_cache
 
-
     def execute(self, context):
         """
 
@@ -74,17 +79,21 @@ class S3ToSnowflakeOperator(BaseOperator):
         if not self.s3_destination_key:
             if not (self.s3_destination_dir and self.s3_destination_filename):
                 raise ValueError(
-                    f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
+                    "Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
                 )
-            self.s3_destination_key = os.path.join(self.s3_destination_dir, self.s3_destination_filename)
+            self.s3_destination_key = os.path.join(
+                self.s3_destination_dir, self.s3_destination_filename
+            )
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
         self.set_edfi_attributes()
 
         # Build and run the SQL queries to Snowflake. Delete first if EdFi2 or a full-refresh.
         self.run_sql_queries(
-            name=self.resource, table=self.table_name,
-            s3_key=self.s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
+            name=self.resource,
+            table=self.table_name,
+            s3_key=self.s3_destination_key,
+            full_refresh=airflow_util.is_full_refresh(context),
         )
 
         return self.xcom_return
@@ -95,28 +104,40 @@ class S3ToSnowflakeOperator(BaseOperator):
         This needs to occur in execute to not call the API at every Airflow synchronize.
         """
         if self.edfi_conn_id:
-            edfi_conn = EdFiHook(edfi_conn_id=self.edfi_conn_id, use_token_cache=self.use_edfi_token_cache).get_conn()
+            edfi_conn = EdFiHook(
+                edfi_conn_id=self.edfi_conn_id,
+                use_token_cache=self.use_edfi_token_cache,
+            ).get_conn()
             if is_edfi2 := edfi_conn.is_edfi2():
                 self.full_refresh = True
 
             if not self.ods_version:
-                self.ods_version = 'ED-FI2' if is_edfi2 else edfi_conn.get_ods_version()
+                self.ods_version = "ED-FI2" if is_edfi2 else edfi_conn.get_ods_version()
 
             if not self.data_model_version:
-                self.data_model_version = 'ED-FI2' if is_edfi2 else edfi_conn.get_data_model_version()
+                self.data_model_version = (
+                    "ED-FI2" if is_edfi2 else edfi_conn.get_data_model_version()
+                )
 
         if not (self.ods_version and self.data_model_version):
             raise Exception(
-                f"Arguments `ods_version` and `data_model_version` could not be retrieved and must be provided."
+                "Arguments `ods_version` and `data_model_version` could not be retrieved and must be provided."
             )
 
-    def run_sql_queries(self, name: str, table: str, s3_key: str, full_refresh: bool = False, is_sideloaded: bool = False):
-        """
-
-        """
+    def run_sql_queries(
+        self,
+        name: str,
+        table: str,
+        s3_key: str,
+        full_refresh: bool = False,
+        is_sideloaded: bool = False,
+    ):
+        """ """
         ### Retrieve the database and schema from the Snowflake hook.
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
-        database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
+        database, schema = airflow_util.get_snowflake_params_from_conn(
+            self.snowflake_conn_id
+        )
 
         ### Build the SQL queries to be passed into `Hook.run()`.
         # Brackets in regex conflict with string formatting.
@@ -155,7 +176,7 @@ class S3ToSnowflakeOperator(BaseOperator):
                 AND name = '{name}'
             """
             snowflake_hook.run(sql=[qry_delete, qry_copy_into], autocommit=False)
-        
+
         else:
             snowflake_hook.run(sql=qry_copy_into)
 
@@ -164,6 +185,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
     """
     Copy the Ed-Fi files saved to S3 to Snowflake raw resource tables.
     """
+
     def execute(self, context):
         """
 
@@ -172,16 +194,24 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         """
         if not self.resource:
             # For deletes and keyChanges, delete all records during a full refresh.
-            if airflow_util.is_full_refresh(context) and isinstance(self.table_name, str):
+            if airflow_util.is_full_refresh(context) and isinstance(
+                self.table_name, str
+            ):
                 logging.info("Deleting existing records due to full refresh...")
-                self.run_bulk_sql_queries(table=self.table_name, names=airflow_util.get_config_endpoints(context), delete_all=True)
-                
+                self.run_bulk_sql_queries(
+                    table=self.table_name,
+                    names=airflow_util.get_config_endpoints(context),
+                    delete_all=True,
+                )
+
                 if self.xcom_return:  # Maintain backwards-compatibility with original S3ToSnowflakeOperator
                     return self.xcom_return
                 else:
                     return []
             else:
-                raise AirflowSkipException("There are no endpoints to copy to Snowflake. Skipping task...")
+                raise AirflowSkipException(
+                    "There are no endpoints to copy to Snowflake. Skipping task..."
+                )
 
         # Force potential string columns into lists for zipping in execute.
         if isinstance(self.resource, str):
@@ -190,28 +220,28 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         # we have to do this for the time being because the XCom that produces this list
         # actually returns a lazily-evaluated object with no len() property
         self.resource = list(self.resource)
-            
+
         ### Optionally set destination key by concatting separate args for dir and filename
         if not self.s3_destination_key:
             if not (self.s3_destination_dir and self.s3_destination_filename):
                 raise ValueError(
-                    f"Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
+                    "Argument `s3_destination_key` has not been specified, and `s3_destination_dir` or `s3_destination_filename` is missing."
                 )
-        
+
             if isinstance(self.s3_destination_filename, str):
                 raise ValueError(
                     "Bulk operators require argument `s3_destination_filename` to be a list."
                 )
-            
+
             self.s3_destination_key = [
                 os.path.join(self.s3_destination_dir, filename)
                 for filename in self.s3_destination_filename
             ]
-        
+
         elif isinstance(self.s3_destination_key, str):
             raise ValueError(
-                    "Bulk operators require argument `s3_destination_key` to be a list."
-                )
+                "Bulk operators require argument `s3_destination_key` to be a list."
+            )
 
         ### Retrieve the Ed-Fi, ODS, and data model versions in execute to prevent excessive API calls.
         self.set_edfi_attributes()
@@ -224,16 +254,23 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
             logging.info("Running bulk statements on a single table.")
             self.run_bulk_sql_queries(
                 table=self.table_name,
-                s3_dir=self.s3_destination_dir or os.path.dirname(self.s3_destination_key[0])  # Infer directory if not specified.
+                s3_dir=self.s3_destination_dir
+                or os.path.dirname(
+                    self.s3_destination_key[0]
+                ),  # Infer directory if not specified.
             )
-        
+
         # Otherwise, loop over each S3 destination and copy in sequence.
         else:
-            for idx, (resource, table, s3_destination_key) in enumerate(zip(self.resource, self.table_name, self.s3_destination_key), start=1):
+            for idx, (resource, table, s3_destination_key) in enumerate(
+                zip(self.resource, self.table_name, self.s3_destination_key), start=1
+            ):
                 logging.info(f"[ENDPOINT {idx} / {len(self.resource)}]")
                 self.run_sql_queries(
-                    name=resource, table=table,
-                    s3_key=s3_destination_key, full_refresh=airflow_util.is_full_refresh(context)
+                    name=resource,
+                    table=table,
+                    s3_key=s3_destination_key,
+                    full_refresh=airflow_util.is_full_refresh(context),
                 )
 
         # Send the prebuilt-output if specified; otherwise, send the compiled list created above.
@@ -243,10 +280,17 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         else:
             return xcom_returns
 
-    def run_bulk_sql_queries(self, table: str, s3_dir: str = '', names: List[str] = [], delete_all: bool = False, is_sideloaded: bool = False):
+    def run_bulk_sql_queries(
+        self,
+        table: str,
+        s3_dir: str = "",
+        names: list[str] = [],
+        delete_all: bool = False,
+        is_sideloaded: bool = False,
+    ):
         """
         Alternative delete and copy queries to be run when all data is sent to the same table in Snowflake.
-        
+
         S3 Path Structure:
             /{tenant_code}/{api_year}/{ds_nodash}/{ts_no_dash}/{taskgroup_type}/{name}.jsonl
 
@@ -255,7 +299,9 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
         """
         ### Retrieve the database and schema from the Snowflake hook.
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
-        database, schema = airflow_util.get_snowflake_params_from_conn(self.snowflake_conn_id)
+        database, schema = airflow_util.get_snowflake_params_from_conn(
+            self.snowflake_conn_id
+        )
 
         ### If delete_all is True, delete all records for the tenant and api_year.
         # This is used to clear deletes and keyChanges during a full refresh.
@@ -263,7 +309,7 @@ class BulkS3ToSnowflakeOperator(S3ToSnowflakeOperator):
             if len(names):
                 names_string = f"""AND name in ('{"', '".join(names)}')"""
             else:
-                names_string = ''
+                names_string = ""
 
             qry_delete = f"""
                 DELETE FROM {database}.{schema}.{table}

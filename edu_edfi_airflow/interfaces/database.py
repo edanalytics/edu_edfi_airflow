@@ -2,35 +2,32 @@ import abc
 import logging
 import os
 
-from airflow.sdk.bases.hook import BaseHook
 from airflow.sdk import Connection
-
-from typing import List, Optional, Tuple, Union
+from airflow.sdk.bases.hook import BaseHook
 
 
 class DatabaseInterface(abc.ABC):
-    """
-    
-    """
-    def __new__(cls, database_conn_id: str, database_type: Optional[str] = None, **kwargs):
+    """ """
+
+    def __new__(
+        cls, database_conn_id: str, database_type: str | None = None, **kwargs
+    ):
         conn = BaseHook.get_connection(database_conn_id)
-        
-        if database_type.lower() == 'snowflake' or conn.conn_type == 'snowflake':
+
+        if database_type.lower() == "snowflake" or conn.conn_type == "snowflake":
             return object.__new__(SnowflakeDatabaseInterface)
-        elif database_type.lower() == 'databricks' or conn.conn_type == 'databricks':
+        elif database_type.lower() == "databricks" or conn.conn_type == "databricks":
             return object.__new__(DatabricksDatabaseInterface)
         else:
             raise ValueError(f"DatabaseInterface type {conn.conn_type} is not defined!")
-    
-        
+
     def __init__(self, database_conn_id: str, **kwargs):
         self.database_conn_id: str = database_conn_id
         self.database, self.schema = self.get_database_params_from_conn()
 
         # Initialized within context manager.
         self.hook = None
-        self.sql: List[str] = []
-    
+        self.sql: list[str] = []
 
     @abc.abstractmethod
     def __enter__(self):
@@ -39,42 +36,58 @@ class DatabaseInterface(abc.ABC):
     @abc.abstractmethod
     def __exit__(self, exc_type, exc_value, exc_traceback):
         raise NotImplementedError
-    
+
     @abc.abstractmethod
     def query_database(self, sql: str, **kwargs):
         raise NotImplementedError
-    
+
     @abc.abstractmethod
-    def insert_into_database(self, table: str, columns: List[str], values: List[str], **kwargs):
+    def insert_into_database(
+        self, table: str, columns: list[str], values: list[str], **kwargs
+    ):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def delete_from_raw(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
-        raise NotImplementedError
-    
-    @abc.abstractmethod
-    def copy_into_raw(self,
-        tenant_code: str, api_year: str, name: str, table: str,
-        ods_version: int, data_model_version: str, storage_path: str
+    def delete_from_raw(
+        self, tenant_code: str, api_year: str, name: str | list[str], table: str
     ) -> str:
         raise NotImplementedError
-    
+
     @abc.abstractmethod
-    def bulk_copy_into_raw(self,
-        tenant_code: str, api_year: str, name: List[str], table: str,
-        ods_version: int, data_model_version: str, storage_path: str
+    def copy_into_raw(
+        self,
+        tenant_code: str,
+        api_year: str,
+        name: str,
+        table: str,
+        ods_version: int,
+        data_model_version: str,
+        storage_path: str,
     ) -> str:
-        """ Same argument signature as singleton method. """
         raise NotImplementedError
-    
-    def get_database_params_from_conn(self) -> Tuple[str, str]:
+
+    @abc.abstractmethod
+    def bulk_copy_into_raw(
+        self,
+        tenant_code: str,
+        api_year: str,
+        name: list[str],
+        table: str,
+        ods_version: int,
+        data_model_version: str,
+        storage_path: str,
+    ) -> str:
+        """Same argument signature as singleton method."""
+        raise NotImplementedError
+
+    def get_database_params_from_conn(self) -> tuple[str, str]:
         """
         Extract database and schema parameters from an Airflow connection.
         """
         try:
             conn = Connection.get(self.database_conn_id)
-            database = conn.extra_dejson[f'extra__{conn.conn_type}__database']
-            schema   = conn.schema
+            database = conn.extra_dejson[f"extra__{conn.conn_type}__database"]
+            schema = conn.schema
 
             if database is None or schema is None:
                 raise ValueError(
@@ -90,9 +103,9 @@ class DatabaseInterface(abc.ABC):
 
 
 class SnowflakeDatabaseInterface(DatabaseInterface):
-
     def __enter__(self):
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
         self.hook = SnowflakeHook(self.database_conn_id)
         return self
 
@@ -102,13 +115,16 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
     def query_database(self, sql: str, **kwargs):
         """Run query on Snowflake and return results."""
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
         snowflake_hook = SnowflakeHook(snowflake_conn_id=self.database_conn_id)
         return snowflake_hook.get_records(sql)
-    
-    def insert_into_database(self, table: str, columns: List[str], values: List[list], **kwargs):
+
+    def insert_into_database(
+        self, table: str, columns: list[str], values: list[list], **kwargs
+    ):
         """Insert into Snowflake database."""
         from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-        
+
         # Force a single record into a list for iteration below.
         if not all(isinstance(val, (list, tuple)) for val in values):
             values = [values]
@@ -127,7 +143,9 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
         )
 
     # SQL Queries
-    def delete_from_raw(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
+    def delete_from_raw(
+        self, tenant_code: str, api_year: str, name: str | list[str], table: str
+    ) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
         if isinstance(name, str):
             name = [name]
@@ -143,11 +161,17 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
         """
         self.sql.append(qry)
         return qry
-    
-    def copy_into_raw(self,
-        tenant_code: str, api_year: str, name: str, table: str,
-        ods_version: int, data_model_version: str, storage_path: str,
-        is_sideloaded: bool = False
+
+    def copy_into_raw(
+        self,
+        tenant_code: str,
+        api_year: str,
+        name: str,
+        table: str,
+        ods_version: int,
+        data_model_version: str,
+        storage_path: str,
+        is_sideloaded: bool = False,
     ) -> str:
         # Brackets in regex conflict with string formatting.
         date_regex = "\\\\d{8}"
@@ -177,10 +201,16 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
         self.sql.append(qry)
         return qry
 
-    def bulk_copy_into_raw(self,
-        tenant_code: str, api_year: str, name: List[str], table: str,
-        ods_version: int, data_model_version: str, storage_path: str,
-        is_sideloaded: bool = False
+    def bulk_copy_into_raw(
+        self,
+        tenant_code: str,
+        api_year: str,
+        name: list[str],
+        table: str,
+        ods_version: int,
+        data_model_version: str,
+        storage_path: str,
+        is_sideloaded: bool = False,
     ) -> str:
         # Always use the directory for bulk copies into Snowflake
         storage_dir = os.path.dirname(storage_path)
@@ -215,9 +245,9 @@ class SnowflakeDatabaseInterface(DatabaseInterface):
 
 
 class DatabricksDatabaseInterface(DatabaseInterface):
-
     def __enter__(self):
         from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
+
         self.hook = DatabricksSqlHook(self.database_conn_id)
         return self
 
@@ -227,13 +257,16 @@ class DatabricksDatabaseInterface(DatabaseInterface):
     def query_database(self, sql: str, **kwargs):
         """Run query on Databricks and return results."""
         from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
+
         databricks_hook = DatabricksSqlHook(self.database_conn_id)
         return databricks_hook.get_records(sql)
-    
-    def insert_into_database(self, table: str, columns: List[str], values: List[list], **kwargs):
+
+    def insert_into_database(
+        self, table: str, columns: list[str], values: list[list], **kwargs
+    ):
         """Insert into Databricks database."""
         from airflow.providers.databricks.hooks.databricks_sql import DatabricksSqlHook
-        
+
         # Force a single record into a list for iteration below.
         if not all(isinstance(val, (list, tuple)) for val in values):
             values = [values]
@@ -246,7 +279,7 @@ class DatabricksDatabaseInterface(DatabaseInterface):
         # Build INSERT SQL statement
         full_table_name = f"{self.database}.{self.schema}.{table}"
         columns_str = ", ".join(columns)
-        
+
         # Build VALUES clauses for all rows
         insert_statements = []
         for row in values:
@@ -263,16 +296,20 @@ class DatabricksDatabaseInterface(DatabaseInterface):
                     escaped_values.append("TRUE" if val else "FALSE")
                 else:
                     escaped_values.append(str(val))
-            
+
             values_str = ", ".join(escaped_values)
-            insert_statements.append(f"INSERT INTO {full_table_name} ({columns_str}) VALUES ({values_str})")
+            insert_statements.append(
+                f"INSERT INTO {full_table_name} ({columns_str}) VALUES ({values_str})"
+            )
 
         # Execute all insert statements
         databricks_hook = DatabricksSqlHook(self.database_conn_id)
         databricks_hook.run(sql=insert_statements, autocommit=True)
 
     # SQL Queries
-    def delete_from_raw(self, tenant_code: str, api_year: str, name: Union[str, List[str]], table: str) -> str:
+    def delete_from_raw(
+        self, tenant_code: str, api_year: str, name: str | list[str], table: str
+    ) -> str:
         # Use an array of names to allow same method to be used in single and bulk approaches.
         if isinstance(name, str):
             name = [name]
@@ -288,11 +325,17 @@ class DatabricksDatabaseInterface(DatabaseInterface):
         """
         self.sql.append(qry)
         return qry
-    
-    def copy_into_raw(self,
-        tenant_code: str, api_year: str, name: str, table: str,
-        ods_version: int, data_model_version: str, storage_path: str,
-        is_sideloaded: bool = False
+
+    def copy_into_raw(
+        self,
+        tenant_code: str,
+        api_year: str,
+        name: str,
+        table: str,
+        ods_version: int,
+        data_model_version: str,
+        storage_path: str,
+        is_sideloaded: bool = False,
     ) -> str:
         qry = f"""
             COPY INTO {self.database}.{self.schema}.{table}
@@ -318,10 +361,16 @@ class DatabricksDatabaseInterface(DatabaseInterface):
         """
         self.sql.append(qry)
         return qry
-    
-    def bulk_copy_into_raw(self,
-        tenant_code: str, api_year: str, name: List[str], table: str,
-        ods_version: int, data_model_version: str, storage_path: str
+
+    def bulk_copy_into_raw(
+        self,
+        tenant_code: str,
+        api_year: str,
+        name: list[str],
+        table: str,
+        ods_version: int,
+        data_model_version: str,
+        storage_path: str,
     ) -> str:
         """
         For now, implement bulk operations by calling the single operation for each name.
@@ -330,7 +379,15 @@ class DatabricksDatabaseInterface(DatabaseInterface):
         all_queries = []
 
         for nn in name:
-            qry = self.copy_into_raw(tenant_code, api_year, nn, table, ods_version, data_model_version, storage_path)
+            qry = self.copy_into_raw(
+                tenant_code,
+                api_year,
+                nn,
+                table,
+                ods_version,
+                data_model_version,
+                storage_path,
+            )
             all_queries.append(qry)
 
         return all_queries.join("\n")  # Return all queries at once.

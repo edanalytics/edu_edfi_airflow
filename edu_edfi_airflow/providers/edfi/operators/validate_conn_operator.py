@@ -1,11 +1,11 @@
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from airflow.sdk import BaseOperator
-from airflow.sdk import Context
+from airflow.sdk import BaseOperator, Context
 
 from edu_edfi_airflow.scripts.validate_edfi_connections import validate_edfi_connections
+
 
 class ValidateEdFiConnectionsOperator(BaseOperator):
     """
@@ -30,8 +30,8 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         *,
         tenant_lea_mapping_json: str,
         conn_prefix: str = "edfi",
-        exclude_conns: Optional[List[str]] = None,
-        fail_on: Optional[List[str]] = ["MISMATCH", "NO_MAPPING", "NO_ORG_ID", "ERROR"],
+        exclude_conns: list[str] | None = None,
+        fail_on: list[str] | None = ["MISMATCH", "NO_MAPPING", "NO_ORG_ID", "ERROR"],
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -41,18 +41,25 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
         self.exclude_conns = exclude_conns or []
         self.fail_on = fail_on
 
-    def execute(self, context: Context) -> List[Dict[str, Any]]:
+    def execute(self, context: Context) -> list[dict[str, Any]]:
         """
         Run EdFi LEA validation and optionally fail the task based on results.
         """
 
         # Parse tenant mapping
-        tenant_lea_mapping: Dict[str, str] = json.loads(self.tenant_lea_mapping_json)
+        tenant_lea_mapping: dict[str, str] = json.loads(self.tenant_lea_mapping_json)
 
-        self.log.info("Starting EdFi connection validation (This task will fail on: %s)", ", ".join(self.fail_on or "nothing"))
+        self.log.info(
+            "Starting EdFi connection validation (This task will fail on: %s)",
+            ", ".join(self.fail_on or "nothing"),
+        )
 
         # run validate
-        results = validate_edfi_connections(tenant_lea_mapping, conn_prefix=self.conn_prefix, exclude_conns=self.exclude_conns)
+        results = validate_edfi_connections(
+            tenant_lea_mapping,
+            conn_prefix=self.conn_prefix,
+            exclude_conns=self.exclude_conns,
+        )
 
         # Detailed summary by type
         total = len(results)
@@ -66,28 +73,36 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
             f"\nSummary: {len(matches)}/{total} matches, {len(mismatches)} mismatches, "
             f"{len(no_mapping)} no mapping, {len(no_org_id)} connections with no org ID, {len(errors)} errors"
         )
-        
+
         # Log issue details
         if mismatches:
             self.log.error("Mismatches (%d):", len(mismatches))
             for r in mismatches:
-                self.log.error("  - %s: expected %s, got %s", r['connection_id'], r.get('expected_lea_id'), r.get('actual_org_id'))
+                self.log.error(
+                    "  - %s: expected %s, got %s",
+                    r["connection_id"],
+                    r.get("expected_lea_id"),
+                    r.get("actual_org_id"),
+                )
 
         if no_mapping:
             self.log.error("No Mapping Found (%d):", len(no_mapping))
             for r in no_mapping:
-                self.log.error("  - %s: tenant '%s' not in mapping", r['connection_id'], r.get('tenant'))
+                self.log.error(
+                    "  - %s: tenant '%s' not in mapping",
+                    r["connection_id"],
+                    r.get("tenant"),
+                )
 
         if no_org_id:
             self.log.error("No LEA ID Found (%d):", len(no_org_id))
             for r in no_org_id:
-                self.log.error("  - %s: %s", r['connection_id'], r.get('message'))
+                self.log.error("  - %s: %s", r["connection_id"], r.get("message"))
 
         if errors:
             self.log.error("Errors (%d):", len(errors))
             for r in errors:
-                self.log.error("  - %s: %s", r['connection_id'], r.get('message'))
-
+                self.log.error("  - %s: %s", r["connection_id"], r.get("message"))
 
         # Fail if any results match the fail_on list
         failures = [r for r in results if r["status"] in self.fail_on]
@@ -99,5 +114,8 @@ class ValidateEdFiConnectionsOperator(BaseOperator):
                 f"{len(errors)} errors."
             )
 
-        self.log.info("Validation complete. No issues in fail_on list (%s)", ", ".join(self.fail_on) if self.fail_on else "nothing")
+        self.log.info(
+            "Validation complete. No issues in fail_on list (%s)",
+            ", ".join(self.fail_on) if self.fail_on else "nothing",
+        )
         return results

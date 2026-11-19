@@ -1,5 +1,5 @@
-from runway_client import RunwayClient
 from airflow.sdk.bases.hook import BaseHook
+from runway_client import RunwayClient
 
 
 class RunwayHook(BaseHook):

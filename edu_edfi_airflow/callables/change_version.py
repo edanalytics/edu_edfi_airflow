@@ -1,7 +1,5 @@
 import logging
 
-from typing import Dict, List, Tuple, Optional
-
 from airflow.sdk.exceptions import AirflowSkipException
 
 from edu_edfi_airflow.callables import airflow_util
@@ -9,13 +7,17 @@ from edu_edfi_airflow.interfaces.database import DatabaseInterface
 from edu_edfi_airflow.providers.edfi.hooks.edfi import EdFiHook
 
 
-def get_newest_edfi_change_version(edfi_conn_id: str, use_edfi_token_cache: bool = False, **kwargs) -> int:
+def get_newest_edfi_change_version(
+    edfi_conn_id: str, use_edfi_token_cache: bool = False, **kwargs
+) -> int:
     """
 
     :return:
     """
     ### Connect to EdFi ODS and verify EdFi3.
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, use_token_cache=use_edfi_token_cache).get_conn()
+    edfi_conn = EdFiHook(
+        edfi_conn_id=edfi_conn_id, use_token_cache=use_edfi_token_cache
+    ).get_conn()
 
     # Break off prematurely if change versions not supported.
     if edfi_conn.is_edfi2():
@@ -30,20 +32,19 @@ def get_newest_edfi_change_version(edfi_conn_id: str, use_edfi_token_cache: bool
 
 
 def reset_change_versions(
-    tenant_code : str,
-    api_year    : int,
-
+    tenant_code: str,
+    api_year: int,
     *,
     change_version_table: str,
-    database_conn_id: Optional[str] = None,
-    database_type: Optional[str] = None,
-
-    **kwargs
+    database_conn_id: str | None = None,
+    database_type: str | None = None,
+    **kwargs,
 ) -> None:
     # Airflow-skip if run not marked for a full-refresh.
     if not airflow_util.is_full_refresh(kwargs):
-        raise AirflowSkipException(f"Full refresh not specified. Change version table `{change_version_table}` unchanged.")
-
+        raise AirflowSkipException(
+            f"Full refresh not specified. Change version table `{change_version_table}` unchanged."
+        )
 
     ### Prepare the SQL query.
     db = DatabaseInterface(database_conn_id, database_type=database_type)
@@ -60,7 +61,9 @@ def reset_change_versions(
 
     # Filter only to inactive endpoints to those specified in DAG-configs, if defined.
     if config_endpoints := airflow_util.get_config_endpoints(kwargs):
-        qry_mark_inactive += "    and name in ('{}')".format("', '".join(config_endpoints))
+        qry_mark_inactive += "    and name in ('{}')".format(
+            "', '".join(config_endpoints)
+        )
 
     ### Connect to database and execute the query.
     logging.info("Full refresh: marking previous pulls inactive.")
@@ -70,18 +73,15 @@ def reset_change_versions(
 def get_previous_change_versions(
     tenant_code: str,
     api_year: int,
-    endpoints: List[Tuple[str, str]],
-
+    endpoints: list[tuple[str, str]],
     *,
     change_version_table: str,
-    database_conn_id: Optional[str] = None,
-    database_type: Optional[str] = None,
-
+    database_conn_id: str | None = None,
+    database_type: str | None = None,
     get_deletes: bool = False,
     get_key_changes: bool = False,
     has_key_changes: bool = False,
-
-    **context
+    **context,
 ) -> None:
     """
     We separate getting the most recent EdFi change version into a separate function.
@@ -99,21 +99,24 @@ def get_previous_change_versions(
     """
     # Skip deletes/key-changes if a full-refresh.
     if airflow_util.is_full_refresh(context) and (get_deletes or get_key_changes):
-        raise AirflowSkipException("Skipping deletes/key-changes pull for full_refresh run.")
-
+        raise AirflowSkipException(
+            "Skipping deletes/key-changes pull for full_refresh run."
+        )
 
     logging.info("Retrieving max previously-ingested change versions from database.")
 
     ### Prepare the SQL query.
     db = DatabaseInterface(database_conn_id, database_type=database_type)
-    
+
     # Retrieve the previous max change versions for this tenant-year.
     if get_deletes:
         filter_clause = "is_deletes"
     elif get_key_changes:
         filter_clause = "is_key_changes"
     elif has_key_changes:  # Handles optionality of `is_key_changes` column
-        filter_clause = "not coalesce(is_deletes, false) and not coalesce(is_key_changes, false)"
+        filter_clause = (
+            "not coalesce(is_deletes, false) and not coalesce(is_key_changes, false)"
+        )
     else:
         filter_clause = "not coalesce(is_deletes, false)"
 
@@ -131,7 +134,7 @@ def get_previous_change_versions(
     ### Retrieve previous endpoint-level change versions and push as an XCom.
     prior_change_versions = db.query_database(qry_prior_max, **context)
     prior_change_versions = dict(prior_change_versions)
-    
+
     logging.info(
         f"Collected prior change versions for {len(prior_change_versions)} endpoints."
     )
@@ -139,9 +142,9 @@ def get_previous_change_versions(
     return_tuples = []
 
     for namespace, endpoint in endpoints:
-        if (last_max_version := prior_change_versions.get(endpoint, 0)):
+        if last_max_version := prior_change_versions.get(endpoint, 0):
             logging.info(f"    {namespace}/{endpoint}: {last_max_version}")
-        
+
         return_tuples.append((endpoint, last_max_version))
 
     return return_tuples
@@ -150,34 +153,36 @@ def get_previous_change_versions(
 def get_previous_change_versions_with_deltas(
     tenant_code: str,
     api_year: int,
-    endpoints: List[Tuple[str, str]],
-
+    endpoints: list[tuple[str, str]],
     *,
     change_version_table: str,
-    database_conn_id: Optional[str] = None,
-
-    edfi_conn_id: Optional[str],
-    max_change_version: Optional[int],
-
+    database_conn_id: str | None = None,
+    edfi_conn_id: str | None,
+    max_change_version: int | None,
     get_deletes: bool = False,
     get_key_changes: bool = False,
     has_key_changes: bool = False,
-
     use_edfi_token_cache: bool = False,
-
-    **context
+    **context,
 ) -> None:
     """
     Overload get_previous_change_versions() with a check against the Ed-Fi API to only return endpoints with new data to process.
     """
     return_tuples = get_previous_change_versions(
-        tenant_code=tenant_code, api_year=api_year, endpoints=endpoints,
-        database_conn_id=database_conn_id, change_version_table=change_version_table,
-        get_deletes=get_deletes, get_key_changes=get_key_changes, has_key_changes=has_key_changes,
-        **context
+        tenant_code=tenant_code,
+        api_year=api_year,
+        endpoints=endpoints,
+        database_conn_id=database_conn_id,
+        change_version_table=change_version_table,
+        get_deletes=get_deletes,
+        get_key_changes=get_key_changes,
+        has_key_changes=has_key_changes,
+        **context,
     )
 
-    edfi_conn = EdFiHook(edfi_conn_id=edfi_conn_id, use_token_cache=use_edfi_token_cache).get_conn()
+    edfi_conn = EdFiHook(
+        edfi_conn_id=edfi_conn_id, use_token_cache=use_edfi_token_cache
+    ).get_conn()
 
     # Only ping the API if the endpoint is specified in the run.
     config_endpoints = airflow_util.get_config_endpoints(context)
@@ -192,7 +197,6 @@ def get_previous_change_versions_with_deltas(
     failed_endpoints = []
 
     for endpoint, last_max_version in return_tuples:
-
         # If a subset of endpoints have been selected, only get CV counts for these.
         if config_endpoints and endpoint not in config_endpoints:
             continue
@@ -204,23 +208,29 @@ def get_previous_change_versions_with_deltas(
 
         try:
             resource = edfi_conn.resource(
-                endpoint, namespace=namespace,
-                get_deletes=get_deletes, get_key_changes=get_key_changes,
+                endpoint,
+                namespace=namespace,
+                get_deletes=get_deletes,
+                get_key_changes=get_key_changes,
                 min_change_version=last_max_version,
-                max_change_version=max_change_version
+                max_change_version=max_change_version,
             )
 
             if not (delta_record_count := resource.total_count()):
                 continue
 
-            logging.info(f"    {namespace}/{endpoint}: {delta_record_count} new records")
+            logging.info(
+                f"    {namespace}/{endpoint}: {delta_record_count} new records"
+            )
             delta_endpoints.append((endpoint, last_max_version))
-        
+
         except Exception:
             logging.warning(
                 f"    Unable to retrieve record count for endpoint: {namespace}/{endpoint}"
             )
-            failed_endpoints.append(endpoint)  # Still return the tuples, but mark as failed in the UI.
+            failed_endpoints.append(
+                endpoint
+            )  # Still return the tuples, but mark as failed in the UI.
             continue
 
     # Always push the xcom, but return a second xcom if at least one endpoint failed.
@@ -229,30 +239,29 @@ def get_previous_change_versions_with_deltas(
         logging.info(
             f"Failed getting delta row count for one or more endpoints: {failed_endpoints}"
         )
-        context['ti'].xcom_push(key='failed_endpoints', value=failed_endpoints)
+        context["ti"].xcom_push(key="failed_endpoints", value=failed_endpoints)
 
     if not delta_endpoints:
-        raise AirflowSkipException("No endpoints to process were found. Skipping downstream ingestion.")
+        raise AirflowSkipException(
+            "No endpoints to process were found. Skipping downstream ingestion."
+        )
 
     return delta_endpoints
 
 
 def update_change_versions(
     tenant_code: str,
-    api_year   : int,
-
+    api_year: int,
     *,
     change_version_table: str,
-    database_conn_id: Optional[str] = None,
-    database_type: Optional[str] = None,
-    
+    database_conn_id: str | None = None,
+    database_type: str | None = None,
     edfi_change_version: int,
-    endpoints: List[str],
+    endpoints: list[str],
     get_deletes: bool,
     get_key_changes: bool,
     has_key_changes: bool,
-
-    **context
+    **context,
 ):
     """
 
@@ -262,25 +271,29 @@ def update_change_versions(
         raise AirflowSkipException(
             "There are no new change versions to update for any endpoints. All upstream tasks skipped or failed."
         )
-    
+
     # we have to do this for the time being because the XCom that produces this list
     # actually returns a lazily-evaluated object with no len() property
     endpoints = list(endpoints)
 
     logging.info(f"Collected updated change versions for {len(endpoints)} endpoints.")
-    
+
     # Deletes and KeyChanges are mutually-exclusive. Delete-status is original and required to output.
     # Optionally adding KeyChanges removes the need to update the change-version table until necessary (default False).
     columns = [
-        "tenant_code", "api_year", "name",
-        "pull_date", "pull_timestamp",
-        "max_version", "is_active",
+        "tenant_code",
+        "api_year",
+        "name",
+        "pull_date",
+        "pull_timestamp",
+        "max_version",
+        "is_active",
         "is_deletes",
     ]
 
     if get_key_changes:
         columns.append("is_key_changes")
-    
+
     # Build and insert row tuples for each endpoint.
     rows_to_insert = []
 
@@ -296,9 +309,13 @@ def update_change_versions(
     for row_set in row_sets:
         for endpoint in endpoints:
             row = [
-                tenant_code, api_year, endpoint,
-                context["ds"], context["ts"],
-                edfi_change_version, True,
+                tenant_code,
+                api_year,
+                endpoint,
+                context["ds"],
+                context["ts"],
+                edfi_change_version,
+                True,
                 row_set["get_deletes"],
             ]
 
@@ -309,10 +326,7 @@ def update_change_versions(
 
     db_interface = DatabaseInterface(database_conn_id, database_type=database_type)
     db_interface.insert_into_database(
-        table=change_version_table,
-        columns=columns,
-        values=rows_to_insert,
-        **context
+        table=change_version_table, columns=columns, values=rows_to_insert, **context
     )
 
     return True
